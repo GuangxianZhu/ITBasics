@@ -1,4 +1,4 @@
-"""离屏截图：python tools/snapshot.py  → docs/shots/P2_*.png / P3_*.png / P4_*.png"""
+"""离屏截图：python tools/snapshot.py  → docs/shots/P2_ ~ P5_*.png"""
 import os
 import sys
 
@@ -101,6 +101,46 @@ def main():
     run_ms(c, 20000)
     shot(app, "P4_level8.png")
     app.leave_level()
+
+    # ---- P5 编辑器 ----
+    app.enter_level(3)                           # 第 4 关
+    app.popup.hide()
+    eb = app.editor_bar
+    app.sel = ("contact", 0, 2)                  # X1
+    shot(app, "P5_select_contact.png")
+
+    app.on_insert_right()                        # X1 右边插入触点，自动选中
+    eb.put(eb.addr_entry, "X3")
+    app.on_addr_enter("X3")
+    app.on_toggle_nc()                           # 变成 b接点 → 参考答案
+    ok, msg = app.session.judge()
+    print("level4 judge after edits:", ok, msg)
+    assert ok, msg
+    shot(app, "P5_after_edit.png")
+
+    app.sel = ("coil", 0)
+    shot(app, "P5_select_coil.png")
+
+    app.leave_level()
+    app.enter_sandbox()
+    app.sel = ("contact", 0, 0)
+    for addr in ("X1", "X2"):
+        app.on_insert_right()
+        eb.put(eb.addr_entry, addr)
+        app.on_addr_enter(addr)
+    app.sel, app.sel2 = ("contact", 0, 0), 1     # 选中 X0~X1 这一段
+    app.on_parallel()
+    eb.put(eb.addr_entry, "M0")
+    app.on_addr_enter("M0")
+    shot(app, "P5_parallel_span.png")
+
+    app.sel, app.sel2 = ("contact", 0, 0), None
+    app.refresh()
+    eb.put(eb.addr_entry, "Z9")
+    app.on_addr_enter("Z9")
+    shot(app, "P5_bad_address.png")
+    app.pick_demo(0)
+    app.msg_t = 0.0
 
     # 梯形图区放大：证明标签不压线
     app.pick_demo(0)

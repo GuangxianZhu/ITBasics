@@ -27,6 +27,14 @@ class LadderView:
         l, r, b, t = self.region
         return l <= x <= r and b <= y <= t
 
+    def screen_to_grid(self, x, y):
+        """aspect2d 坐标 → 网格坐标（最近一次 redraw 的变换）。还没画过返回 None"""
+        xf = getattr(self, "_xf", None)
+        if xf is None:
+            return None
+        ox, oy, s, sc = xf
+        return (x - ox) / s, (oy - y) / s + sc
+
     def scroll_by(self, rows):
         if self._view_rows is None:
             return
@@ -64,6 +72,7 @@ class LadderView:
         oy = t - 0.02
         px = lambda x: ox + x * s
         sc = self.scroll
+        self._xf = (ox, oy, s, sc)
         py = lambda y: oy - (y - sc) * s
         by_color = {}
         for e in drawing.elems:

@@ -41,9 +41,10 @@ class Modal:
 
 
 class LevelSelect(Modal):
-    def __init__(self, a2d, font, levels, on_pick, on_free):
+    def __init__(self, a2d, font, levels, on_pick, on_free, on_sandbox=None):
         super().__init__(a2d, 1.1, 0.75)
         self.font, self.levels, self.on_pick, self.on_free = font, levels, on_pick, on_free
+        self.on_sandbox = on_sandbox
 
     def open(self, passed):
         self.clear()
@@ -56,8 +57,10 @@ class LevelSelect(Modal):
                             scale=0.045, size=(-10.5, 10.5, -1.4, 1.7), command=self._pick)
             b["extraArgs"] = [i]
             b["frameColor"] = BTN_PASSED if done else BTN_NORMAL
-        make_button(self.panel, self.font, "自由示例（不判定）", (-0.4, 0, -0.62), scale=0.045,
+        make_button(self.panel, self.font, "自由示例（不判定）", (-0.72, 0, -0.62), scale=0.045,
                     size=(-6, 6, -1.0, 1.3), command=self._free)
+        make_button(self.panel, self.font, "空白沙盒", (-0.1, 0, -0.62), scale=0.045,
+                    size=(-4, 4, -1.0, 1.3), command=self._sandbox)
         make_button(self.panel, self.font, "关闭", (0.55, 0, -0.62), scale=0.045,
                     size=(-3, 3, -1.0, 1.3), command=self.hide)
         _label(self.panel, self.font, f"已通过 {len(passed)}/{len(self.levels)}",
@@ -71,6 +74,11 @@ class LevelSelect(Modal):
     def _free(self):
         self.hide()
         self.on_free()
+
+    def _sandbox(self):
+        self.hide()
+        if self.on_sandbox:
+            self.on_sandbox()
 
 
 class InfoPopup(Modal):
