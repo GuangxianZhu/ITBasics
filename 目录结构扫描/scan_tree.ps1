@@ -1,4 +1,5 @@
-# scan_tree.ps1 - scan the current directory and write the structure to file_structure.txt
+# scan_tree.ps1 - list every file under the current directory, one relative path per line,
+# and write the result to file_structure.txt (easy for an AI to read: no tree indentation to decode).
 # Usage: double-click run_scan_tree.bat (or: powershell -File scan_tree.ps1 [-Root path])
 # NOTE: keep this file ASCII-only so Windows PowerShell 5.1 reads it correctly.
 
@@ -12,66 +13,48 @@ $OutPath = Join-Path $Root $OutName
 # Folder names to skip (edit freely)
 $Exclude = @('.git', 'node_modules', '__pycache__', '.vs', '.idea', '.venv', 'venv')
 
-# Box-drawing characters built from code points (keeps this file ASCII)
-$H = [string][char]0x2500
-$TEE = [string][char]0x251C + $H + $H + ' '
-$ELBOW = [string][char]0x2514 + $H + $H + ' '
-$PIPE = [string][char]0x2502 + '   '
-$BLANK = '    '
-
-$lines = New-Object 'System.Collections.Generic.List[string]'
+$paths = New-Object 'System.Collections.Generic.List[string]'
 $script:dirCount = 0
 $script:fileCount = 0
-$script:totalBytes = [int64]0
 
-function Format-Size([int64]$b) {
-    if ($b -ge 1GB) { return ('{0:N2} GB' -f ($b / 1GB)) }
-    if ($b -ge 1MB) { return ('{0:N2} MB' -f ($b / 1MB)) }
-    if ($b -ge 1KB) { return ('{0:N1} KB' -f ($b / 1KB)) }
-    return "$b B"
+function Get-Rel([string]$full) {
+    return ($full.Substring($Root.Length).TrimStart('\', '/') -replace '\\', '/')
 }
 
-function Walk([string]$dir, [string]$prefix) {
+function Walk([string]$dir) {
     $items = @(Get-ChildItem -LiteralPath $dir -Force |
-        Where-Object { ($Exclude -notcontains $_.Name) -and ($_.FullName -ne $OutPath) } |
-        Sort-Object @{ Expression = { -not $_.PSIsContainer } }, Name)
-    $n = $items.Count
-    $i = 0
+        Where-Object { ($Exclude -notcontains $_.Name) -and ($_.FullName -ne $OutPath) })
+    if ($items.Count -eq 0 -and $dir -ne $Root) {
+        # empty folder: keep it, marked with a trailing slash
+        $paths.Add((Get-Rel $dir) + '/')
+        return
+    }
     foreach ($it in $items) {
-        $i++
-        $last = ($i -eq $n)
-        $conn = if ($last) { $ELBOW } else { $TEE }
         if ($it.PSIsContainer) {
             $script:dirCount++
-            $lines.Add($prefix + $conn + $it.Name + '/')
             # do not follow junctions / symlinks (avoids infinite loops)
             if (-not ($it.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-                $childPrefix = $prefix + $(if ($last) { $BLANK } else { $PIPE })
-                Walk $it.FullName $childPrefix
+                Walk $it.FullName
             }
         } else {
             $script:fileCount++
-            $script:totalBytes += $it.Length
-            $lines.Add($prefix + $conn + $it.Name + '  (' + (Format-Size $it.Length) + ')')
+            $paths.Add((Get-Rel $it.FullName))
         }
     }
 }
 
-$header = New-Object 'System.Collections.Generic.List[string]'
-$header.Add('Directory: ' + $Root)
-$header.Add('Generated: ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
-$header.Add('Excluded : ' + ($Exclude -join ', '))
-$header.Add('')
-$header.Add((Split-Path $Root -Leaf) + '/')
+Walk $Root
 
-Walk $Root ''
-
-$footer = @('', ('{0} folders, {1} files, total {2}' -f $script:dirCount, $script:fileCount, (Format-Size $script:totalBytes)))
+$sorted = $paths.ToArray()
+[Array]::Sort($sorted, [StringComparer]::OrdinalIgnoreCase)
 
 $all = New-Object 'System.Collections.Generic.List[string]'
-$all.AddRange($header)
-$all.AddRange($lines)
-$all.AddRange([string[]]$footer)
+$all.Add('Root: ' + $Root)
+$all.Add('Generated: ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
+$all.Add('Excluded: ' + ($Exclude -join ', '))
+$all.Add(('Total: {0} folders, {1} files. One relative path per line; a trailing / marks an empty folder.' -f $script:dirCount, $script:fileCount))
+$all.Add('')
+$all.AddRange([string[]]$sorted)
 
 # UTF-8 with BOM so Notepad shows CJK file names correctly
 [IO.File]::WriteAllLines($OutPath, $all, (New-Object System.Text.UTF8Encoding $true))
