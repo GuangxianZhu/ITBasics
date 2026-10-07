@@ -22,8 +22,8 @@ def load_cjk_font(loader):
         if os.path.exists(path):
             try:
                 # Windows 路径要先转成 Panda3D 格式（C:/... → /c/...）
-                f = loader.loadFont(Filename.fromOsSpecific(path))
-            except (IOError, OSError):
+                f = loader.loadFont(Filename.fromOsSpecific(path).getFullpath())
+            except (IOError, OSError, TypeError):
                 continue
             if f is None or not f.isValid():
                 continue
