@@ -80,24 +80,10 @@ def _il_cond(cond, is_first=True):
 def to_il(program) -> list[str]:
     """将程序转换为指令表"""
     result = []
-
-    for rung in program.rungs:
-        # 生成条件部分
-        result.extend(_il_cond(rung.cond))
-
-        # 生成输出部分
-        if isinstance(rung.out, Out):
-            result.append("OUT " + rung.out.addr)
-        elif isinstance(rung.out, OutT):
-            result.append(f"OUT {rung.out.addr} K{rung.out.k}")
-        elif isinstance(rung.out, OutC):
-            result.append(f"OUT {rung.out.addr} K{rung.out.k}")
-        elif isinstance(rung.out, Rst):
-            result.append("RST " + rung.out.addr)
-
+    for line in to_il_rungs(program):
+        result.extend(line)
     # 最后添加 END
     result.append("END")
-
     return result
 
 

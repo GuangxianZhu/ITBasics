@@ -93,9 +93,11 @@ class PLC:
         # 定时器和计数器
         self._timer_acc = {}   # 定时器累计时间(ms)
         self._timer_k = {}     # 定时器设定值(100ms单位)
+        self._timer_reached = {} # 定时器"到达"触点状态（只在 OUT T 时更新）
         self._counter_val = {} # 计数器当前值
         self._counter_k = {}   # 计数器设定值
         self._counter_prev = {} # 计数器上一次执行时的状态
+        self._counter_reached = {} # 计数器"到达"触点状态（只在 OUT C 时更新）
 
         # 验证所有地址
         self._validate_addresses(program)
@@ -144,15 +146,11 @@ class PLC:
         elif prefix == "M":
             return self._m_image.get(addr, False)
         elif prefix == "T":
-            # T的到达触点：累计 >= 设定值
-            acc = self._timer_acc.get(addr, 0)
-            k = self._timer_k.get(addr, 0)
-            return acc >= k
+            # T的到达触点：直接读取已计算的到达状态
+            return self._timer_reached.get(addr, False)
         elif prefix == "C":
-            # C的到达触点：当前值 >= 设定值
-            val = self._counter_val.get(addr, 0)
-            k = self._counter_k.get(addr, 0)
-            return val >= k
+            # C的到达触点：直接读取已计算的到达状态
+            return self._counter_reached.get(addr, False)
 
         return False
 
@@ -205,6 +203,9 @@ class PLC:
                     # 条件为假：累计 = 0
                     self._timer_acc[addr] = 0
 
+                # 更新"到达"触点状态
+                self._timer_reached[addr] = self._timer_acc[addr] >= self._timer_k[addr]
+
             elif isinstance(rung.out, OutC):
                 # OUT C0 K3
                 addr = rung.out.addr
@@ -226,6 +227,9 @@ class PLC:
                 # 记录本次状态
                 self._counter_prev[addr] = p
 
+                # 更新"到达"触点状态
+                self._counter_reached[addr] = self._counter_val[addr] >= self._counter_k[addr]
+
             elif isinstance(rung.out, Rst):
                 # RST C0 / RST T0
                 addr = rung.out.addr
@@ -233,8 +237,10 @@ class PLC:
                     prefix = addr[0]
                     if prefix == "T":
                         self._timer_acc[addr] = 0
+                        self._timer_reached[addr] = False
                     elif prefix == "C":
                         self._counter_val[addr] = 0
+                        self._counter_reached[addr] = False
 
             yield Step("rung", i, p)
 
