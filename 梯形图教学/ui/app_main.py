@@ -21,21 +21,23 @@ from ui.panels import TextTable, make_button
 from ui.tank_scene import TankScene
 from ui.level_ui import LevelSelect, InfoPopup, LevelBar
 from ui.editor_ui import EditorBar
+from ui.layout import Layout
+from ui.widgets import Dragger, Pane, VScroll, Splitter, SCROLL_W
+from ui import theme
 
-ASPECT = 1280 / 720
-BTN_NORMAL = (0.25, 0.28, 0.35, 1)
-BTN_SELECTED = (0.2, 0.5, 0.3, 1)
+BTN_NORMAL = theme.BTN
+BTN_SELECTED = theme.BTN_SELECTED
 
 
 class PlcApp(ShowBase):
     def __init__(self):
-        loadPrcFileData("", "window-title PLC 梯形图教学\nwin-size 1280 720")
+        loadPrcFileData("", "window-title PLC 梯形图教学\nwin-size 1280 720\nwin-min-size 960 600")
         ShowBase.__init__(self)
         self.disableMouse()
-        self.setBackgroundColor(0.13, 0.14, 0.16)
-        self.win.setClearColor((0.13, 0.14, 0.16, 1))
+        self.setBackgroundColor(*theme.BG[:3])
+        self.win.setClearColor(theme.BG)
         self.win.setClearColorActive(True)
-        DirectFrame(parent=self.render2d, frameColor=(0.13, 0.14, 0.16, 1),
+        DirectFrame(parent=self.render2d, frameColor=theme.BG,
                     frameSize=(-1, 1, -1, 1), sortOrder=-100)
         self.font = load_cjk_font(self.loader)
         self.ctrl = Controller(DEMOS[0][1])
@@ -48,60 +50,88 @@ class PlcApp(ShowBase):
         self._drawing = None
         self._shown_sel = "init"
         self.a2d = self.aspect2d
-        W = ASPECT
         self._mouse_held = set()
 
-        # 示例按钮（6 个，一行；当前项底色不同）
-        make_button(self.a2d, self.font, "关卡", (-W + 0.12, 0, 0.93), scale=0.04,
-                    size=(-2, 2, -0.9, 1.0), command=self.open_levels)
-        self.demo_bar = self.a2d.attachNewNode("demo_bar")
+        self.dragger = Dragger(self)
+        self.layout = Layout()
+        self.aspect = self.getAspectRatio()
+        font = self.font
+
+        # 顶栏 / 底栏底色；三个锚点跟着窗口角落走
+        self.top_bg = DirectFrame(parent=self.a2d, frameColor=theme.BAR, frameSize=(0, 1, 0, 1))
+        self.bot_bg = DirectFrame(parent=self.a2d, frameColor=theme.BAR, frameSize=(0, 1, 0, 1))
+        self.anchor_tl = self.a2d.attachNewNode("anchor_tl")
+        self.anchor_bl = self.a2d.attachNewNode("anchor_bl")
+        self.anchor_br = self.a2d.attachNewNode("anchor_br")
+
+        # 顶栏：关卡 + 示例按钮（当前项底色不同）
+        ty = -0.06
+        make_button(self.anchor_tl, font, "关卡", (0.12, 0, ty), scale=0.04,
+                    size=(-2, 2, -0.9, 1.1), command=self.open_levels)
+        self.demo_bar = self.anchor_tl.attachNewNode("demo_bar")
         self.demo_btns = []
         for i, (name, _) in enumerate(DEMOS):
-            b = make_button(self.demo_bar, self.font, name, (-W + 0.42 + i * 0.3, 0, 0.93),
-                            scale=0.04, size=(-3.4, 3.4, -0.9, 1.0), command=self.pick_demo)
+            b = make_button(self.demo_bar, font, name, (0.42 + i * 0.3, 0, ty),
+                            scale=0.04, size=(-3.4, 3.4, -0.9, 1.1), command=self.pick_demo)
             b["extraArgs"] = [i]
             self.demo_btns.append(b)
 
-        # 梯形图区
-        self.ladder = LadderView(self.a2d, self.font, (-W + 0.1, 0.6, -0.04, 0.78))
-        # 指令表 / 监视表（行多时自动缩小）
-        self._title("指令表（命令リスト）", -W + 0.08, -0.12)
-        self._title("监视（モニタ）", -0.9, -0.12)
-        self.il_table = TextTable(self.a2d, self.font, -W + 0.08, -0.19, -0.84, 0.056, 0.042, 0.8)
-        self.mon_table = TextTable(self.a2d, self.font, -0.9, -0.19, -0.84, 0.056, 0.04, 1.5)
+        # 四个面板
+        self.p_ladder = Pane(self.a2d, font, "梯形图（ラダー図）")
+        self.p_il = Pane(self.a2d, font, "指令表（命令リスト）")
+        self.p_mon = Pane(self.a2d, font, "监视（モニタ）")
+        self.p_tank = Pane(self.a2d, font, "水槽（タンク）")
+        self.ladder = LadderView(self.a2d, font, (0, 1, 0, 1))
+        self.il_table = TextTable(self.a2d, font, 0, 0, -0.5, 0.056, 0.042, 0.8)
+        self.mon_table = TextTable(self.a2d, font, 0, 0, -0.5, 0.056, 0.04, 1.0)
+        self.sb_ladder = VScroll(self.a2d, self.dragger, self.ladder.set_scroll)
+        self.sb_il = VScroll(self.a2d, self.dragger, self.il_table.set_offset)
+        self.sb_mon = VScroll(self.a2d, self.dragger, self.mon_table.set_offset)
 
-        # 右侧：3D 水槽 + 文字 + 按钮
-        self.tank_scene = TankScene(self, self.font)
-        rx = 0.68
-        self.level_lbl = DirectLabel(parent=self.a2d, text="", text_font=self.font, text_scale=0.05,
-                                     text_fg=(0.6, 0.85, 1, 1), frameColor=(0, 0, 0, 0),
-                                     pos=(rx, 0, -0.44), text_align=TextNode.ALeft)
-        make_button(self.a2d, self.font, "重置水槽", (1.55, 0, -0.43), scale=0.04,
-                    size=(-3.2, 3.2, -0.9, 1.0), command=lambda: self.ctrl.reset_tank())
+        # 水槽面板：3D 视图 + 水位 + 按钮
+        self.tank_scene = TankScene(self, font)
+        self.tank_ui = self.a2d.attachNewNode("tank_ui")
+        self.level_lbl = DirectLabel(parent=self.tank_ui, text="", text_font=font, text_scale=0.05,
+                                     text_fg=theme.TITLE, frameColor=(0, 0, 0, 0),
+                                     text_align=TextNode.ALeft)
+        self.reset_btn = make_button(self.tank_ui, font, "重置水槽", (0, 0, 0), scale=0.036,
+                                     size=(-3.2, 3.2, -0.9, 1.1), command=lambda: self.ctrl.reset_tank())
         self.in_btns = {}
         for i, (addr, txt) in enumerate((("X0", "X0 启动"), ("X1", "X1 停止"))):
-            b = make_button(self.a2d, self.font, txt, (0.95 + i * 0.5, 0, -0.6), scale=0.04,
-                            size=(-5.5, 5.5, -1.2, 1.4))
+            b = make_button(self.tank_ui, font, txt, (0, 0, 0), scale=0.04,
+                            size=(-4.6, 4.6, -1.2, 1.5))
             b.bind(DGG.B1PRESS, lambda e, a=addr: self.mouse_button(a, True))
             b.bind(DGG.B1RELEASE, lambda e, a=addr: self.mouse_button(a, False))
             self.in_btns[addr] = b
 
-        # 控制栏
-        y = -0.93
-        make_button(self.a2d, self.font, "▶运行", (-W + 0.2, 0, y), command=lambda: self.ctrl.run())
-        make_button(self.a2d, self.font, "暂停", (-W + 0.5, 0, y), command=lambda: self.ctrl.pause())
-        make_button(self.a2d, self.font, "单步", (-W + 0.8, 0, y), command=self.on_step_one)
-        make_button(self.a2d, self.font, "单轮", (-W + 1.1, 0, y), command=self.on_step_scan)
-        DirectLabel(parent=self.a2d, text="慢放", text_font=self.font, text_scale=0.04,
-                    text_fg=(1, 1, 1, 1), frameColor=(0, 0, 0, 0), pos=(-0.3, 0, y - 0.01))
-        self.slider = DirectSlider(parent=self.a2d, range=(0, 1), value=0, pageSize=0.1,
-                                   pos=(0.12, 0, y), scale=0.3, command=self.on_slider)
-        self.speed_lbl = DirectLabel(parent=self.a2d, text="0.00秒", text_font=self.font,
-                                     text_scale=0.04, text_fg=(1, 1, 1, 1), frameColor=(0, 0, 0, 0),
-                                     pos=(0.5, 0, y - 0.01), text_align=TextNode.ALeft)
-        self.status = DirectLabel(parent=self.a2d, text="", text_font=self.font, text_scale=0.045,
-                                  text_fg=(1, 0.9, 0.2, 1), frameColor=(0, 0, 0, 0),
-                                  pos=(0.9, 0, y - 0.01), text_align=TextNode.ALeft)
+        # 分隔条（拖动改面板大小）
+        self.splitters = {n: Splitter(self.a2d, self.dragger, n, self.on_split, vertical=(n != "split_y"))
+                          for n in ("split_x", "split_y", "split_t")}
+
+        # 底栏：控制按钮（左）+ 状态（右）
+        by = 0.06
+        bl = self.anchor_bl
+        make_button(bl, font, "▶ 运行", (0.17, 0, by), scale=0.04, size=(-3.2, 3.2, -0.9, 1.1),
+                    command=lambda: self.ctrl.run())
+        make_button(bl, font, "暂停", (0.47, 0, by), scale=0.04, size=(-3.2, 3.2, -0.9, 1.1),
+                    command=lambda: self.ctrl.pause())
+        make_button(bl, font, "单步", (0.77, 0, by), scale=0.04, size=(-3.2, 3.2, -0.9, 1.1),
+                    command=self.on_step_one)
+        make_button(bl, font, "单轮", (1.07, 0, by), scale=0.04, size=(-3.2, 3.2, -0.9, 1.1),
+                    command=self.on_step_scan)
+        DirectLabel(parent=bl, text="慢放", text_font=font, text_scale=0.038,
+                    text_fg=theme.TEXT_DIM, frameColor=(0, 0, 0, 0), pos=(1.36, 0, by - 0.012))
+        self.slider = DirectSlider(parent=bl, range=(0, 1), value=0, pageSize=0.1,
+                                   pos=(1.68, 0, by), scale=0.24, command=self.on_slider,
+                                   frameColor=(1, 1, 1, 0.12), frameSize=(-1, 1, -0.02, 0.02),
+                                   thumb_frameColor=theme.ACCENT, thumb_relief=DGG.FLAT,
+                                   thumb_frameSize=(-0.05, 0.05, -0.09, 0.09))
+        self.speed_lbl = DirectLabel(parent=bl, text="0.00秒", text_font=font,
+                                     text_scale=0.038, text_fg=theme.TEXT, frameColor=(0, 0, 0, 0),
+                                     pos=(1.97, 0, by - 0.012), text_align=TextNode.ALeft)
+        self.status = DirectLabel(parent=self.anchor_br, text="", text_font=font, text_scale=0.042,
+                                  text_fg=theme.WARN, frameColor=(0, 0, 0, 0),
+                                  pos=(-0.05, 0, by - 0.014), text_align=TextNode.ARight)
 
         # 键盘
         self.accept("space", self._guard, [self.toggle_run])
@@ -120,12 +150,15 @@ class PlcApp(ShowBase):
 
         # 关卡
         self.session = LevelSession()
-        self.level_bar = LevelBar(self.a2d, self.font, -W + 0.3, 0.93, self.show_intro,
+        self.level_bar = LevelBar(self.anchor_tl, self.font, 0.3, -0.06, self.show_intro,
                                   self.restore_example, self.load_solution, self.judge)
         self.level_select = LevelSelect(self.a2d, self.font, self.session.levels,
                                         self.enter_level, self.leave_level, self.enter_sandbox)
         # 编辑器工具栏（梯形图区上方一行）
-        self.editor_bar = EditorBar(self.a2d, self.font, -W + 0.06, 0.835, self)
+        self.editor_bar = EditorBar(self.a2d, self.font, 0, 0, self)
+        self._toolbar_on = None
+        self.accept("window-event", self.on_window_event)
+        self.relayout()
         self.popup = InfoPopup(self.a2d, self.font)
         self.taskMgr.add(self.tick, "tick")
         self.pick_demo(0)
@@ -406,7 +439,7 @@ class PlcApp(ShowBase):
         if (mw is None or not mw.hasMouse() or not self.editable or self._drawing is None
                 or not self.popup.root.isHidden() or not self.level_select.root.isHidden()):
             return
-        x, y = mw.getMouseX() * ASPECT, mw.getMouseY()
+        x, y = mw.getMouseX() * self.aspect, mw.getMouseY()
         if not self.ladder.contains(x, y):
             return
         self.editor_bar.release_focus()
@@ -437,12 +470,68 @@ class PlcApp(ShowBase):
         mw = self.mouseWatcherNode
         if mw is None or not mw.hasMouse():
             return
-        x, y = mw.getMouseX() * ASPECT, mw.getMouseY()
+        x, y = mw.getMouseX() * self.aspect, mw.getMouseY()
         if self.ladder.contains(x, y):
             self.ladder.scroll_by(d * 1.5)
         for t in (self.il_table, self.mon_table):
             if t.contains(x, y):
                 t.scroll_by(d * 2)
+
+    # ---------- 布局 ----------
+    def on_window_event(self, win):
+        if win is not self.win:
+            return
+        a = self.getAspectRatio()
+        size = (win.getXSize(), win.getYSize())
+        if abs(a - self.aspect) > 1e-4 or size != getattr(self, "_win_size", None):
+            self._win_size = size
+            self.relayout()
+
+    def on_split(self, name, x, y):
+        self.layout.drag(name, x, y, self.aspect)
+        self.relayout()
+
+    def relayout(self):
+        a = self.aspect = self.getAspectRatio()
+        rs = self.layout.rects(a)
+        self.top_bg["frameSize"] = rs["top"]
+        self.bot_bg["frameSize"] = rs["bottom"]
+        self.anchor_tl.setPos(-a, 0, 1)
+        self.anchor_bl.setPos(-a, 0, -1)
+        self.anchor_br.setPos(a, 0, -1)
+        for name, pane in (("ladder", self.p_ladder), ("il", self.p_il),
+                           ("mon", self.p_mon), ("tank", self.p_tank)):
+            pane.set_rect(*rs[name])
+        for name, sp in self.splitters.items():
+            sp.set_rect(*rs[name])
+
+        # 梯形图面板：标题栏下面一条工具栏（可编辑时），再下面是图 + 滚动条
+        l, r, b, t = self.p_ladder.content_rect()
+        self._toolbar_on = self.editable
+        if self._toolbar_on:
+            rows = self.editor_bar.place_at(l, t - 0.025, r)
+            t -= rows * EditorBar.ROW_H + 0.01
+        self.ladder.set_region((l + 0.1, r - SCROLL_W - 0.015, b, t))
+        self.sb_ladder.set_rect(r - SCROLL_W, b, t)
+
+        # 两张表
+        for pane, table, sb in ((self.p_il, self.il_table, self.sb_il),
+                                (self.p_mon, self.mon_table, self.sb_mon)):
+            l, r, b, t = pane.content_rect()
+            table.set_geometry(l + 0.01, t - 0.03, b + 0.01, r - l - SCROLL_W - 0.025)
+            sb.set_rect(r - SCROLL_W, b, t)
+
+        # 水槽：上面 3D，下面水位 + 按钮
+        l, r, b, t = self.p_tank.content_rect(pad=0.012)
+        ctrl_h = 0.27
+        fx = lambda x: (x / a + 1) / 2
+        fy = lambda y: (y + 1) / 2
+        self.tank_scene.set_region((fx(l), fx(r), fy(b + ctrl_h), fy(t)))
+        self.level_lbl.setPos(l + 0.02, 0, b + ctrl_h - 0.085)
+        self.reset_btn.setPos(r - 0.14, 0, b + ctrl_h - 0.07)
+        w = r - l
+        self.in_btns["X0"].setPos(l + w * 0.27, 0, b + 0.075)
+        self.in_btns["X1"].setPos(l + w * 0.73, 0, b + 0.075)
 
     def toggle_run(self):
         self.ctrl.pause() if self.ctrl.mode == "run" else self.ctrl.run()
@@ -466,6 +555,7 @@ class PlcApp(ShowBase):
         mw = self.mouseWatcherNode
         if self._mouse_held and mw is not None and not mw.isButtonDown(MouseButton.one()):
             self.release_mouse_buttons()
+        self.dragger.update()
         dt = globalClock.getDt()
         self.msg_t = max(0.0, self.msg_t - dt)
         self.ctrl.update(dt)
@@ -485,29 +575,35 @@ class PlcApp(ShowBase):
             top = d.rung_top[c.current_rung]
             self.ladder.follow(top, top + 1.5)
         self.ladder.redraw(d)
+        self.sb_ladder.update(*self.ladder.scroll_metrics())
         il = il_rows(c.program)
         hl = {i for i, (r, _) in enumerate(il) if r is not None and r == c.current_rung}
         self.il_table.set_rows([("" if r is None else str(r + 1), t) for r, t in il],
                                [0, 0.1], highlight=hl)
+        self.sb_il.update(*self.il_table.scroll_metrics())
         mon = monitor_rows(c.program, c.plc)
-        self.mon_table.set_rows([(a, n, v) for a, n, v, _ in mon], [0, 0.12, 0.8],
+        mw_ = self.mon_table.width
+        self.mon_table.set_rows([(a, n, v) for a, n, v, _ in mon], [0, 0.12, max(0.5, mw_ - 0.22)],
                                 on_col=[m[3] for m in mon])
+        self.sb_mon.update(*self.mon_table.scroll_metrics())
         st = scene_state(c)
         self.tank_scene.update(st)
         self.level_lbl["text"] = st["level_text"]
         if self.msg_t > 0:
             self.status["text"] = "! " + self.msg
-            self.status["text_fg"] = (1, 0.45, 0.35, 1)
+            self.status["text_fg"] = theme.ERR
             self.status["text_scale"] = 0.04
         else:
             mode = "运行" if c.mode == "run" else "暂停"
             self.status["text"] = f"[{mode}] 状态: {c.phase_text or '-'}   扫描次数: {c.plc.scan_count}"
-            self.status["text_fg"] = (1, 0.9, 0.2, 1)
+            self.status["text_fg"] = theme.WARN
             self.status["text_scale"] = 0.045
 
     def _sync_toolbar(self):
         eb = self.editor_bar
         eb.set_visible(self.editable)
+        if self.editable != self._toolbar_on:
+            self.relayout()
         kind = None if self.sel is None else self.sel[0]
         eb.set_mode(kind)
         key = (self.sel, id(self.history.program), len(self.history._undo), len(self.history._redo))
