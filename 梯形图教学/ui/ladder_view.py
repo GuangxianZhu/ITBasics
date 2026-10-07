@@ -14,6 +14,7 @@ class LadderView:
         self.root = parent.attachNewNode("ladder_view")
         self.font = font
         self.region = region
+        self.max_scale = 0.34
         self._node = None
 
     def redraw(self, drawing):
@@ -23,7 +24,7 @@ class LadderView:
         l, r, b, t = self.region
         gw, gh = drawing.width + 1.2, max(drawing.height, 1)
         s = min((r - l) / gw, (t - b) / gh)
-        s = min(s, 0.26)
+        s = min(s, self.max_scale)
         ox = l + ((r - l) - drawing.width * s) / 2 + 0.3 * s
         oy = t - ((t - b) - drawing.height * s) / 2 if drawing.height * s < (t - b) else t
         # 靠上对齐更好看
@@ -41,8 +42,8 @@ class LadderView:
                 tn.setAlign(TextNode.ACenter)
                 tn.setTextColor(*COLORS[e.color])
                 np_ = self._node.attachNewNode(tn)
-                np_.setScale(s * 0.34 if e.tag[0] != "marker" else s * 0.45)
-                np_.setPos(px(e.x1), 0, py(e.y1) - (s * 0.25 if e.tag[0] != "marker" else s * 0.25))
+                np_.setScale(s * 0.26 if e.tag[0] != "marker" else s * 0.45)
+                np_.setPos(px(e.x1), 0, py(e.y1) - s * 0.23)
         for color, es in by_color.items():
             ls = LineSegs()
             ls.setThickness(3)

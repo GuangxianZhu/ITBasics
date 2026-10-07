@@ -82,11 +82,11 @@ def draw_program(program, plc, current_rung=None) -> Drawing:
                 tag = ("contact", r, k)
                 wire(r, x0, x0 + 0.38, yc, left, "in", k)
                 wire(r, x0 + 0.62, x0 + 1, yc, trace[id(node)], "out", k)
-                line(tag, x0 + 0.38, top + row + 0.2, x0 + 0.38, top + row + 0.8, c)
-                line(tag, x0 + 0.62, top + row + 0.2, x0 + 0.62, top + row + 0.8, c)
+                line(tag, x0 + 0.38, top + row + 0.33, x0 + 0.38, top + row + 0.67, c)
+                line(tag, x0 + 0.62, top + row + 0.33, x0 + 0.62, top + row + 0.67, c)
                 if node.nc:
-                    line(tag, x0 + 0.3, top + row + 0.8, x0 + 0.7, top + row + 0.2, c)
-                elems.append(Elem("text", ("label", r, k), x0 + 0.5, top + row + 0.1,
+                    line(tag, x0 + 0.3, top + row + 0.7, x0 + 0.7, top + row + 0.3, c)
+                elems.append(Elem("text", ("label", r, k), x0 + 0.5, top + row + 0.03,
                                   color="text", text=node.addr))
                 return 1, 1
             if isinstance(node, Series):
@@ -124,12 +124,12 @@ def draw_program(program, plc, current_rung=None) -> Drawing:
         cc = "on" if lp else "off"
         line(("wire_coil", r), W + 1, yc, W + 1.3, yc, "power" if lp else "idle")
         # 线圈 ( )
-        line(("coil", r), W + 1.42, top + 0.2, W + 1.32, top + 0.5, cc)
-        line(("coil", r), W + 1.32, top + 0.5, W + 1.42, top + 0.8, cc)
-        line(("coil", r), W + 1.58, top + 0.2, W + 1.68, top + 0.5, cc)
-        line(("coil", r), W + 1.68, top + 0.5, W + 1.58, top + 0.8, cc)
+        line(("coil", r), W + 1.42, top + 0.33, W + 1.32, top + 0.5, cc)
+        line(("coil", r), W + 1.32, top + 0.5, W + 1.42, top + 0.67, cc)
+        line(("coil", r), W + 1.58, top + 0.33, W + 1.68, top + 0.5, cc)
+        line(("coil", r), W + 1.68, top + 0.5, W + 1.58, top + 0.67, cc)
         wire(r, W + 1.7, W + 3, yc, lp, "tail")
-        elems.append(Elem("text", ("coil_label", r), W + 1.5, top + 0.1,
+        elems.append(Elem("text", ("coil_label", r), W + 1.5, top + 0.03,
                           color="text", text=_coil_text(rung.out)))
         if current_rung == r:
             elems.append(Elem("text", ("marker", r), -0.6, top + 0.5,
