@@ -20,8 +20,27 @@ class LadderView:
         self._view_rows = None      # 当前缩放下可见多少格
         self._content_rows = 0
         self._node = None
+        self.set_region(region)
+
+    def set_region(self, region):
+        """region = (left, right, bottom, top)；梯形图只画在这个框里（超出部分裁掉）"""
+        self.region = region
         l, r, b, t = region
-        self.root.setScissor((l - 0.3, 0, b), (r + 0.1, 0, t + 0.12))
+        self.root.setScissor((l - 0.12, 0, b), (r, 0, t))
+
+    @property
+    def scrollable(self):
+        return self._view_rows is not None
+
+    def scroll_metrics(self):
+        """(内容总格数, 可见格数, 当前滚动) —— 给滚动条用"""
+        if self._view_rows is None:
+            return 1.0, 1.0, 0.0
+        return self._content_rows, self._view_rows, self.scroll
+
+    def set_scroll(self, v):
+        self.scroll = 0.0
+        self.scroll_by(v)
 
     def contains(self, x, y):
         l, r, b, t = self.region
@@ -59,7 +78,7 @@ class LadderView:
         s = min(s, self.max_scale)
         fits = s >= self.min_scale
         if not fits:
-            s = min((r - l) / gw, self.min_scale)
+            s = min((r - l) / gw, max(self.min_scale, 0.17))   # 反正要滚动了，就画大一点
             self._view_rows = (t - b - 0.02) / s
             self._content_rows = drawing.height
             self.scroll = min(self.scroll, max(0.0, self._content_rows - self._view_rows))
@@ -69,7 +88,7 @@ class LadderView:
         ox = l + ((r - l) - drawing.width * s) / 2 + 0.3 * s
         oy = t - ((t - b) - drawing.height * s) / 2 if drawing.height * s < (t - b) else t
         # 靠上对齐更好看
-        oy = t - 0.02
+        oy = t - 0.03
         px = lambda x: ox + x * s
         sc = self.scroll
         self._xf = (ox, oy, s, sc)

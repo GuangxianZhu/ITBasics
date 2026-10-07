@@ -54,13 +54,24 @@ class EditorBar:
         self.coil_addr = entry(self.coil_bar, x2 + 0.12, 4, "Y0", h.on_coil_enter)
         self._label(self.coil_bar, "K:", x2 + 0.5, y, sc)
         self.coil_k = entry(self.coil_bar, x2 + 0.58, 4, "", h.on_coil_enter)
-        # 公共：行 / 撤销
-        xc = -0.1                                  # 3D 视图从 x≈0.64 起，公共按钮必须在它左边
-        sc = 0.03
-        _, self.mbtn = place(self.common_bar, [
+        self.left_w = max(x + 0.42, x2 + 0.8) - x0   # 左边（触点/线圈工具）占的宽度
+        # 公共：行 / 撤销（右对齐，由 place_at 摆放）
+        xc = 0.0
+        self.common_w, self.mbtn = place(self.common_bar, [
             ("行+", h.on_add_rung), ("行−", h.on_del_rung), ("上移", h.on_move_up),
             ("下移", h.on_move_down), ("撤销", h.on_undo), ("重做", h.on_redo)], xc)
         self.set_mode(None)
+
+    ROW_H = 0.07
+
+    def place_at(self, l, y, r):
+        """把工具栏放到 [l, r] 这一条（y = 第一行中线）。放不下一行就把右边的按钮挪到第二行。返回行数"""
+        self.root.setPos(l, 0, y)
+        if self.left_w + 0.04 + self.common_w <= r - l:
+            self.common_bar.setPos(r - l - self.common_w, 0, 0)
+            return 1
+        self.common_bar.setPos(0, 0, -self.ROW_H)
+        return 2
 
     def _label(self, parent, text, x, y, sc):
         return DirectLabel(parent=parent, text=text, text_font=self.font, text_scale=sc,

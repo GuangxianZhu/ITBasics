@@ -22,7 +22,7 @@ class TankScene:
 
         # 相机 + 独立 DisplayRegion（sort 大于 render2d 的，保证画在 2D 背景之上）
         cam = Camera("tank_cam")
-        lens = PerspectiveLens()
+        lens = self.lens = PerspectiveLens()
         w = (region[1] - region[0]) * base.win.getXSize()
         h = (region[3] - region[2]) * base.win.getYSize()
         lens.setAspectRatio(w / h)
@@ -37,6 +37,7 @@ class TankScene:
         self.dr.setClearColor(bg)
         self.dr.setClearDepthActive(True)
         self.dr.setCamera(self.cam_np)
+        self.region = region
 
         r = self.root
         # 槽体（半透明）+ 轮廓
@@ -95,6 +96,14 @@ class TankScene:
         # 地面板
         floor = make_box(-3.4, 3.6, -1.6, 1.6, -1.0, -0.9, "floor")
         floor.reparentTo(r); floor.setColorScale(0.22, 0.24, 0.28, 1)
+
+    def set_region(self, region):
+        """region = (左, 右, 下, 上)，窗口比例 0~1"""
+        self.region = region
+        self.dr.setDimensions(*region)
+        w = max(1, (region[1] - region[0]) * self.base.win.getXSize())
+        h = max(1, (region[3] - region[2]) * self.base.win.getYSize())
+        self.lens.setAspectRatio(w / h)
 
     def _label(self, text, pos, font, parent, scale=0.3):
         tn = TextNode("lbl")

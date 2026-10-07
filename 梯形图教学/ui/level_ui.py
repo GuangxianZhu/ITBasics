@@ -3,8 +3,9 @@ from direct.gui.DirectGui import DirectFrame, DirectLabel
 from panda3d.core import TextNode
 
 from ui.panels import make_button
+from ui import theme
 
-PANEL = (0.16, 0.18, 0.22, 0.97)
+PANEL = (0.14, 0.155, 0.185, 0.98)
 TITLE_FG = (0.6, 0.85, 1, 1)
 TEXT_FG = (0.92, 0.92, 0.92, 1)
 OK_FG = (0.4, 1, 0.5, 1)
@@ -24,7 +25,7 @@ class Modal:
 
     def __init__(self, a2d, w, h):
         self.root = DirectFrame(parent=a2d, frameColor=(0, 0, 0, 0.55),
-                                frameSize=(-2, 2, -1, 1), state="normal", sortOrder=50)
+                                frameSize=(-4, 4, -1, 1), state="normal", sortOrder=50)
         self.panel = DirectFrame(parent=self.root, frameColor=PANEL, frameSize=(-w, w, -h, h))
         self.root.setBin("gui-popup", 0)          # 永远画在梯形图等每帧新建的节点之上
         self.root.hide()
@@ -56,7 +57,7 @@ class LevelSelect(Modal):
             b = make_button(self.panel, self.font, text, (-0.52 + col * 1.04, 0, 0.38 - row * 0.2),
                             scale=0.045, size=(-10.5, 10.5, -1.4, 1.7), command=self._pick)
             b["extraArgs"] = [i]
-            b["frameColor"] = BTN_PASSED if done else BTN_NORMAL
+            b["frameColor"] = theme.BTN_SELECTED if done else theme.BTN
         make_button(self.panel, self.font, "自由示例（不判定）", (-0.72, 0, -0.62), scale=0.045,
                     size=(-6, 6, -1.0, 1.3), command=self._free)
         make_button(self.panel, self.font, "空白沙盒", (-0.1, 0, -0.62), scale=0.045,
@@ -141,7 +142,7 @@ class LevelBar:
         for i, (txt, cmd) in enumerate(specs):
             self.btns[txt] = make_button(self.root, font, txt, (x0 + 1.02 + i * 0.29, 0, y),
                                          scale=0.04, size=(-3.2, 3.2, -0.9, 1.0), command=cmd)
-        self.btns["判定"]["frameColor"] = (0.55, 0.4, 0.1, 1)
+        self.btns["判定"]["frameColor"] = theme.BTN_PRIMARY
         self.root.hide()
 
     def show_level(self, lv):
