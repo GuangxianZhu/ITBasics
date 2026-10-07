@@ -1,0 +1,59 @@
+"""把 app.draw.Drawing 画到屏幕区域。不做任何逻辑判断。"""
+from panda3d.core import LineSegs, TextNode, NodePath
+
+COLORS = {
+    "power": (0.2, 1.0, 0.3, 1), "on": (0.2, 1.0, 0.3, 1),
+    "idle": (0.5, 0.5, 0.5, 1), "off": (0.5, 0.5, 0.5, 1),
+    "rail": (1, 1, 1, 1), "text": (0.9, 0.9, 0.9, 1), "marker": (1, 0.9, 0.1, 1),
+}
+
+
+class LadderView:
+    def __init__(self, parent, font, region):
+        """region = (left, right, bottom, top)，aspect2d 坐标"""
+        self.root = parent.attachNewNode("ladder_view")
+        self.font = font
+        self.region = region
+        self._node = None
+
+    def redraw(self, drawing):
+        if self._node is not None:
+            self._node.removeNode()
+        self._node = self.root.attachNewNode("ladder")
+        l, r, b, t = self.region
+        gw, gh = drawing.width + 1.2, max(drawing.height, 1)
+        s = min((r - l) / gw, (t - b) / gh)
+        s = min(s, 0.26)
+        ox = l + ((r - l) - drawing.width * s) / 2 + 0.3 * s
+        oy = t - ((t - b) - drawing.height * s) / 2 if drawing.height * s < (t - b) else t
+        # 靠上对齐更好看
+        oy = t - 0.02
+        px = lambda x: ox + x * s
+        py = lambda y: oy - y * s
+        by_color = {}
+        for e in drawing.elems:
+            if e.kind in ("line", "rect"):
+                by_color.setdefault(e.color, []).append(e)
+            else:
+                tn = TextNode("t")
+                tn.setFont(self.font)
+                tn.setText(e.text)
+                tn.setAlign(TextNode.ACenter)
+                tn.setTextColor(*COLORS[e.color])
+                np_ = self._node.attachNewNode(tn)
+                np_.setScale(s * 0.34 if e.tag[0] != "marker" else s * 0.45)
+                np_.setPos(px(e.x1), 0, py(e.y1) - (s * 0.25 if e.tag[0] != "marker" else s * 0.25))
+        for color, es in by_color.items():
+            ls = LineSegs()
+            ls.setThickness(3)
+            ls.setColor(*COLORS[color])
+            for e in es:
+                if e.kind == "line":
+                    ls.moveTo(px(e.x1), 0, py(e.y1))
+                    ls.drawTo(px(e.x2), 0, py(e.y2))
+                else:
+                    pts = [(e.x1, e.y1), (e.x2, e.y1), (e.x2, e.y2), (e.x1, e.y2), (e.x1, e.y1)]
+                    ls.moveTo(px(pts[0][0]), 0, py(pts[0][1]))
+                    for x, y in pts[1:]:
+                        ls.drawTo(px(x), 0, py(y))
+            self._node.attachNewNode(ls.create())
