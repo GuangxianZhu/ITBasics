@@ -1,15 +1,18 @@
 """运行 / 暂停 / 单步 / 慢放（纯逻辑，不依赖 panda3d）"""
 from plc.engine import PLC, Step
+from sim.tank import Tank
 
 
 class Controller:
-    def __init__(self, program, scan_ms=10):
+    def __init__(self, program, scan_ms=10, tank=None):
         self.scan_ms = scan_ms
         self.mode = "run"
         self.speed = 0.0
         self._buttons = {}
         self._acc_ms = 0
         self.load(program)
+        if tank is not None:
+            self.tank = tank
 
     def load(self, program):
         """换程序：新建 PLC；按钮状态保留"""
@@ -21,6 +24,11 @@ class Controller:
         self.mid_scan = False
         self.last_step = None
         self._acc_ms = 0
+        self.tank = Tank()
+        self.sim_time = 0.0
+
+    def reset_tank(self):
+        self.tank = Tank()
 
     # ---- 状态派生 ----
     @property
@@ -52,10 +60,15 @@ class Controller:
 
     def step_one(self) -> Step:
         if self._gen is None:
+            for a, v in self.tank.sensors().items():     # 一轮开始前：传感器 → X2/X3
+                self.plc.set_input(a, v)
             self._gen = self.plc.steps()
         s = next(self._gen)
         self.last_step = s
         if s.phase == "output":
+            dt = self.scan_ms / 1000
+            self.tank.step(dt, self.plc.output("Y0"), self.plc.output("Y1"))
+            self.sim_time += dt
             self._gen = None
             self.mid_scan = False
         else:
