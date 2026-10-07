@@ -2,6 +2,10 @@
 from dataclasses import dataclass, field
 
 
+class EditError(ValueError):
+    """编辑 / 构造时的非法输入（app.editor 重新导出同一个类）。仍是 ValueError 的子类。"""
+
+
 @dataclass(frozen=True)
 class Contact:
     """触点"""
@@ -11,14 +15,14 @@ class Contact:
     def __post_init__(self):
         # 验证地址格式
         if not self.addr or len(self.addr) < 2:
-            raise ValueError(f"Invalid address: {self.addr}")
+            raise EditError(f"Invalid address: {self.addr}")
         prefix = self.addr[0]
         if prefix not in "XYMTC":
-            raise ValueError(f"Invalid address prefix: {self.addr}")
+            raise EditError(f"Invalid address prefix: {self.addr}")
         try:
             int(self.addr[1:])
         except ValueError:
-            raise ValueError(f"Invalid address: {self.addr}")
+            raise EditError(f"Invalid address: {self.addr}")
 
 
 def NO(addr) -> Contact:
