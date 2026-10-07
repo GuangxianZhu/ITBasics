@@ -8,10 +8,12 @@ from app.demos import DEMOS
 from app.draw import draw_program
 from app.scene_state import scene_state
 from app.views import il_rows, monitor_rows
+from app.level_session import LevelSession
 from ui.fonts import load_cjk_font
 from ui.ladder_view import LadderView
 from ui.panels import TextTable, make_button
 from ui.tank_scene import TankScene
+from ui.level_ui import LevelSelect, InfoPopup, LevelBar
 
 ASPECT = 1280 / 720
 BTN_NORMAL = (0.25, 0.28, 0.35, 1)
@@ -36,17 +38,18 @@ class PlcApp(ShowBase):
         self._mouse_held = set()
 
         # 示例按钮（6 个，一行；当前项底色不同）
-        DirectLabel(parent=self.a2d, text="示例:", text_font=self.font, text_scale=0.045,
-                    text_fg=(1, 1, 1, 1), frameColor=(0, 0, 0, 0), pos=(-W + 0.12, 0, 0.93))
+        make_button(self.a2d, self.font, "关卡", (-W + 0.12, 0, 0.93), scale=0.04,
+                    size=(-2, 2, -0.9, 1.0), command=self.open_levels)
+        self.demo_bar = self.a2d.attachNewNode("demo_bar")
         self.demo_btns = []
         for i, (name, _) in enumerate(DEMOS):
-            b = make_button(self.a2d, self.font, name, (-W + 0.42 + i * 0.3, 0, 0.93),
+            b = make_button(self.demo_bar, self.font, name, (-W + 0.42 + i * 0.3, 0, 0.93),
                             scale=0.04, size=(-3.4, 3.4, -0.9, 1.0), command=self.pick_demo)
             b["extraArgs"] = [i]
             self.demo_btns.append(b)
 
         # 梯形图区
-        self.ladder = LadderView(self.a2d, self.font, (-W + 0.1, 0.6, -0.1, 0.86))
+        self.ladder = LadderView(self.a2d, self.font, (-W + 0.1, 0.6, -0.04, 0.86))
         # 指令表 / 监视表（行多时自动缩小）
         self._title("指令表（命令リスト）", -W + 0.08, -0.12)
         self._title("监视（モニタ）", -0.9, -0.12)
@@ -94,9 +97,19 @@ class PlcApp(ShowBase):
             self.accept(key, lambda a=addr: self.ctrl.set_button(a, True))
             self.accept(key + "-up", lambda a=addr: self.ctrl.set_button(a, False))
         self.accept("mouse1-up", self.release_mouse_buttons)
+        self.accept("wheel_up", self.on_wheel, [-1])
+        self.accept("wheel_down", self.on_wheel, [1])
 
+        # 关卡
+        self.session = LevelSession()
+        self.level_bar = LevelBar(self.a2d, self.font, -W + 0.3, 0.93, self.show_intro,
+                                  self.restore_example, self.load_solution, self.judge)
+        self.level_select = LevelSelect(self.a2d, self.font, self.session.levels,
+                                        self.enter_level, self.leave_level)
+        self.popup = InfoPopup(self.a2d, self.font)
         self.taskMgr.add(self.tick, "tick")
         self.pick_demo(0)
+        self.open_levels()
 
     # ---------- 事件转发 ----------
     def _title(self, text, x, y):
@@ -110,6 +123,45 @@ class PlcApp(ShowBase):
         for k, b in enumerate(self.demo_btns):
             b["frameColor"] = BTN_SELECTED if k == i else BTN_NORMAL
 
+    # ---------- 关卡 ----------
+    def open_levels(self):
+        self.level_select.open(self.session.passed)
+
+    def enter_level(self, i):
+        self.ctrl.load(self.session.enter(i))
+        self.demo_bar.hide()
+        self.level_bar.show_level(self.session.level)
+        self.show_intro()
+
+    def leave_level(self):
+        self.session.leave()
+        self.level_bar.hide()
+        self.demo_bar.show()
+        self.pick_demo(self.demo_index)
+
+    def show_intro(self, result=None):
+        self.popup.open_intro(self.session.level, on_answer=self.answer, result=result)
+
+    def restore_example(self):
+        self.ctrl.load(self.session.restore_example())
+
+    def load_solution(self):
+        self.ctrl.load(self.session.load_solution())
+
+    def judge(self):
+        if self.session.level.KIND == "quiz":
+            self.show_intro(self.session.last_result)
+            return
+        ok, msg = self.session.judge()
+        self.popup.open_result(ok, msg, self.next_level if self.session.has_next() else None)
+
+    def answer(self, choice):
+        self.session.answer(choice)
+        self.show_intro(self.session.last_result)
+
+    def next_level(self):
+        self.enter_level(self.session.index + 1)
+
     def mouse_button(self, addr, pressed):
         if pressed:
             self._mouse_held.add(addr)
@@ -121,6 +173,17 @@ class PlcApp(ShowBase):
         """全局鼠标松开：把拖出按钮后才松开的 X0/X1 也复位"""
         for a in list(self._mouse_held):
             self.mouse_button(a, False)
+
+    def on_wheel(self, d):
+        mw = self.mouseWatcherNode
+        if mw is None or not mw.hasMouse():
+            return
+        x, y = mw.getMouseX() * ASPECT, mw.getMouseY()
+        if self.ladder.contains(x, y):
+            self.ladder.scroll_by(d * 1.5)
+        for t in (self.il_table, self.mon_table):
+            if t.contains(x, y):
+                t.scroll_by(d * 2)
 
     def toggle_run(self):
         self.ctrl.pause() if self.ctrl.mode == "run" else self.ctrl.run()
@@ -150,7 +213,14 @@ class PlcApp(ShowBase):
 
     def refresh(self):
         c = self.ctrl
-        self.ladder.redraw(draw_program(c.program, c.plc, c.current_rung))
+        # 弹窗打开时关掉 3D 视图（DisplayRegion 画在 2D 之上，会挡住弹窗）
+        modal = not self.popup.root.isHidden() or not self.level_select.root.isHidden()
+        self.tank_scene.dr.setActive(not modal)
+        d = draw_program(c.program, c.plc, c.current_rung)
+        if c.current_rung is not None:
+            top = d.rung_top[c.current_rung]
+            self.ladder.follow(top, top + 1.5)
+        self.ladder.redraw(d)
         il = il_rows(c.program)
         hl = {i for i, (r, _) in enumerate(il) if r is not None and r == c.current_rung}
         self.il_table.set_rows([("" if r is None else str(r + 1), t) for r, t in il],

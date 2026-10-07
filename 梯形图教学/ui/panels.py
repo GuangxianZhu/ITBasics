@@ -14,7 +14,10 @@ class TextTable:
         self.parent, self.font = parent, font
         self.x, self.top, self.bottom = x, top, bottom
         self.base_line_h, self.base_scale, self.width = base_line_h, base_scale, width
-        self._shape = None          # (n_rows, n_cols)
+        self._shape = None          # (可见行数, n_cols)
+        self.min_line_h = 0.04      # 再小看不清；放不下时滚动
+        self.offset = 0
+        self.n_total = 0
         self._bg, self._lbl = [], []
         self._cache = {}
 
@@ -26,9 +29,15 @@ class TextTable:
                 w.destroy()
         self._bg, self._lbl, self._cache = [], [], {}
 
+    def contains(self, x, y):
+        return self.x - 0.01 <= x <= self.x + self.width and self.bottom - 0.03 <= y <= self.top + 0.04
+
+    def scroll_by(self, rows):
+        self.offset = max(0, min(self.offset + rows, self.n_total - self._shape[0])) if self._shape else 0
+
     def _build(self, n, ncols, col_x):
         self._destroy()
-        line_h = min(self.base_line_h, (self.top - self.bottom) / max(n, 1))
+        line_h = max(min(self.base_line_h, (self.top - self.bottom) / max(n, 1)), self.min_line_h)
         scale = self.base_scale * line_h / self.base_line_h
         self.line_h = line_h
         for i in range(n):
@@ -46,10 +55,24 @@ class TextTable:
         self._shape = (n, ncols)
 
     def set_rows(self, rows, col_x, highlight=None, on_col=None):
-        n = len(rows)
         ncols = len(col_x)
+        self.n_total = len(rows)
+        avail = self.top - self.bottom
+        n = min(len(rows), max(1, int(avail / self.min_line_h) + 1))
         if self._shape != (n, ncols):
             self._build(n, ncols, col_x)
+        # 窗口滚动：保证高亮行可见
+        self.offset = max(0, min(self.offset, len(rows) - n))
+        if highlight:
+            lo, hi = min(highlight), max(highlight)
+            if lo < self.offset:
+                self.offset = lo
+            elif hi >= self.offset + n:
+                self.offset = hi - n + 1
+        off = self.offset
+        rows = rows[off:off + n]
+        highlight = {h - off for h in highlight} if highlight else None
+        on_col = on_col[off:off + n] if on_col else None
         for i in range(n):
             hl = bool(highlight) and i in highlight
             if self._cache.get(("bg", i)) != hl:
