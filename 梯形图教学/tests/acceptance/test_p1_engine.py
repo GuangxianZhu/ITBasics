@@ -291,3 +291,44 @@ def test_evaluate_trace_no_power_downstream():
     evaluate(tree, lambda addr: addr == "X1", trace)
     assert trace[id(a)] is False
     assert trace[id(b)] is False           # 自身导通但左边没电
+
+
+# ---------- P1 验收意见追加：T/C 初始状态 ----------
+
+def test_unexecuted_timer_counter_read_false():
+    plc = PLC(prog(Rung(NO("X0"), Out("Y0"))))
+    assert plc.get("T5") is False and plc.get("C5") is False
+    plc.scan()
+    assert plc.get("T5") is False and plc.get("C5") is False
+
+
+def test_timer_contact_read_before_out_t():
+    # 先读 T0、后执行 OUT T0：第 1 轮 T0 必须是 OFF
+    p = prog(Rung(NO("T0"), Out("Y1")), Rung(NO("X0"), OutT("T0", 5)))
+    plc = PLC(p, scan_ms=10)
+    plc.scan()
+    assert plc.output("Y1") is False
+    plc.set_input("X0", True)
+    for _ in range(50):
+        plc.scan()
+    assert plc.get("T0") is True and plc.output("Y1") is False   # 本轮 OUT T0 在后面，Y1 下一轮才 ON
+    plc.scan()
+    assert plc.output("Y1") is True
+
+
+def test_counter_contact_read_before_out_c():
+    p = prog(Rung(NO("C0"), Out("Y2")), Rung(NO("X0"), OutC("C0", 3)))
+    plc = PLC(p)
+    plc.scan()
+    assert plc.output("Y2") is False
+
+
+def test_rst_then_contact_off():
+    p = prog(Rung(NO("X1"), Rst("T0")), Rung(NO("T0"), Out("Y0")), Rung(NO("X0"), OutT("T0", 1)))
+    plc = PLC(p, scan_ms=100)
+    plc.set_input("X0", True)
+    plc.scan(); plc.scan()
+    assert plc.output("Y0") is True
+    plc.set_input("X1", True); plc.set_input("X0", False)
+    plc.scan()
+    assert plc.get("T0") is False and plc.output("Y0") is False
