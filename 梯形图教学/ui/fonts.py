@@ -1,6 +1,8 @@
 """中日文字体加载"""
 import os
 
+from panda3d.core import Filename
+
 CANDIDATES = [
     "C:/Windows/Fonts/msyh.ttc",
     "C:/Windows/Fonts/YuGothM.ttc",
@@ -18,7 +20,14 @@ def load_cjk_font(loader):
         return _font
     for path in CANDIDATES:
         if os.path.exists(path):
-            _font = loader.loadFont(path)
+            try:
+                # Windows 路径要先转成 Panda3D 格式（C:/... → /c/...）
+                f = loader.loadFont(Filename.fromOsSpecific(path))
+            except (IOError, OSError):
+                continue
+            if f is None or not f.isValid():
+                continue
+            _font = f
             _font.setPixelsPerUnit(48)
             return _font
     print("警告：未找到中日文字体，文字可能显示为方块")
