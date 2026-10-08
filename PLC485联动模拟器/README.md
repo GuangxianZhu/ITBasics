@@ -3,9 +3,14 @@
 三菱 PLC 的 IO（远程、在线、通水、加热、停止、确认、急停）怎样和温水器自有的 RS-485 协议联动的演示程序。
 
 ## 运行
+Windows 双击 `run_v2.bat`（v2 双向通信）或 `run_v1.bat`（v1）。
+第一次会自动 `pip install panda3d`；公司网络装不上的话，手动装一次即可。
+
+手动运行：
 ```
 pip install panda3d
-python plc485_sim.py
+python plc485_sim.py      # v1
+cd v2 && python app.py    # v2
 ```
 
 ## 画面
