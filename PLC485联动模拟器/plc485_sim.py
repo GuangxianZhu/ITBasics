@@ -1456,6 +1456,20 @@ class App(ShowBase):
     def tx(self, t, off):
         return PX0 + (t - off) / self.W * PW
 
+    def place_label(self, lanes, row, top, cx, s, size):
+        """帧标签防重叠：TX 往上叠、RX 往下叠，两层都放不下就往右挪"""
+        w = sum(size * (1.0 if ord(c) > 255 else 0.62) for c in s) + 7
+        ys = [top + 2, top - 8] if row == 'TX' else [top + RH + 9, top + RH + 19]
+        last = lanes.setdefault(row, [-1e9, -1e9])
+        for i in range(2):
+            if cx - w / 2 >= last[i]:
+                last[i] = cx + w / 2
+                return cx, ys[i]
+        i = 0 if last[0] <= last[1] else 1
+        cx = last[i] + w / 2
+        last[i] = cx + w / 2
+        return cx, ys[i]
+
     def redraw(self):
         sim, rec = self.sim, self.sim.rec
         b = Batch()
@@ -1502,6 +1516,7 @@ class App(ShowBase):
         # 报文块
         li = 0
         for a, e, off, al in spans:
+            lanes = {}            # 每段扫描各自排标签
             for f in rec.frames_between(a, e):
                 if f.t0 < a:
                     continue
@@ -1537,7 +1552,8 @@ class App(ShowBase):
                         s += '×'
                     tn.setText(s)
                     tn.setTextColor(1, 1, 1, al)
-                    np.setPos((x1 + x2) / 2, 0, -(top + 3))
+                    lx, ly = self.place_label(lanes, f.dir, top, (x1 + x2) / 2, s, 10)
+                    np.setPos(lx, 0, -ly)
                     np.show()
                     li += 1
         for tn, np in self.lbl_pool[li:]:
