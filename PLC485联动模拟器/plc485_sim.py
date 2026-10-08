@@ -987,6 +987,7 @@ class App(ShowBase):
     def __init__(self):
         ShowBase.__init__(self)
         self.disableMouse()
+        self.ui = self.pixel2d.attachNewNode('ui')   # 所有 2D 都挂在这里，整体随窗口缩放
         self.setBackgroundColor(*BG)
         self.font = load_cjk_font(self.loader)
         if self.font:
@@ -1018,6 +1019,25 @@ class App(ShowBase):
         self.accept(']', self.jump_frame, [1])
         self.accept('mouse1', self.on_click)
         self.taskMgr.add(self.update, 'update')
+        self.accept('window-event', self.on_window_event)
+        self.relayout()
+
+    # ---------- 窗口缩放：按 1600x900 设计，等比放大/缩小并居中 ----------
+    def on_window_event(self, win):
+        self.windowEvent(win)          # 保留 ShowBase 自己的处理（pixel2d 跟着窗口变）
+        self.relayout()
+
+    def relayout(self):
+        w, h = self.win.getXSize(), self.win.getYSize()
+        if w <= 0 or h <= 0:
+            return
+        s = min(w / float(WIN_W), h / float(WIN_H))
+        ox, oy = (w - WIN_W * s) / 2.0, (h - WIN_H * s) / 2.0
+        self.ui_s, self.ui_ox, self.ui_oy = s, ox, oy
+        self.ui.setScale(s)
+        self.ui.setPos(ox, 0, -oy)
+        self.dr3d.setDimensions((ox + V3_X0 * s) / w, (ox + V3_X1 * s) / w,
+                                1 - (oy + V3_Y1 * s) / h, 1 - (oy + V3_Y0 * s) / h)
 
     # ---------------- 文本工具 ----------------
     def text(self, x, y, s='', size=14, color=TXT, align='left', wrap=None, parent=None):
@@ -1030,7 +1050,7 @@ class App(ShowBase):
                      'right': TextNode.ARight}[align])
         if wrap:
             tn.setWordwrap(wrap)
-        np = (parent or self.pixel2d).attachNewNode(tn)
+        np = (parent or self.ui).attachNewNode(tn)
         np.setScale(size)
         np.setPos(x, 0, -y)
         return tn, np
@@ -1051,7 +1071,7 @@ class App(ShowBase):
         b.line(PX0, ROW_TOP, PX0, PV_TOP + PV_H, EDGE)
         b.line(CH_X0, ROW_Y['TX'], CH_X1, ROW_Y['TX'], EDGE)
         b.line(CH_X0, PV_TOP - 2, CH_X1, PV_TOP - 2, EDGE)
-        np = self.pixel2d.attachNewNode(b.make('static'))
+        np = self.ui.attachNewNode(b.make('static'))
         np.setTransparency(TransparencyAttrib.MAlpha)
 
         for i, (k, name, col) in enumerate(ROWS):
@@ -1070,7 +1090,7 @@ class App(ShowBase):
 
     # ---------------- 按钮 ----------------
     def button(self, label, x, y, w, h, cmd, args=None, size=14):
-        return DirectButton(parent=self.pixel2d, text=label, text_scale=size,
+        return DirectButton(parent=self.ui, text=label, text_scale=size,
                             text_fg=TXT, text_pos=(w / 2, -h / 2 - size * 0.35),
                             frameSize=(0, w, -h, 0), pos=(x, 0, -y),
                             frameColor=(0.22, 0.24, 0.28, 1), relief=DGG.FLAT,
@@ -1134,7 +1154,7 @@ class App(ShowBase):
     # ---------------- 3D ----------------
     def build_3d(self):
         dr = self.camNode.getDisplayRegion(0)
-        dr.setDimensions(V3_X0 / WIN_W, V3_X1 / WIN_W, 1 - V3_Y1 / WIN_H, 1 - V3_Y0 / WIN_H)
+        self.dr3d = dr
         dr.setClearColorActive(True)
         dr.setClearColor((0.13, 0.14, 0.17, 1))
         dr.setClearDepthActive(True)
@@ -1396,8 +1416,8 @@ class App(ShowBase):
         if not self.mouseWatcherNode.hasMouse():
             return
         m = self.mouseWatcherNode.getMouse()
-        px = (m.x + 1) / 2 * self.win.getXSize()
-        py = (1 - m.y) / 2 * self.win.getYSize()
+        px = ((m.x + 1) / 2 * self.win.getXSize() - self.ui_ox) / self.ui_s
+        py = ((1 - m.y) / 2 * self.win.getYSize() - self.ui_oy) / self.ui_s
         if not (PX0 <= px <= PX1 and ROW_TOP <= py <= PV_TOP + PV_H):
             return
         if not self.paused:
@@ -1566,7 +1586,7 @@ class App(ShowBase):
 
         if self.chart_np:
             self.chart_np.removeNode()
-        self.chart_np = self.pixel2d.attachNewNode(b.make('chart'))
+        self.chart_np = self.ui.attachNewNode(b.make('chart'))
         self.chart_np.setTransparency(TransparencyAttrib.MAlpha)
         self.chart_np.setRenderModeThickness(1.6)
 
