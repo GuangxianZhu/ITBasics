@@ -27,3 +27,11 @@ python plc485_sim.py
 
 ## 换成真协议
 协议是虚构的，全部在 `FakeProtocol` 类；命令处理在 `Heater.receive`。拿到规格书后只改这两处。
+
+---
+
+## v2：双向通信（`v2/` 文件夹）
+
+清洗机原 IO（远程/在线/通水/加热/复位 + AD 4-20mA → Ready/过热/漏水/轻故障/重故障）
+经 PLC 网关转成全串口温水器。协议框架拆成 codec / 命令表 / 点表，可切换虚构协议和 Modbus RTU。
+详见 `v2/README.md` 和 `双向通信方案.md`。
