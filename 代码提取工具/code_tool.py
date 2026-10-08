@@ -704,7 +704,7 @@ def menu(root):
             if c == '1':
                 cmd_index(root)
             elif c == '2':
-                names = ask('Function names (space separated, e.g. FillStart OnbTank::CheckLevel): ').split()
+                names = ask('Function names (space separated, e.g. FillStart CTank::CheckLevel): ').split()
                 cmd_func(root, names)
             elif c == '3':
                 words = ask('Keywords (space separated, any of them matches): ').split()

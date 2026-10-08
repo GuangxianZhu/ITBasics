@@ -4,47 +4,61 @@
 
 只用 Python 标准库，不用 pip 安装任何东西。
 
-## 准备
+> 下面的图用一个示例小项目 `demo_project` 演示。图里的命令行输出和 txt 内容都是工具实际运行的结果，按 Windows 窗口的样子画出来（不是在 Windows 上截的屏）。
 
-把 `code_tool.py` 和 `run_code_tool.bat` 放进代码的根目录（和 `目录结构扫描` 的两个文件放在一起也可以）。结果都输出到根目录下的 `_ai_out\` 文件夹，不会改动源代码。
+---
 
-## 用法
+## 0. 准备：放进代码根目录，双击 bat
 
-双击 `run_code_tool.bat`，出现菜单：
+把 `code_tool.py` 和 `run_code_tool.bat` 放进代码的根目录（和 `目录结构扫描` 的两个文件放在一起也可以），然后双击 `run_code_tool.bat`。
 
-| 选项 | 作用 | 输出 |
-|---|---|---|
-| 1 | 生成函数目录：所有 C/C++ 文件里的类和函数，带行号范围 | `code_index.txt` |
-| 2 | 按函数名提取整个函数（可以一次输入多个，空格分隔） | `extract_func.txt` |
-| 3 | 按关键词提取：命中的行及前后 N 行，输入 `f` 则提取所在的整个函数 | `extract_grep.txt` |
-| 4 | 合并文件：把文件或文件夹**拖到 bat 上**，合并成一个 txt | `merged_files.txt` |
+![放置文件](docs/shot_01_folder.png)
 
-所有输出都带原始行号，关键词命中的行前面有 `>`，每段代码上方都标着文件路径、行号范围和所在函数，AI 回答时能指出具体位置。
+结果都输出到根目录下新建的 `_ai_out\` 文件夹，不会改动源代码。
 
-## 推荐流程
+## 1. 菜单
+
+双击后出现这个菜单，输入数字后回车。做完一项会回到菜单，可以接着做下一项；输入 `0` 退出。
+
+![菜单](docs/shot_02_menu.png)
+
+## 2. 选 1：生成函数目录
+
+扫描所有 C/C++ 文件，列出每个类和函数的**行号范围**。9 万行的文件，目录也只有一两千行，AI 能完整读完。
+
+![函数目录](docs/shot_03_index.png)
+
+## 3. 选 2：按函数名提取
+
+输入一个或多个函数名（空格分隔），提取这些函数的完整代码。只写函数名（`CheckLevel`）或带类名（`CTank::CheckLevel`）都可以。
+
+![按函数名提取](docs/shot_04_func.png)
+
+## 4. 选 3：按关键词提取
+
+查报警、变量、地址符号时用。输入关键词后：
+
+- 上下文输入 **`f`**：提取包含关键词的**整个函数**
+- 输入数字，比如 `20`：提取命中行的前后各 20 行
+- 直接回车：前后各 15 行
+
+命中的行前面有 `>`，每段上方标着文件、行号和所在函数。
+
+![按关键词提取](docs/shot_05_grep.png)
+
+## 5. 拖拽合并
+
+把文件或文件夹**直接拖到 `run_code_tool.bat` 上**，不经过菜单，合并成一个 `merged_files.txt`。适合小文件，一次只占 Copilot 一个上传名额。
+
+![拖拽合并](docs/shot_06_merge.png)
+
+---
+
+## 推荐流程（配合 Copilot）
 
 1. 选 1，生成 `code_index.txt`，和 `file_structure.txt` 一起拖给 Copilot，说明要查的问题，让它列出需要看的函数名
 2. 选 2，输入这些函数名，把 `extract_func.txt` 拖给 Copilot
-3. 查报警或变量时选 3，比如输入报警符号，上下文填 `f`，得到所有用到它的函数
-
-## 输出示例
-
-函数目录：
-
-```
-## src/OnbTank.cpp  (90123 lines, 3.1 MB)
-L 1203-1288   func   int COnbTank::FillStart(int mode)  [86 lines]
-L 1290-1410   func   bool COnbTank::CheckLevel(void)  [121 lines]
-```
-
-关键词提取：
-
-```
-===== FILE: src/OnbTank.cpp  L1270-L1290  in: COnbTank::FillStart =====
- 1270 |     if (mode == 1) {
->1271 |         RaiseAlarm(ALARM_ONB_LEVEL_HIGH);
- 1272 |     }
-```
+3. 查报警或变量时选 3，输入报警符号，上下文填 `f`，得到所有用到它的函数
 
 ## 注意
 
@@ -52,5 +66,5 @@ L 1290-1410   func   bool COnbTank::CheckLevel(void)  [121 lines]
 - 关键词默认区分大小写，菜单里可以选择忽略大小写。
 - 编码自动判断（UTF-8 / Shift-JIS），输出统一为 UTF-8，记事本打开不乱码。
 - 输出超过 3000 行时会提示：AI 可能读不完，请换更具体的关键词或减少上下文行数。
-- 3 MB 的文件生成目录也只要零点几秒；不过函数很多时目录本身也会有几千行，可以只拖相关模块的部分。
-- 也可以用命令行：`py code_tool.py grep ALARM_ONB -f`，`py code_tool.py func FillStart CheckLevel`。
+- 每次运行会覆盖 `_ai_out\` 里同名的旧文件，需要保留的话先改名。
+- 也可以用命令行：`py code_tool.py grep ALARM_LEVEL_HIGH -f`，`py code_tool.py func FillStart CheckLevel`。
