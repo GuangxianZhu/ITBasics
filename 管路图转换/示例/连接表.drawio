@@ -1,0 +1,100 @@
+<mxfile host="table_to_drawio.py">
+  <diagram name="连接表" id="d1">
+    <mxGraphModel grid="1" gridSize="10" page="0" arrows="1" connect="1">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <object id="n1" label="DIW-H&lt;br&gt;&lt;font style='font-size:10px'&gt;DIW供给&lt;/font&gt;" tag="DIW-H" type="DIW总管" desc="DIW供给">
+          <mxCell style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+            <mxGeometry x="103" y="40" width="24" height="92" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n2" label="AV-11&lt;br&gt;&lt;font style='font-size:10px'&gt;1号槽 DIW入口&lt;/font&gt;" tag="AV-11" type="气动阀" desc="1号槽 DIW入口">
+          <mxCell style="rhombus;verticalLabelPosition=bottom;verticalAlign=top;whiteSpace=wrap;html=1;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="285" y="40" width="40" height="40" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n3" label="AV-12&lt;br&gt;&lt;font style='font-size:10px'&gt;2号槽 DIW入口&lt;/font&gt;" tag="AV-12" type="气动阀" desc="2号槽 DIW入口">
+          <mxCell style="rhombus;verticalLabelPosition=bottom;verticalAlign=top;whiteSpace=wrap;html=1;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="285" y="130" width="40" height="40" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n4" label="FM-1&lt;br&gt;&lt;font style='font-size:10px'&gt;1号槽流量&lt;/font&gt;" tag="FM-1" type="流量计" desc="1号槽流量">
+          <mxCell style="ellipse;aspect=fixed;verticalLabelPosition=bottom;verticalAlign=top;whiteSpace=wrap;html=1;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="478" y="40" width="34" height="34" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n5" label="FM-2&lt;br&gt;&lt;font style='font-size:10px'&gt;2号槽流量&lt;/font&gt;" tag="FM-2" type="流量计" desc="2号槽流量">
+          <mxCell style="ellipse;aspect=fixed;verticalLabelPosition=bottom;verticalAlign=top;whiteSpace=wrap;html=1;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="478" y="124" width="34" height="34" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n6" label="TANK-1&lt;br&gt;&lt;font style='font-size:10px'&gt;1号 ONB槽&lt;/font&gt;" tag="TANK-1" type="槽" desc="1号 ONB槽">
+          <mxCell style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="630" y="40" width="110" height="80" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n7" label="TANK-2&lt;br&gt;&lt;font style='font-size:10px'&gt;2号 ONB槽&lt;/font&gt;" tag="TANK-2" type="槽" desc="2号 ONB槽">
+          <mxCell style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="630" y="150" width="110" height="80" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n8" label="P-1&lt;br&gt;&lt;font style='font-size:10px'&gt;循环泵&lt;/font&gt;" tag="P-1" type="泵" desc="循环泵">
+          <mxCell style="ellipse;verticalLabelPosition=bottom;verticalAlign=top;whiteSpace=wrap;html=1;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="850" y="40" width="50" height="50" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n9" label="DRAIN" tag="DRAIN" type="" desc="">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fontSize=11;dashed=1;strokeColor=#d62728;fontColor=#d62728;" vertex="1" parent="1">
+            <mxGeometry x="825" y="140" width="100" height="44" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n10" label="F-1&lt;br&gt;&lt;font style='font-size:10px'&gt;循环过滤器&lt;/font&gt;" tag="F-1" type="过滤器" desc="循环过滤器">
+          <mxCell style="shape=hexagon;perimeter=hexagonPerimeter2;verticalLabelPosition=bottom;verticalAlign=top;whiteSpace=wrap;html=1;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="1040" y="40" width="50" height="36" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n11" label="LS-1&lt;br&gt;&lt;font style='font-size:10px'&gt;1号槽液位&lt;/font&gt;" tag="LS-1" type="液位开关" desc="1号槽液位">
+          <mxCell style="ellipse;aspect=fixed;verticalLabelPosition=bottom;verticalAlign=top;whiteSpace=wrap;html=1;fontSize=11;strokeColor=#999999;fontColor=#999999;" vertex="1" parent="1">
+            <mxGeometry x="1428" y="40" width="34" height="34" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n12" label="AV-99&lt;br&gt;&lt;font style='font-size:10px'&gt;备用&lt;/font&gt;" tag="AV-99" type="气动阀" desc="备用">
+          <mxCell style="rhombus;verticalLabelPosition=bottom;verticalAlign=top;whiteSpace=wrap;html=1;fontSize=11;strokeColor=#999999;fontColor=#999999;" vertex="1" parent="1">
+            <mxGeometry x="1425" y="124" width="40" height="40" as="geometry" />
+          </mxCell>
+        </object>
+        <mxCell id="e1" value="DIW" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endSize=6;strokeColor=#1f77b4;strokeWidth=2;fontSize=9;fontColor=#1f77b4;" edge="1" parent="1" source="n1" target="n2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="DIW" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endSize=6;strokeColor=#1f77b4;strokeWidth=2;fontSize=9;fontColor=#1f77b4;" edge="1" parent="1" source="n1" target="n3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="DIW" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endSize=6;strokeColor=#1f77b4;strokeWidth=2;fontSize=9;fontColor=#1f77b4;" edge="1" parent="1" source="n2" target="n4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="DIW" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endSize=6;strokeColor=#1f77b4;strokeWidth=2;fontSize=9;fontColor=#1f77b4;" edge="1" parent="1" source="n3" target="n5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="DIW" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endSize=6;strokeColor=#1f77b4;strokeWidth=2;fontSize=9;fontColor=#1f77b4;" edge="1" parent="1" source="n4" target="n6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="DIW" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endSize=6;strokeColor=#1f77b4;strokeWidth=2;fontSize=9;fontColor=#1f77b4;" edge="1" parent="1" source="n5" target="n7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="循环" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endSize=6;strokeColor=#d62728;strokeWidth=2;fontSize=9;fontColor=#d62728;" edge="1" parent="1" source="n6" target="n8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="循环" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endSize=6;strokeColor=#d62728;strokeWidth=2;fontSize=9;fontColor=#d62728;" edge="1" parent="1" source="n8" target="n10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="循环" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endSize=6;strokeColor=#d62728;strokeWidth=2;fontSize=9;fontColor=#d62728;" edge="1" parent="1" source="n10" target="n6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="排液" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endSize=6;strokeColor=#2ca02c;strokeWidth=2;fontSize=9;fontColor=#2ca02c;" edge="1" parent="1" source="n7" target="n9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
