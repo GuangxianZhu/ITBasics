@@ -8,7 +8,9 @@ import queue
 import re
 import subprocess
 import sys
+import sysconfig
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -135,6 +137,11 @@ class App(tk.Tk):
         self.extra_lang.pack(side="left")
         self.auto_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(row, text="没有人工字幕时用自动字幕", variable=self.auto_var).pack(side="left", padx=10)
+        row = ttk.Frame(f)
+        row.pack(fill="x", padx=6, pady=(0, 6))
+        self.fallback_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(row, text="翻译字幕下载失败时，改下视频原文字幕（推荐）",
+                        variable=self.fallback_var).pack(side="left")
 
         # 格式
         f = ttk.LabelFrame(root, text="③ 输出格式（可多选）")
@@ -332,27 +339,97 @@ class App(tk.Tk):
         with yt_dlp.YoutubeDL(opts) as ydl:
             for url in urls:
                 self.log(f"⬇ 下载：{url}")
-                info = ydl.extract_info(url, download=True)
+                # 只取信息（不下载），字幕自己逐个下载，便于 429 时重试
+                info = ydl.extract_info(url, download=False)
                 if not info:
                     self.log("   ⚠ 获取失败，跳过")
                     continue
                 entries = info.get("entries") if info.get("_type") == "playlist" else [info]
                 for ent in entries or []:
                     if ent:
-                        total += self._convert(ent)
+                        total += self._fetch_and_convert(ydl, ent)
         self.log(f"✅ 完成，共生成 {total} 个文件 → {out}")
 
-    def _convert(self, info):
+    # ---------- 逐个语言下载（带重试 + 原文兜底）
+    def _dl_one(self, ydl, info, lang, sub):
+        """下载一条字幕，429 时等待重试。成功返回文件路径，失败返回 None。"""
+        base = os.path.splitext(ydl.prepare_filename(info))[0]
+        path = f"{base}.{lang}.{sub.get('ext', 'vtt')}"
+        sub = dict(sub)
+        sub.setdefault("http_headers", info.get("http_headers"))
+        waits = [5, 20, 60]
+        for attempt in range(len(waits) + 1):
+            try:
+                ydl.dl(path, sub, subtitle=True)
+                if os.path.exists(path):
+                    return path
+                err = "文件未生成"
+            except Exception as e:  # noqa: BLE001
+                err = str(e)
+            if ("429" in err or "Too Many" in err) and attempt < len(waits):
+                w = waits[attempt]
+                self.log(f"   {lang}: 被限流(429)，{w} 秒后重试（第 {attempt + 1}/{len(waits)} 次）…")
+                time.sleep(w)
+                continue
+            self.log(f"   {lang}: ❌ 下载失败：{err.splitlines()[0][:150]}")
+            return None
+        return None
+
+    @staticmethod
+    def _pick_fmt(fmts):
+        fmts = fmts or []
+        for f in fmts:
+            if f.get("ext") == "vtt":
+                return f
+        return fmts[0] if fmts else None
+
+    def _original_sub(self, info):
+        """视频原文字幕：优先人工字幕（视频语言），否则自动识别的原声字幕。"""
+        manual = {k: v for k, v in (info.get("subtitles") or {}).items() if k != "live_chat"}
+        vlang = (info.get("language") or "").split("-")[0]
+        for k in manual:
+            if vlang and k.split("-")[0] == vlang:
+                return k, self._pick_fmt(manual[k])
+        auto = info.get("automatic_captions") or {}
+        for k in auto:
+            if k.endswith("-orig"):
+                return k.replace("-orig", ""), self._pick_fmt(auto[k])
+        if manual:
+            k = next(iter(manual))
+            return k, self._pick_fmt(manual[k])
+        return None, None
+
+    def _fetch_and_convert(self, ydl, info):
         subs = info.get("requested_subtitles") or {}
         title = info.get("title", "")
         if not subs:
             self.log(f"   ⚠ 《{title}》没有所选语言的字幕")
             return 0
+        manual = set((info.get("subtitles") or {}).keys())
+        done, failed_translated = [], []
+        for i, (lang, sub) in enumerate(subs.items()):
+            if i:
+                time.sleep(1.5)  # 语言之间稍停，降低被限流概率
+            p = self._dl_one(ydl, info, lang, sub)
+            if p:
+                done.append((lang, p))
+            elif lang not in manual:
+                failed_translated.append(lang)
+
+        if failed_translated and self.fallback_var.get():
+            olang, osub = self._original_sub(info)
+            if olang and olang not in [l for l, _ in done]:
+                self.log(f"   ↪ {', '.join(failed_translated)} 是 YouTube 自动翻译的，限流严重；改下原文字幕 {olang}")
+                time.sleep(3)
+                p = self._dl_one(ydl, info, olang, osub)
+                if p:
+                    done.append((olang, p))
+                    self.log("     （原文字幕的 TXT 可以丢给 AI 翻译，效果通常比 YouTube 机翻好）")
+        return self._convert(done)
+
+    def _convert(self, done):
         n = 0
-        for lang, d in subs.items():
-            path = d.get("filepath")
-            if not path or not os.path.exists(path):
-                continue
+        for lang, path in done:
             if not path.lower().endswith(".vtt"):
                 self.log(f"   {lang}: 已保存 {os.path.basename(path)}（非 VTT，未转换）")
                 n += 1
@@ -380,7 +457,8 @@ class App(tk.Tk):
 
     def _update(self):
         self.log("🔄 更新 yt-dlp …")
-        r = subprocess.run([sys.executable.replace("pythonw", "python"), "-m", "pip", "install", "-U", "yt-dlp"],
+        r = subprocess.run([sys.executable.replace("pythonw", "python"), "-m", "pip", "install", "--user", "-U",
+                            "yt-dlp[default,curl-cffi]", "deno"],
                            capture_output=True, text=True,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         last = (r.stdout or r.stderr).strip().splitlines()[-1:] or [""]
@@ -424,7 +502,23 @@ def _hint(msg):
     return ""
 
 
+def _add_scripts_to_path():
+    """pip --user 装的 deno.exe 在用户 Scripts 目录，通常不在 PATH 里；补上让 yt-dlp 找得到。"""
+    dirs = []
+    for scheme in (f"{os.name}_user", None):
+        try:
+            dirs.append(sysconfig.get_path("scripts", scheme) if scheme else sysconfig.get_path("scripts"))
+        except KeyError:
+            pass
+    cur = os.environ.get("PATH", "")
+    for d in dirs:
+        if d and os.path.isdir(d) and d not in cur:
+            cur = d + os.pathsep + cur
+    os.environ["PATH"] = cur
+
+
 def main():
+    _add_scripts_to_path()
     try:
         import yt_dlp  # noqa: F401
     except ImportError:
