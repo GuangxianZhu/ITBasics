@@ -19,7 +19,9 @@ from PySide6.QtWidgets import (
 from core import env
 from core.manager import Manager
 from core.probe import probe
+from core.options import parse_time
 from core.task import DONE, FAILED, CANCELLED, FINISHED, DownloadOptions, Task
+from ui.dialogs import PlaylistDialog, SettingsDialog
 
 DEFAULT_OUT = os.path.join(os.path.expanduser("~"), "Downloads", "YouTube下载")
 QUALITIES = [("最佳", "best"), ("2160p (4K)", "2160"), ("1440p", "1440"), ("1080p", "1080"),
@@ -61,7 +63,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("YouTube 下载器")
-        self.resize(1180, 760)
+        self.resize(1200, 820)
         self.setStyleSheet(STYLE)
         self.cfg = env.load_config()
         self.ffmpeg = env.ffmpeg_path()
@@ -69,14 +71,15 @@ class MainWindow(QMainWindow):
         self.probeq = queue.Queue()
         self.probes = {}          # url -> ProbeResult
         self.rows = {}            # task.id -> row
-        self.manager = Manager(self._log_from_worker, self.ffmpeg, workers=2)
+        self.playlist_sel = {}    # url -> (items 字符串, 已选序号列表)
+        self.manager = Manager(self._log_from_worker, self.ffmpeg, workers=self.cfg.get("workers", 2))
 
         split = QSplitter(Qt.Horizontal)
         split.addWidget(self._left_panel())
         split.addWidget(self._right_panel())
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
-        split.setSizes([440, 740])
+        split.setSizes([480, 700])
         self.setCentralWidget(split)
         self._status_bar()
 
@@ -121,6 +124,9 @@ class MainWindow(QMainWindow):
         self.lbl_subs = QLabel(""); self.lbl_subs.setObjectName("meta"); self.lbl_subs.setWordWrap(True)
         for x in (self.lbl_title, self.lbl_meta, self.lbl_fmt, self.lbl_subs):
             pv.addWidget(x)
+        self.btn_items = QPushButton("☑ 选择条目…"); self.btn_items.clicked.connect(self._on_pick_items)
+        self.btn_items.setVisible(False)
+        pv.addWidget(self.btn_items, 0, Qt.AlignLeft)
         pv.addStretch()
         ph.addLayout(pv, 1)
         lay.addWidget(self.preview)
@@ -136,8 +142,45 @@ class MainWindow(QMainWindow):
         v.addWidget(self.tabs)
         lay.addWidget(g)
 
-        # ③ 保存
-        g = QGroupBox("③ 保存")
+        # ③ 附加选项
+        g = QGroupBox("③ 附加选项")
+        v = QVBoxLayout(g)
+        h = QHBoxLayout()
+        self.clip_chk = QCheckBox("只下片段")
+        self.clip_chk.setChecked(c.get("clip_on", False))
+        h.addWidget(self.clip_chk)
+        self.clip_a = QLineEdit(c.get("clip_start", "")); self.clip_a.setPlaceholderText("开始 如 1:20")
+        self.clip_b = QLineEdit(c.get("clip_end", "")); self.clip_b.setPlaceholderText("结束（空=末尾）")
+        for e in (self.clip_a, self.clip_b):
+            e.setMaximumWidth(110)
+        h.addWidget(self.clip_a); h.addWidget(QLabel("到")); h.addWidget(self.clip_b); h.addStretch()
+        v.addLayout(h)
+        self.clip_precise = QCheckBox("精确到秒（重新编码，较慢）")
+        self.clip_precise.setToolTip("不勾：从最近的关键帧切，速度快，但起止可能差几秒")
+        self.clip_precise.setChecked(c.get("clip_precise", False))
+        v.addWidget(self.clip_precise)
+        def sync_clip(on):
+            for x in (self.clip_a, self.clip_b, self.clip_precise):
+                x.setEnabled(on)
+        self.clip_chk.toggled.connect(sync_clip); sync_clip(self.clip_chk.isChecked())
+        h = QHBoxLayout()
+        h.addWidget(QLabel("写入文件："))
+        self.thumb_chk = QCheckBox("封面"); self.thumb_chk.setChecked(c.get("embed_thumb", True))
+        self.thumb_chk.setToolTip("MP4 / MP3 / M4A / Opus 支持；MKV 和“原始”音频不写")
+        self.meta_chk = QCheckBox("标题作者等信息"); self.meta_chk.setChecked(c.get("add_meta", True))
+        self.chap_chk = QCheckBox("章节"); self.chap_chk.setChecked(c.get("add_chapters", True))
+        self.chap_chk.setToolTip("视频有章节时写入，播放器里可以按章节跳转（片段下载时不写）")
+        for x in (self.thumb_chk, self.meta_chk, self.chap_chk):
+            h.addWidget(x)
+        h.addStretch()
+        v.addLayout(h)
+        self.archive_chk = QCheckBox("跳过下载过的（视频、音频分别记录）")
+        self.archive_chk.setChecked(c.get("use_archive", True))
+        v.addWidget(self.archive_chk)
+        lay.addWidget(g)
+
+        # ④ 保存
+        g = QGroupBox("④ 保存")
         f = QFormLayout(g)
         h = QHBoxLayout()
         self.out_edit = QLineEdit(c.get("out_dir", DEFAULT_OUT))
@@ -161,8 +204,9 @@ class MainWindow(QMainWindow):
         lay.addStretch()
 
         sa = QScrollArea(); sa.setWidgetResizable(True); sa.setFrameShape(QFrame.NoFrame)
+        sa.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         sa.setWidget(w)
-        sa.setMinimumWidth(400)
+        sa.setMinimumWidth(460)
         return sa
 
     def _tab_video(self, c):
@@ -272,8 +316,12 @@ class MainWindow(QMainWindow):
         ver = env.ytdlp_version() or "未安装"
         parts = [f"yt-dlp {ver}", "ffmpeg ✓" if self.ffmpeg else "ffmpeg ✗（视频合并/转 MP3 不可用）",
                  "deno ✓" if env.deno_path() else "deno ✗"]
+        if not env.has_mutagen():
+            parts.append("mutagen ✗（MP4/M4A 写不了封面）")
         self.env_label = QLabel("   ·   ".join(parts))
         sb.addWidget(self.env_label)
+        b = QPushButton("⚙ 设置"); b.clicked.connect(self._on_settings)
+        sb.addPermanentWidget(b)
         b = QPushButton("更新组件"); b.clicked.connect(self._on_update)
         sb.addPermanentWidget(b)
 
@@ -317,13 +365,25 @@ class MainWindow(QMainWindow):
             sub_langs=langs if mode == "subs" else embed_langs,
             sub_auto=self.sub_auto.isChecked(), sub_fallback=self.sub_fb.isChecked(),
             sub_formats=[k for k, cb in self.sub_fmt_chks.items() if cb.isChecked()],
+            clip_start=self.clip_a.text().strip() if self.clip_chk.isChecked() else "",
+            clip_end=self.clip_b.text().strip() if self.clip_chk.isChecked() else "",
+            clip_precise=self.clip_precise.isChecked(),
+            embed_thumb=self.thumb_chk.isChecked(), add_meta=self.meta_chk.isChecked(),
+            add_chapters=self.chap_chk.isChecked(),
+            ratelimit=self.cfg.get("ratelimit", 0), proxy=self.cfg.get("proxy", ""),
         )
+        if self.archive_chk.isChecked() and mode != "subs":
+            o.archive_path = env.archive_path(mode)
         self.cfg.update({
             "mode": mode, "out_dir": o.out_dir, "name_tmpl": o.name_tmpl, "playlist": o.playlist,
             "cookies": o.cookies, "quality": o.quality, "container": o.container,
             "embed_subs": o.embed_subs, "embed_langs": self.embed_langs.text(),
             "audio_fmt": o.audio_fmt, "audio_kbps": o.audio_kbps, "sub_langs": langs,
             "sub_auto": o.sub_auto, "sub_fallback": o.sub_fallback, "sub_formats": o.sub_formats,
+            "clip_on": self.clip_chk.isChecked(), "clip_start": self.clip_a.text().strip(),
+            "clip_end": self.clip_b.text().strip(), "clip_precise": o.clip_precise,
+            "embed_thumb": o.embed_thumb, "add_meta": o.add_meta, "add_chapters": o.add_chapters,
+            "use_archive": self.archive_chk.isChecked(),
         })
         env.save_config(self.cfg)
         return o
@@ -338,6 +398,16 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "提示", "至少选一种字幕语言"); return
         if o.mode == "subs" and not o.sub_formats:
             QMessageBox.information(self, "提示", "至少选一种字幕输出格式"); return
+        if o.mode != "subs" and o.clipped:
+            try:
+                a, b = parse_time(o.clip_start), parse_time(o.clip_end)
+            except ValueError as e:
+                QMessageBox.information(self, "提示", str(e)); return
+            if a is not None and b is not None and b <= a:
+                QMessageBox.information(self, "提示", "片段的结束时间要晚于开始时间"); return
+            if len(urls) > 1:
+                if QMessageBox.question(self, "确认", f"{len(urls)} 个链接都按同一个片段时间剪切？") != QMessageBox.Yes:
+                    return
         if o.mode in ("video", "audio") and not self.ffmpeg and not (o.mode == "audio" and o.audio_fmt == "original"):
             if QMessageBox.question(self, "缺少 ffmpeg",
                                     "没有 ffmpeg，高画质视频无法合并音视频、也无法转 MP3。\n"
@@ -345,6 +415,8 @@ class MainWindow(QMainWindow):
                 return
         for u in urls:
             t = Task(u, copy.deepcopy(o))
+            if o.playlist and u in self.playlist_sel:
+                t.opts.playlist_items = self.playlist_sel[u][0]
             p = self.probes.get(u)
             if p and p.title:
                 t.title = p.title
@@ -358,8 +430,9 @@ class MainWindow(QMainWindow):
         url = urls[0]
         self.btn_probe.setEnabled(False)
         self.lbl_title.setText("解析中…"); self.lbl_meta.setText(""); self.lbl_fmt.setText(""); self.lbl_subs.setText("")
-        cookies, pl = self.cookie_combo.currentData(), self.playlist_chk.isChecked()
-        threading.Thread(target=lambda: self.probeq.put(probe(url, cookies, pl)), daemon=True).start()
+        cookies, pl, px = self.cookie_combo.currentData(), self.playlist_chk.isChecked(), self.cfg.get("proxy", "")
+        self.btn_items.setVisible(False)
+        threading.Thread(target=lambda: self.probeq.put(probe(url, cookies, pl, px)), daemon=True).start()
 
     def _show_probe(self, r):
         self.btn_probe.setEnabled(True)
@@ -375,8 +448,11 @@ class MainWindow(QMainWindow):
         self.lbl_title.setText(r.title)
         if r.is_playlist:
             self.lbl_meta.setText(f"播放列表 · {r.count} 个视频 · {r.uploader}")
-            self.lbl_fmt.setText("（勾选下方「下载整个列表」才会全部下载）" if not self.playlist_chk.isChecked() else "")
+            self.lbl_fmt.setText("")
             self.lbl_subs.setText("")
+            if r.entries:
+                self.btn_items.setVisible(True)
+                self._update_items_btn(r.url)
         else:
             self.lbl_meta.setText(" · ".join(x for x in (r.uploader, r.duration) if x))
             self.lbl_fmt.setText("可用画质：" + (" / ".join(f"{h}p" for h in r.heights[:8]) or "（无视频流）"))
@@ -390,6 +466,41 @@ class MainWindow(QMainWindow):
                 self.thumb.setPixmap(pm.scaled(self.thumb.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
                 return
         self.thumb.setText("无预览")
+
+    def _update_items_btn(self, url):
+        r = self.probes.get(url)
+        if not r:
+            return
+        sel = self.playlist_sel.get(url)
+        n = len(sel[1]) if sel else r.count
+        self.btn_items.setText(f"☑ 选择条目…（已选 {n}/{r.count}）")
+
+    def _on_pick_items(self):
+        urls = self._urls()
+        r = self.probes.get(urls[0]) if urls else None
+        if not r or not r.entries:
+            QMessageBox.information(self, "提示", "先勾选「下载整个列表」再解析播放列表链接"); return
+        prev = self.playlist_sel.get(r.url)
+        dlg = PlaylistDialog(self, r.title, r.entries, set(prev[1]) if prev else None)
+        if dlg.exec():
+            items = dlg.items_str()
+            if items:
+                self.playlist_sel[r.url] = (items, dlg.selected())
+            else:
+                self.playlist_sel.pop(r.url, None)
+            self._update_items_btn(r.url)
+
+    def _on_settings(self):
+        dlg = SettingsDialog(self, self.cfg)
+        if dlg.exec():
+            v = dlg.values()
+            self.cfg.update(v)
+            env.save_config(self.cfg)
+            self.manager.set_workers(v["workers"])
+            self._append_log(f"设置已保存：同时下载 {v['workers']} 个"
+                             + (f"，限速 {v['ratelimit'] / 1024 / 1024:g} MB/s" if v["ratelimit"] else "")
+                             + (f"，代理 {v['proxy']}" if v["proxy"] else "")
+                             + "（限速和代理对之后加入的任务生效）")
 
     def _selected_tasks(self):
         ids = {self.table.item(i.row(), 0).data(Qt.UserRole) for i in self.table.selectionModel().selectedRows()}
