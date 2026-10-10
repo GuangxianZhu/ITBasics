@@ -7,14 +7,25 @@ from core.task import FINISHED, WAITING
 
 
 class Manager:
+    MAX_THREADS = 5
+
     def __init__(self, log, ffmpeg, workers=2):
         self.log_cb = log          # log(task, msg)
         self.ffmpeg = ffmpeg
         self.tasks = []
         self._q = queue.Queue()
         self._lock = threading.Lock()
-        for _ in range(workers):
+        # 固定开 5 个线程，用“闸门”限制同时运行数，这样运行中也能调整并发
+        self._cv = threading.Condition()
+        self._limit = max(1, min(workers, self.MAX_THREADS))
+        self._running = 0
+        for _ in range(self.MAX_THREADS):
             threading.Thread(target=self._worker, daemon=True).start()
+
+    def set_workers(self, n):
+        with self._cv:
+            self._limit = max(1, min(int(n), self.MAX_THREADS))
+            self._cv.notify_all()
 
     def add(self, task):
         with self._lock:
@@ -44,10 +55,19 @@ class Manager:
     def _worker(self):
         while True:
             task = self._q.get()
-            if task.cancel_requested:
-                from core.task import CANCELLED
-                task.status, task.note = CANCELLED, "已取消"
-                continue
-            self.log_cb(task, "开始")
-            runner.run(task, self.log_cb, self.ffmpeg)
-            self.log_cb(task, f"→ {task.status}" + (f"：{task.note}" if task.note and task.status != "完成" else ""))
+            with self._cv:
+                while self._running >= self._limit:
+                    self._cv.wait()
+                self._running += 1
+            try:
+                if task.cancel_requested:
+                    from core.task import CANCELLED
+                    task.status, task.note = CANCELLED, "已取消"
+                    continue
+                self.log_cb(task, "开始")
+                runner.run(task, self.log_cb, self.ffmpeg)
+            finally:
+                with self._cv:
+                    self._running -= 1
+                    self._cv.notify_all()
+            self.log_cb(task, f"→ {task.status}" + (f"：{task.note}" if task.note else ""))

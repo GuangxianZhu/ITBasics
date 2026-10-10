@@ -34,11 +34,18 @@ def hint(msg):
 
 class _Logger:
     def __init__(self, task, log):
-        self.task, self.log, self.errors = task, log, []
+        self.task, self.log, self.errors, self.skipped = task, log, [], 0
 
     def debug(self, msg):
+        if "has already been recorded in the archive" in msg:
+            self.skipped += 1
+            self.log(self.task, "已在下载记录里，跳过（可在 ⚙设置 里清空记录）")
+            return
+        if "There aren't any thumbnails" in msg:
+            return
         if msg.startswith("[info] Writing video subtitles") or msg.startswith("[Merger]") \
-                or msg.startswith("[ExtractAudio]") or msg.startswith("[EmbedSubtitle]"):
+                or msg.startswith("[ExtractAudio]") or msg.startswith("[EmbedSubtitle]") \
+                or msg.startswith("[EmbedThumbnail]") or msg.startswith("[download] Downloading section"):
             # 路径太长，只留文件名
             m = re.match(r'(.*?(?:to|Destination|into)\s*:?\s*"?)(.+?)("?)$', msg)
             if m and (os.sep in m.group(2) or "/" in m.group(2)):
@@ -82,7 +89,9 @@ def _fmt_eta(s):
 
 PP_NAMES = {"Merger": "合并音视频", "ExtractAudio": "转换音频", "EmbedSubtitle": "嵌入字幕",
             "FFmpegMerger": "合并音视频", "FFmpegExtractAudio": "转换音频",
-            "FFmpegEmbedSubtitle": "嵌入字幕", "MoveFiles": "整理文件"}
+            "FFmpegEmbedSubtitle": "嵌入字幕", "MoveFiles": "整理文件",
+            "FFmpegMetadata": "写入信息", "Metadata": "写入信息", "EmbedThumbnail": "写入封面",
+            "ThumbnailsConvertor": "转换封面"}
 
 
 def run(task, log, ffmpeg):
@@ -136,19 +145,22 @@ def run(task, log, ffmpeg):
     opts.update({"logger": logger, "progress_hooks": [on_progress],
                  "postprocessor_hooks": [on_pp], "ignoreerrors": True})
     try:
+        info = None
         if task.opts.mode == "subs":
             n = _run_subs(task, log, opts)
             ok = n > 0
         else:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(task.url, download=True)
-            ok = info is not None and not logger.errors
+            ok = (info is not None or logger.skipped > 0) and not logger.errors
         if task.cancel_requested:
             raise Cancelled()
         task.status = DONE if ok else FAILED
         if ok:
             task.percent = 100.0
             task.note = ""
+            if logger.skipped:
+                task.note = f"跳过 {logger.skipped} 个下载过的" if task.opts.playlist else "下载过，已跳过"
             if isolate:
                 _move_tree(temp_dir, task.opts.out_dir)
             _cleanup(temp_dir)

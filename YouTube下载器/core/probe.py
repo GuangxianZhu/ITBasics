@@ -14,6 +14,7 @@ class ProbeResult:
     manual_subs: list = field(default_factory=list)
     auto_orig: list = field(default_factory=list)
     auto_count: int = 0
+    entries: list = field(default_factory=list)   # 播放列表：[(序号, 标题, 时长)]
     thumb_bytes: bytes = b""
     error: str = ""
 
@@ -38,13 +39,15 @@ def _thumb_url(info):
     return info.get("thumbnail")
 
 
-def probe(url, cookies="", playlist=False):
+def probe(url, cookies="", playlist=False, proxy=""):
     import yt_dlp
     r = ProbeResult(url=url)
     opts = {"quiet": True, "no_warnings": True, "skip_download": True,
             "noplaylist": not playlist, "extract_flat": "in_playlist"}
     if cookies:
         opts["cookiesfrombrowser"] = (cookies,)
+    if proxy:
+        opts["proxy"] = proxy
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -52,7 +55,10 @@ def probe(url, cookies="", playlist=False):
                 r.is_playlist = True
                 r.title = info.get("title", "")
                 r.uploader = info.get("uploader") or info.get("channel") or ""
-                r.count = len(list(info.get("entries") or []))
+                ents = list(info.get("entries") or [])
+                r.count = len(ents)
+                r.entries = [(i + 1, (e or {}).get("title") or "（无标题）", _dur((e or {}).get("duration")))
+                             for i, e in enumerate(ents)]
             else:
                 r.title = info.get("title", "")
                 r.uploader = info.get("uploader") or info.get("channel") or ""

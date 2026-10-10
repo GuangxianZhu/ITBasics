@@ -32,6 +32,14 @@ def ffmpeg_path():
     return shutil.which("ffmpeg")
 
 
+def has_mutagen():
+    try:
+        import mutagen  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def deno_path():
     return shutil.which("deno")
 
@@ -69,3 +77,27 @@ def save_config(cfg):
             json.dump(cfg, f, ensure_ascii=False, indent=2)
     except Exception:  # noqa: BLE001
         pass
+
+
+# ---------------------------------------------------------------- 下载记录（按模式分开：下过视频不影响再下音频）
+def archive_path(mode):
+    return os.path.join(_config_dir(), f"archive_{mode}.txt")
+
+
+def archive_count():
+    n = 0
+    for m in ("video", "audio"):
+        try:
+            with open(archive_path(m), encoding="utf-8") as f:
+                n += sum(1 for line in f if line.strip())
+        except OSError:
+            pass
+    return n
+
+
+def clear_archive():
+    for m in ("video", "audio"):
+        try:
+            os.remove(archive_path(m))
+        except OSError:
+            pass

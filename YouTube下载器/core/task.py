@@ -28,14 +28,35 @@ class DownloadOptions:
     sub_auto: bool = True
     sub_fallback: bool = True
     sub_formats: list = field(default_factory=lambda: ["srt", "txt"])   # srt / txt / txt_t / vtt
+    # ---- P1
+    playlist_items: str = ""         # "1,3,5-7"，空=全部
+    clip_start: str = ""             # 只下片段：起止时间（"1:20" / "01:02:03" / "80"），空=整段
+    clip_end: str = ""
+    clip_precise: bool = False       # 精确剪切（重新编码，慢）
+    embed_thumb: bool = True         # 写入封面
+    add_meta: bool = True            # 写入标题/作者等信息
+    add_chapters: bool = True        # 写入章节
+    archive_path: str = ""           # 下载记录文件，空=不去重
+    ratelimit: int = 0               # 每个任务限速 bytes/s，0=不限
+    proxy: str = ""
+
+    @property
+    def clipped(self):
+        return bool(self.clip_start or self.clip_end)
 
     def describe(self):
         if self.mode == "video":
             q = "最佳" if self.quality == "best" else f"{self.quality}p"
-            return f"视频 {q} {self.container}" + (" +字幕" if self.embed_subs else "")
-        if self.mode == "audio":
-            return "音频 " + ("原始" if self.audio_fmt == "original" else self.audio_fmt)
-        return "字幕 " + ",".join(self.sub_langs)
+            s = f"视频 {q} {self.container}" + (" +字幕" if self.embed_subs else "")
+        elif self.mode == "audio":
+            s = "音频 " + ("原始" if self.audio_fmt == "original" else self.audio_fmt)
+        else:
+            s = "字幕 " + ",".join(self.sub_langs)
+        if self.clipped and self.mode != "subs":
+            s += f" ✂{self.clip_start or '0'}-{self.clip_end or '末尾'}"
+        if self.playlist and self.playlist_items:
+            s += f" #{self.playlist_items}"
+        return s
 
 
 @dataclass
