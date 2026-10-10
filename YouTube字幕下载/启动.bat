@@ -1,10 +1,12 @@
 @echo off
 cd /d "%~dp0"
-echo Checking yt-dlp + curl_cffi + deno (first run installs, later runs update)...
-python -m pip install --user -U -q "yt-dlp[default,curl-cffi]" deno
-if errorlevel 1 (
-  py -m pip install --user -U -q "yt-dlp[default,curl-cffi]" deno
-  start "" pyw "%~dp0subtitle_gui.py"
-) else (
-  start "" pythonw "%~dp0subtitle_gui.py"
-)
+echo Checking components (first run installs PySide6 / ffmpeg, may take a few minutes)...
+python -m pip install --user -q PySide6 imageio-ffmpeg deno
+if errorlevel 1 goto usepy
+python -m pip install --user -U -q "yt-dlp[default,curl-cffi]"
+start "" pythonw "%~dp0app.py"
+goto :eof
+:usepy
+py -m pip install --user -q PySide6 imageio-ffmpeg deno
+py -m pip install --user -U -q "yt-dlp[default,curl-cffi]"
+start "" pyw "%~dp0app.py"
