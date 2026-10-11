@@ -5,7 +5,7 @@ import shutil
 import time
 
 from core import options
-from core.task import DONE, FAILED, CANCELLED, POST, RUNNING
+from core.task import DONE, FAILED, CANCELLED, POST, RUNNING, SKIPPED
 from post.subtitles import convert_vtt
 
 
@@ -34,12 +34,24 @@ def hint(msg):
 
 class _Logger:
     def __init__(self, task, log):
-        self.task, self.log, self.errors, self.skipped = task, log, [], 0
+        self.task, self.log, self.errors = task, log, []
+        self.skipped = 0      # 播放列表下载记录里有
+        self.existed = 0      # 保存位置已有同名文件
+        self.downloaded_ids = set()
+
+    @property
+    def downloaded(self):
+        return len(self.downloaded_ids)
 
     def debug(self, msg):
         if "has already been recorded in the archive" in msg:
             self.skipped += 1
-            self.log(self.task, "已在下载记录里，跳过（可在 ⚙设置 里清空记录）")
+            self.log(self.task, "下载记录里有，跳过这一条（⚙设置 里可清空记录）")
+            return
+        if msg.startswith("[download]") and msg.endswith("has already been downloaded"):
+            self.existed += 1
+            name = os.path.basename(msg[len("[download] "):-len(" has already been downloaded")])
+            self.log(self.task, f"文件已存在，跳过：{name}（要重新下载请先删掉或移走它）")
             return
         if "There aren't any thumbnails" in msg:
             return
@@ -130,6 +142,7 @@ def run(task, log, ffmpeg):
                 parts.append(kind)
             task.note = " · ".join(parts)
         elif d["status"] == "finished":
+            logger.downloaded_ids.add(info.get("id") or d.get("filename"))
             stream_no[0] = (stream_no[0] + 1) % max(1, len(info.get("requested_formats") or [1]))
             task.speed, task.eta = "", ""
 
@@ -145,7 +158,7 @@ def run(task, log, ffmpeg):
     opts.update({"logger": logger, "progress_hooks": [on_progress],
                  "postprocessor_hooks": [on_pp], "ignoreerrors": True})
     try:
-        info = None
+        info, downloaded = None, 0
         if task.opts.mode == "subs":
             n = _run_subs(task, log, opts)
             ok = n > 0
@@ -153,14 +166,19 @@ def run(task, log, ffmpeg):
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(task.url, download=True)
             ok = (info is not None or logger.skipped > 0) and not logger.errors
+            downloaded = logger.downloaded
         if task.cancel_requested:
             raise Cancelled()
         task.status = DONE if ok else FAILED
         if ok:
             task.percent = 100.0
             task.note = ""
-            if logger.skipped:
-                task.note = f"跳过 {logger.skipped} 个下载过的" if task.opts.playlist else "下载过，已跳过"
+            skipped = logger.skipped + logger.existed
+            if task.opts.mode != "subs" and skipped and not downloaded:
+                task.status = SKIPPED
+                task.note = "文件已存在" if logger.existed and not logger.skipped else "下载记录里都有"
+            elif skipped:
+                task.note = f"另有 {skipped} 个已存在/下过，跳过"
             if isolate:
                 _move_tree(temp_dir, task.opts.out_dir)
             _cleanup(temp_dir)

@@ -6,7 +6,8 @@ _ids = itertools.count(1)
 
 # 状态
 WAITING, RUNNING, POST, DONE, FAILED, CANCELLED = "等待", "下载中", "处理中", "完成", "失败", "已取消"
-FINISHED = (DONE, FAILED, CANCELLED)
+SKIPPED = "已跳过"
+FINISHED = (DONE, FAILED, CANCELLED, SKIPPED)
 
 
 @dataclass

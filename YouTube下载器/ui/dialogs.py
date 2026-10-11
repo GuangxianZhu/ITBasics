@@ -100,8 +100,8 @@ class SettingsDialog(QDialog):
         f.addRow("下载记录", h)
         self._refresh()
 
-        tip = QLabel("下载记录：勾选「跳过下载过的」时，成功下载的视频会记下 ID，下次自动跳过。"
-                     "视频和音频分开记录；只下片段时不记录。")
+        tip = QLabel("下载记录只用于播放列表：勾选「跳过以前下过的条目」时，下完的条目记下 ID，"
+                     "下次同步这个列表时自动跳过。按画质/格式分别记录；只下片段时不记录。")
         tip.setWordWrap(True); tip.setObjectName("meta")
         f.addRow(tip)
 
