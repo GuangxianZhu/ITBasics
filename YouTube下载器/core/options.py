@@ -30,6 +30,9 @@ def _ts_label(sec):
 def base_opts(o, ffmpeg=None, temp_dir=None):
     """所有模式共用。下载中的文件放 temp_dir（每个任务独立，避免同一视频的多个任务互相覆盖），完成后移到 out_dir。"""
     tmpl = NAME_TEMPLATES.get(o.name_tmpl, NAME_TEMPLATES["title_id"])
+    if o.mode == "video":
+        # 文件名带实际分辨率：720p 和 1080p 可以并存，不会互相当成“已下载”
+        tmpl += "%(height& [{}p]|)s"
     if o.mode != "subs" and o.clipped:
         a, b = parse_time(o.clip_start), parse_time(o.clip_end)
         tmpl += f" [{_ts_label(a or 0)}-{_ts_label(b) if b is not None else 'end'}]"
@@ -58,8 +61,9 @@ def base_opts(o, ffmpeg=None, temp_dir=None):
         opts["ratelimit"] = o.ratelimit
     if o.playlist and o.playlist_items:
         opts["playlist_items"] = o.playlist_items
-    # 下载记录：片段下载不记（同一视频可能要剪不同段），字幕模式不记
-    if o.archive_path and o.mode != "subs" and not o.clipped:
+    # 下载记录只用于播放列表（重新同步时跳过下过的条目）。
+    # 单个视频不用：同设置重下时 yt-dlp 会发现文件已存在自动跳过；换画质/格式则应该照常下载
+    if o.archive_path and o.playlist and o.mode != "subs" and not o.clipped:
         opts["download_archive"] = o.archive_path
     return opts
 

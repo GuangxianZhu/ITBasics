@@ -79,16 +79,26 @@ def save_config(cfg):
         pass
 
 
-# ---------------------------------------------------------------- 下载记录（按模式分开：下过视频不影响再下音频）
-def archive_path(mode):
-    return os.path.join(_config_dir(), f"archive_{mode}.txt")
+# ---------------------------------------------------------------- 下载记录（播放列表用）
+# 按“下载规格”分文件：同一个视频，720p mp4 和 1080p mp4、mp3 和 m4a 各记各的
+def archive_path(o):
+    if o.mode == "video":
+        key = f"video_{o.quality}_{o.container}"
+    else:
+        key = f"audio_{o.audio_fmt}" + (f"_{o.audio_kbps}" if o.audio_fmt == "mp3" else "")
+    return os.path.join(_config_dir(), f"archive_{key}.txt")
+
+
+def _archive_files():
+    import glob
+    return glob.glob(os.path.join(_config_dir(), "archive_*.txt"))
 
 
 def archive_count():
     n = 0
-    for m in ("video", "audio"):
+    for p in _archive_files():
         try:
-            with open(archive_path(m), encoding="utf-8") as f:
+            with open(p, encoding="utf-8") as f:
                 n += sum(1 for line in f if line.strip())
         except OSError:
             pass
@@ -96,8 +106,8 @@ def archive_count():
 
 
 def clear_archive():
-    for m in ("video", "audio"):
+    for p in _archive_files():
         try:
-            os.remove(archive_path(m))
+            os.remove(p)
         except OSError:
             pass

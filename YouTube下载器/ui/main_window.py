@@ -20,7 +20,7 @@ from core import env
 from core.manager import Manager
 from core.probe import probe
 from core.options import parse_time
-from core.task import DONE, FAILED, CANCELLED, FINISHED, DownloadOptions, Task
+from core.task import DONE, FAILED, CANCELLED, SKIPPED, FINISHED, DownloadOptions, Task
 from ui.dialogs import PlaylistDialog, SettingsDialog
 
 DEFAULT_OUT = os.path.join(os.path.expanduser("~"), "Downloads", "YouTube下载")
@@ -174,7 +174,8 @@ class MainWindow(QMainWindow):
             h.addWidget(x)
         h.addStretch()
         v.addLayout(h)
-        self.archive_chk = QCheckBox("跳过下载过的（视频、音频分别记录）")
+        self.archive_chk = QCheckBox("播放列表：跳过以前下过的条目")
+        self.archive_chk.setToolTip("按画质/格式分别记录。单个视频不受影响：换画质照常下载，同设置重下会因文件已存在而跳过")
         self.archive_chk.setChecked(c.get("use_archive", True))
         v.addWidget(self.archive_chk)
         lay.addWidget(g)
@@ -373,7 +374,7 @@ class MainWindow(QMainWindow):
             ratelimit=self.cfg.get("ratelimit", 0), proxy=self.cfg.get("proxy", ""),
         )
         if self.archive_chk.isChecked() and mode != "subs":
-            o.archive_path = env.archive_path(mode)
+            o.archive_path = env.archive_path(o)
         self.cfg.update({
             "mode": mode, "out_dir": o.out_dir, "name_tmpl": o.name_tmpl, "playlist": o.playlist,
             "cookies": o.cookies, "quality": o.quality, "container": o.container,
@@ -581,7 +582,7 @@ class MainWindow(QMainWindow):
             st = t.status + (f" · {t.note}" if t.note else "")
             item = self.table.item(row, 6)
             item.setText(st); item.setToolTip(st)
-            color = {DONE: "#16803c", FAILED: "#c0392b", CANCELLED: "#888888"}.get(t.status)
+            color = {DONE: "#16803c", FAILED: "#c0392b", CANCELLED: "#888888", SKIPPED: "#b26a00"}.get(t.status)
             item.setForeground(QColor(color) if color else self.table.palette().text().color())
 
         n = self.manager.active_count()
