@@ -22,15 +22,28 @@ from PIL import Image, ImageDraw
 APP_NAME = "NightDimmer"
 HERE = os.path.dirname(os.path.abspath(__file__))
 CFG_PATH = os.path.join(HERE, "settings.json")
+LOG_PATH = os.path.join(HERE, "night_dimmer.log")
+
+
+def log(msg):
+    """诊断日志（只记录状态变化），超过 200KB 自动清空重写"""
+    try:
+        if os.path.exists(LOG_PATH) and os.path.getsize(LOG_PATH) > 200_000:
+            os.remove(LOG_PATH)
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S}  {msg}\n")
+    except Exception:
+        pass
 
 DEFAULT_CFG = {
     "mode": "auto",          # auto / always_dim / off
     "night_start": "19:00",  # 开始变暗
     "night_end": "07:00",    # 恢复正常
-    "fade_minutes": 30,      # 渐变时长
+    "fade_minutes": 5,       # 渐变时长（0 = 立即）
     "night_level": 0.5,      # 夜间亮度 (0.1~1.0)
     "include_primary": False,  # 主屏也调暗
     "autostart_set": False,
+    "cfg_version": 2,
 }
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -52,6 +65,10 @@ def load_cfg():
             cfg.update(json.load(f))
     except Exception:
         pass
+    if cfg.get("cfg_version", 1) < 2:   # 旧版本默认 30 分钟渐变 → 改为 5 分钟
+        cfg["fade_minutes"] = 5
+        cfg["cfg_version"] = 2
+        save_cfg(cfg)
     return cfg
 
 
@@ -89,7 +106,8 @@ def list_monitors():
 
 
 # ---------------- Gamma ----------------
-_floor = {}  # 每个屏幕系统允许的最低亮度（被限幅时自动探测）
+_floor = {}  # 设备名 -> (系统允许的最低亮度, 探测时间)；60 秒后重新探测
+FLOOR_TTL = 60
 
 
 def _set_ramp(device, level):
@@ -106,13 +124,19 @@ def _set_ramp(device, level):
 
 
 def apply_level(device, level):
-    """设置亮度；如果被 Windows 限幅，自动退到能用的最低值。返回实际亮度"""
-    level = max(level, _floor.get(device, 0.0))
+    """设置亮度；如果被 Windows 限幅，自动退到能用的最低值。返回实际亮度。
+    探测到的下限只缓存 60 秒，避免一次偶发失败（休眠、刚开机）把屏幕永久锁在 100%"""
+    want = level
+    fl, ts = _floor.get(device, (0.0, 0.0))
+    if time.time() - ts < FLOOR_TTL:
+        level = max(level, fl)
     while level < 1.0:
         if _set_ramp(device, level):
+            if level > want + 1e-6:
+                _floor[device] = (level, time.time())
             return level
         level = round(level + 0.05, 2)
-        _floor[device] = level
+    _floor[device] = (1.0, time.time())
     _set_ramp(device, 1.0)
     return 1.0
 
@@ -175,6 +199,8 @@ class Dimmer:
         self.cfg = load_cfg()
         self.dimmed = set()
         self.current = 1.0
+        self.target = 1.0
+        self._last_state = None
         self.running = True
         self.lock = threading.Lock()
 
@@ -209,14 +235,24 @@ class Dimmer:
                 _set_ramp(dev, 1.0)
                 self.dimmed.discard(dev)
             self.current = actual if tg else 1.0
+            self.target = level
+            state = (tuple(sorted(mons)), tuple(sorted(tg)), round(level, 2), round(self.current, 2))
+            if state != self._last_state:
+                self._last_state = state
+                log(f"模式={self.cfg['mode']} 显示器={mons} 调暗对象={sorted(tg)} "
+                    f"目标={level:.2f} 实际={self.current:.2f}")
 
     def loop(self, icon):
         while self.running:
             try:
                 self.tick()
-                icon.title = f"夜间调暗：{round(self.current * 100)}%"
-            except Exception:
-                pass
+                t, c = round(self.target * 100), round(self.current * 100)
+                if c > t + 1:
+                    icon.title = f"夜间调暗：目标 {t}% / 实际 {c}%（受限或失败，见日志）"
+                else:
+                    icon.title = f"夜间调暗：{c}%"
+            except Exception as e:
+                log(f"错误: {e!r}")
             time.sleep(2)  # 每 2 秒重设一次，睡眠/切分辨率后会自动恢复
 
     def restore_all(self):
@@ -255,10 +291,16 @@ class Dimmer:
                 for a, b in [("18:00", "07:00"), ("19:00", "07:00"),
                              ("20:00", "07:00"), ("21:00", "06:00"), ("22:00", "06:00")]
             ])),
+            I("渐变时长", M(*[
+                I(name, self._setter("fade_minutes", v),
+                  checked=self._is("fade_minutes", v), radio=True)
+                for name, v in [("立即", 0), ("5 分钟", 5), ("30 分钟", 30)]
+            ])),
             I("主屏也调暗", self._toggle("include_primary"),
               checked=lambda item: self.cfg["include_primary"]),
             I("开机自动启动", self._toggle_autostart, checked=lambda item: is_autostart()),
             M.SEPARATOR,
+            I("打开诊断日志", lambda icon, item: os.startfile(LOG_PATH) if os.path.exists(LOG_PATH) else None),
             I("退出（恢复亮度）", self.quit),
         )
 
@@ -305,6 +347,7 @@ def main():
     if not single_instance():
         return
     app = Dimmer()
+    log("启动")
     if not app.cfg.get("autostart_set"):
         try:
             set_autostart(True)
