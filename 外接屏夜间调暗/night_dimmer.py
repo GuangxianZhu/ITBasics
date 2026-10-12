@@ -11,6 +11,7 @@ import ctypes.wintypes as wt
 import datetime
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -47,8 +48,11 @@ DEFAULT_CFG = {
 }
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
-gdi32 = ctypes.WinDLL("gdi32")
+gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+kernel32.CreateMutexW.restype = wt.HANDLE
+kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wt.BOOL, wt.LPCWSTR]
+kernel32.CloseHandle.argtypes = [wt.HANDLE]
 
 gdi32.CreateDCW.restype = wt.HDC
 gdi32.CreateDCW.argtypes = [wt.LPCWSTR, wt.LPCWSTR, wt.LPCWSTR, ctypes.c_void_p]
@@ -110,17 +114,34 @@ _floor = {}  # 设备名 -> (系统允许的最低亮度, 探测时间)；60 秒
 FLOOR_TTL = 60
 
 
+_dc_mode = {}  # 设备名 -> 上次成功的 DC 创建方式
+
+
+def _make_dc(device, mode):
+    if mode == 0:
+        return gdi32.CreateDCW("DISPLAY", device, None, None)
+    if mode == 1:
+        return gdi32.CreateDCW(device, None, None, None)
+    return gdi32.CreateDCW(None, device, None, None)
+
+
 def _set_ramp(device, level):
-    hdc = gdi32.CreateDCW("DISPLAY", device, None, None)
-    if not hdc:
-        return False
+    """写 Gamma 表。插拔线/切输入源后旧的创建方式可能失效，所以依次换方式重试"""
     ramp = ((wt.WORD * 256) * 3)()
     for i in range(256):
         v = min(int(i * 257 * level), 65535)
         ramp[0][i] = ramp[1][i] = ramp[2][i] = v
-    ok = bool(gdi32.SetDeviceGammaRamp(hdc, ctypes.byref(ramp)))
-    gdi32.DeleteDC(hdc)
-    return ok
+    first = _dc_mode.get(device, 0)
+    for mode in [first] + [m for m in (0, 1, 2) if m != first]:
+        hdc = _make_dc(device, mode)
+        if not hdc:
+            continue
+        ok = bool(gdi32.SetDeviceGammaRamp(hdc, ctypes.byref(ramp)))
+        gdi32.DeleteDC(hdc)
+        if ok:
+            _dc_mode[device] = mode
+            return True
+    return False
 
 
 def apply_level(device, level):
@@ -201,6 +222,7 @@ class Dimmer:
         self.current = 1.0
         self.target = 1.0
         self._last_state = None
+        self._fail_since = None
         self.running = True
         self.lock = threading.Lock()
 
@@ -236,16 +258,36 @@ class Dimmer:
                 self.dimmed.discard(dev)
             self.current = actual if tg else 1.0
             self.target = level
-            state = (tuple(sorted(mons)), tuple(sorted(tg)), round(level, 2), round(self.current, 2))
+            failed = self.current > level + 0.01
+            state = (tuple(sorted(mons)), tuple(sorted(tg)), self.cfg["mode"],
+                     round(level, 1), failed, round(self.current, 2) if failed else None)
             if state != self._last_state:
                 self._last_state = state
                 log(f"模式={self.cfg['mode']} 显示器={mons} 调暗对象={sorted(tg)} "
                     f"目标={level:.2f} 实际={self.current:.2f}")
 
+    def check_stuck(self, icon):
+        """完全设不进去（实际 100%）持续 20 秒 → 多半是插拔线/切输入源后进程拿着旧的显示器信息，
+        自动重启自己（同一问题 10 分钟内只重启一次，避免 HDR 等真正被禁时无限重启）"""
+        if self.target < 0.999 and self.current >= 0.999:
+            if self._fail_since is None:
+                self._fail_since = time.time()
+                log(f"调暗完全失败 (GetLastError={ctypes.get_last_error()})")
+            elif time.time() - self._fail_since > 20:
+                last = self.cfg.get("last_self_restart", 0)
+                if time.time() - last > 600:
+                    self.cfg["last_self_restart"] = time.time()
+                    save_cfg(self.cfg)
+                    log("持续失败，自动重启程序")
+                    self_restart(icon)
+        else:
+            self._fail_since = None
+
     def loop(self, icon):
         while self.running:
             try:
                 self.tick()
+                self.check_stuck(icon)
                 t, c = round(self.target * 100), round(self.current * 100)
                 if c > t + 1:
                     icon.title = f"夜间调暗：目标 {t}% / 实际 {c}%（受限或失败，见日志）"
@@ -338,9 +380,32 @@ def make_icon():
     return img
 
 
+_mutex = None
+
+
 def single_instance():
-    kernel32.CreateMutexW(None, False, "Global\\NightDimmer_SingleInstance")
-    return ctypes.get_last_error() != 183  # ERROR_ALREADY_EXISTS
+    global _mutex
+    for _ in range(10):   # 自动重启时旧进程可能还没完全退出，稍等
+        _mutex = kernel32.CreateMutexW(None, False, "Global\\NightDimmer_SingleInstance")
+        if ctypes.get_last_error() != 183:  # ERROR_ALREADY_EXISTS
+            return True
+        kernel32.CloseHandle(_mutex)
+        if "--restarted" not in sys.argv:
+            return False
+        time.sleep(0.5)
+    return False
+
+
+def self_restart(icon):
+    kernel32.CloseHandle(_mutex)
+    subprocess.Popen([_pythonw(), os.path.abspath(__file__), "--restarted"],
+                     creationflags=0x00000008)  # DETACHED_PROCESS
+    try:
+        icon.visible = False   # 先撤掉托盘图标，避免残留“幽灵图标”
+        icon.stop()
+    except Exception:
+        pass
+    os._exit(0)
 
 
 def main():
