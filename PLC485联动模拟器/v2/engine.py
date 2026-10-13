@@ -320,11 +320,13 @@ class Gateway:
         self.ad_fault = False
         self.sv_target = None
         self.mismatch = False
+        self.reboot_fault = False        # 温水器重启（锁存，等 W4 复位）
         self.first = True
         self.wstate = {wp['param']: dict(last_desired=None, last_write=-99.0, hold_until=0.0,
                                          attempts=0, mismatch=False, new=False, cause=None)
                        for wp in PM.WRITE_POINTS}
-        self.R = {r['dst']: 0 for r in PM.READ_POINTS}
+        self.R = {r['dst']: 0 for r in PM.READ_POINTS}   # 线上的电平（b 接点时 0=报警）
+        self.A = {r['dst']: 0 for r in PM.READ_POINTS}   # 逻辑：1=报警/就绪（画面指示灯用）
 
     # ---------- 工具 ----------
     def desired(self, wp):
@@ -389,8 +391,8 @@ class Gateway:
             for wp in PM.WRITE_POINTS:
                 self.wstate[wp['param']]['last_desired'] = self.desired(wp)
             self.first = False
-        if not self.comm_fault:
-            self.reconcile()
+        if not self.comm_fault and not self.reboot_fault:
+            self.reconcile()          # 通信异常、温水器重启期间都不自动重写，等复位
         self.mismatch = any(st['mismatch'] for st in self.wstate.values())
 
         # ---- 输出 ----
@@ -407,6 +409,7 @@ class Gateway:
             for a in rp.get('also', []):
                 if getattr(self, a):
                     v = 1
+            self.A[rp['dst']] = int(v)
             if rp['fault'] and PM.FAULT_ACTIVE_LOW:
                 v = 1 - v
             self.R[rp['dst']] = int(v)
@@ -421,6 +424,9 @@ class Gateway:
             else:
                 s.log('plc', 'W4 复位：通信仍不通 → 不能解除，重故障保持 ON')
                 return
+        if self.reboot_fault:
+            self.reboot_fault = False
+            s.log('plc', 'W4 复位：解除「温水器重启」重故障 → 按 远程→其它 的顺序重新写入')
         for st in self.wstate.values():
             st['mismatch'] = False
             st['attempts'] = 0
@@ -488,6 +494,19 @@ class Gateway:
                 wp['name'], d if bit is not None else '%.1f' % (d / 10.0),
                 av if bit is not None else '%.1f' % (av / 10.0)))
             self.enqueue_write(p, d, self.wdesc(wp, d) + '（对账）')
+
+    def check_reboot(self, new):
+        """远程位从 1 掉到 0，但清洗机 W0 一直是 1、PLC 也没写过远程=0 → 判定温水器重启
+        （有手册的话，优先用「上电标志 / 重启次数」参数判断）"""
+        old = self.actual.get('101')
+        if self.reboot_fault or old is None or not self.sim.W['W0']:
+            return
+        if (old[0] & 1) and not (new & 1):
+            self.reboot_fault = True
+            n = len([q for q in self.queue if not q['poll']])
+            self.queue.clear()
+            self.sim.log('alarm', 'PLC：温水器状态全部掉回初始值 → 判定重启 → 重故障 ON（锁存，等 W4 复位）%s'
+                         % ('，丢弃 %d 条待写' % n if n else ''))
 
     # ---------- 通信 ----------
     def comm(self):
@@ -572,6 +591,8 @@ class Gateway:
             self._recover_logged = True
         if r.ok:
             if c['op'] == 'R':
+                if c['param'] == '101':
+                    self.check_reboot(r.value)
                 self.actual[c['param']] = (r.value, t)
             else:
                 s.log('rx', 'ACK %s  %s' % (c['desc'], f.hex()))
@@ -739,7 +760,7 @@ class Sim:
         r.set('ES', t, self.ES)
         for k, v in self.gw.R.items():
             r.set(k, t, v)
-        r.set('CF', t, int(self.gw.comm_fault))
+        r.set('CF', t, int(self.gw.comm_fault or self.gw.reboot_fault))
         r.set('PWR', t, int(self.heater.power))
         if t >= self.next_sample:
             r.sample('PV', t, self.heater.pv)
@@ -768,10 +789,10 @@ CASES = [
     ('④ AD 断线',
      '4-20mA 线断了（0mA）→ PLC 判 AD 断线：不发新 SV、保持原设定、轻故障 R3 ON。接回自动解除。',
      BASE + [(9, ('fault', 'adcut', 1)), (14, ('fault', 'adcut', 0))]),
-    ('⑤ 温水器重启→自动补回',
-     '温水器重启，远程/在线/运转/SV 全丢了。短暂没应答不到 3 次 → 不报故障；'
-     '读回状态和清洗机电平对不上 → PLC 对账自动重写。这就是「电平语义」。',
-     BASE + [(10, ('fault', 'reboot'))]),
+    ('⑤ 温水器重启→复位',
+     '温水器重启，远程/在线/运转/SV 全丢了。和原 IO 一样：断电那一下故障输出掉成 0 → 清洗机看到重故障。'
+     'PLC 读到状态全部掉回初始值 → 判重启 → R4 锁存、不自动重写。按 W4 复位后，先写远程，确认后再写其它。',
+     BASE + [(10, ('fault', 'reboot')), (14, ('press', 'W4'))]),
     ('⑥ 485 断线→复位',
      '断线 → 连续 3 次失败 → 通信异常锁存：R4 重故障 ON、R0 Ready OFF。'
      '接回后重故障不自动消失，清洗机按 W4 复位才解除（和原 IO 一样）。',

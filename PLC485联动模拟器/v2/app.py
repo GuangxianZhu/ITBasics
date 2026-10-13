@@ -224,7 +224,7 @@ ROWS = [('W0', 'W0 远程', C_W), ('W1', 'W1 在线', C_W), ('W2', 'W2 通水', 
         ('W3', 'W3 加热', C_W), ('W4', 'W4 复位', C_W), ('ES', '急停 硬线', C_RED),
         ('R0', 'R0 Ready', C_R), ('R1', 'R1 过热', C_R), ('R2', 'R2 漏水', C_R),
         ('R3', 'R3 轻故障', C_R), ('R4', 'R4 重故障', C_RED),
-        ('CF', 'PLC通信异常', C_HW), ('PWR', '温水器加热', C_PWR),
+        ('CF', 'PLC异常锁存', C_HW), ('PWR', '温水器加热', C_PWR),
         ('TX', '485 TX', C_TX), ('RX', '485 RX', C_RX)]
 ROW_Y = {k: ROW_TOP + i * RH for i, (k, _, _) in enumerate(ROWS)}
 PV_TOP = ROW_TOP + len(ROWS) * RH + 4
@@ -519,10 +519,10 @@ class App(ShowBase):
         sim, h, gw = self.sim, self.sim.heater, self.sim.gw
         blink = int(globalClock.getFrameTime() * 4) % 2 == 0
         for k, led in self.leds.items():
-            on = sim.rec.value_at(k, sim.t)
+            on = gw.A[k]              # 指示灯按逻辑亮：报警/就绪 = 亮
             col = C_RED if k in ('R1', 'R2', 'R4') else (C_HW if k == 'R3' else C_R)
             led.setColor(*(col if on else (0.18, 0.18, 0.18, 1)))
-        self.cf_led.setColor(*(C_HW if gw.comm_fault and blink else (0.18, 0.18, 0.18, 1)))
+        self.cf_led.setColor(*(C_HW if (gw.comm_fault or gw.reboot_fault) and blink else (0.18, 0.18, 0.18, 1)))
         for lp in self.lamps:
             if h.power:
                 lp.setColor(1.0, 0.65 + 0.1 * math.sin(globalClock.getFrameTime() * 20), 0.2, 1)
@@ -828,7 +828,7 @@ class App(ShowBase):
 
         # 左侧灯 + 按钮
         for k, y in self.lamp_y.items():
-            on = sim.gw.R[k]
+            on = sim.gw.A[k]          # 灯 = 逻辑状态；时序图 = 线上电平
             col = C_RED if k in ('R1', 'R2', 'R4') else (C_HW if k == 'R3' else C_R)
             b.rect(14, y + 4, 34, y + 22, col if on else (0.22, 0.22, 0.25, 1))
         # AD 条
@@ -935,7 +935,9 @@ class App(ShowBase):
                     '查看任意时刻的 IO 和报文。\n\n'
                     '图例：\n 实心块 = 写命令/应答\n 淡色细块 = 轮询读\n 红色 = NAK\n'
                     ' 橙色 = 校验被破坏\n 红框× = 线上丢失\n 紫色虚线 = 哪个信号引起的\n\n'
-                    'PV 图：橙=PV  黄虚=温水器SV  青虚=AD设定')
+                    'PV 图：橙=PV  黄虚=温水器SV  青虚=AD设定\n\n'
+                    'R1~R4 时序线 = 线上电平（b接点：低=报警）\n'
+                    '左边指示灯 = 逻辑状态（亮=报警）')
         t = self.inspect_t
         v = lambda k: rec.value_at(k, t)
         ma = rec.ana_at('MA', t)

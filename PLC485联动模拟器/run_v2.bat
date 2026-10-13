@@ -6,6 +6,21 @@ chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 
+rem ---- update from GitHub main (skipped if git missing / offline) ----
+where git >nul 2>nul
+if errorlevel 1 (
+    echo [INFO] git not found, skip update.
+) else (
+    git -C "%~dp0" rev-parse --is-inside-work-tree >nul 2>nul
+    if errorlevel 1 (
+        echo [INFO] Not a git clone, skip update.
+    ) else (
+        echo Checking for updates on main...
+        git -C "%~dp0" pull --ff-only origin main
+        if errorlevel 1 echo [WARN] Update failed ^(offline or local changes^). Running current version.
+    )
+)
+
 rem ---- find Python (py launcher first, then python) ----
 set "PY="
 where py >nul 2>nul && set "PY=py -3"

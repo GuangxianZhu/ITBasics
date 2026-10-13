@@ -41,12 +41,14 @@ READ_POINTS = [
     dict(dst='R3', name='轻故障', param='102', bit=2, on_comm_fault='hold', fault=True,
          also=['ad_fault', 'mismatch']),
     dict(dst='R4', name='重故障', param='102', bit=3, on_comm_fault='on', fault=True,
-         also=['comm_fault']),
+         also=['comm_fault', 'reboot_fault']),
 ]
 
 # 故障信号极性：False = 1 表示故障（a 接点）；True = 0 表示故障（b 接点）
-# b 接点的好处：PLC 断电/断线时输出全 0，清洗机直接看到「故障」
-FAULT_ACTIVE_LOW = False
+# 原 IO 温水器：故障信号低电平 = 报警（b 接点，已确认）。
+# 好处：温水器/PLC 断电时输出全 0，清洗机直接看到「故障」，要复位才解除。
+# Ready 不受影响：高电平 = 就绪。
+FAULT_ACTIVE_LOW = True
 
 # 轮询表：一圈读这几个参数
 POLL = ['101', '102', '100', '010']
