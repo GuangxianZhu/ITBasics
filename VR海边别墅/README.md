@@ -113,7 +113,7 @@
 | 一启动就是桌面模式 | 头显没连上 VD，或者 OpenXR 运行时不是 VDXR。要先连好头显再运行 bat |
 | 握把抓不起东西 | 用的是 `grip` 模拟量（按下超过 60% 算抓）。如果 VD 报告的手柄映射不同，告诉我是什么现象 |
 | VR 里卡顿 | 按上面"设置"一节关掉全局光照和 SSAO |
-| 一只眼正常、另一只眼有白色影子 | 已查明是**全局光照 VoxelGI** 在 VR 双眼渲染下出错（关掉它白影就消失）。现在 VR 里默认关掉 GI、SSR、SSAO，环境光调亮 1.4 倍补偿（`settings.cfg` 的 `xr_gi` / `no_gi_ambient`）。左手柄 ☰（桌面 F）可以循环 10 种组合：前 7 步逐个关特效，后 3 步是实验 A 开 VoxelGI / B 开 VoxelGI 但关 MSAA / C 换 SDFGI，用来查 GI 为什么出错 |
+| 一只眼正常、另一只眼有白色影子 | 已查明: **VoxelGI** 在 VR 双眼渲染下右眼出错（关 MSAA 也没用），**SDFGI** 正常。现在 VR 里自动改用 SDFGI，并默认关 SSR、SSAO（`settings.cfg` 的 `xr_gi` / `xr_ssr` / `xr_ssao`）。屋里偏暗调 `sdfgi_energy`，卡顿把 `xr_gi` 改成 `"off"`。左手柄 ☰（桌面 F）可以逐个关特效排查 |
 | 屋里某处漏光 | VoxelGI 体素太粗。可以改成 `gi="sdfgi"` 试试 |
 | 掉出世界 | 掉到 -15m 以下会自动回到第一个点位 |
 
