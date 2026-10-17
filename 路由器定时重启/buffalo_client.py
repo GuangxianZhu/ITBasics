@@ -10,11 +10,12 @@ Reverse-engineered from the router's own pages (2026-10):
                                        nosave_Password=        (empty hidden field)
                                        MobileDevice=0
                                        nosave_session_num=     (empty on login page)
-           -> server sets cookie SessionID, page JS goes to index.html
+           -> response is only "top.location = index.html" (no Set-Cookie!)
+  Cookie : GET  /index.html            -> JS: var sessionID="<32 hex>"; setCookie("SessionID", ...)
+                                       plus language=JP, mobile=disable. We copy these by hand.
+           (without SessionID every admin page redirects to login_time.html)
   PCtime : GET  /login_time.html       -> <form name="internet_detect" action="redirect.html">
-           POST /redirect.html         PageName=login_time.html & nosave_PCTIME=<JS Date string>
-                                       & nosave_session_num=<from the form>
-           (until this is posted, every admin page just redirects to login_time.html)
+           POST /redirect.html         only used as a fallback if init.html still bounces
   Guard  : GET  /Ajax_get_value.html&action=GetMovingRestore  -> {"MovingRestoreFlag": 0|1}
            (the UI refuses to reboot while "smart moving" is restoring settings)
   Reboot : GET  /init.html             -> <form name="rebootForm"> with a one-time nosave_session_num
@@ -159,24 +160,27 @@ class BuffaloRouter:
         data["nosave_encryptedPassword"] = rsa_encrypt_like_jsencrypt(page.pubkey, self._password)
         data.setdefault("nosave_Password", "")
         data.setdefault("MobileDevice", "0")
-        self.s.cookies.set("mobile", "false")             # login() in the page sets this cookie
 
         r = self._post("/login.html", data, referer=self.base + "/login.html")
         self._dump("2_login_response.html", r.text)
-        # Fallback: some firmwares set the session cookie from JavaScript instead of a header.
-        m = re.search(r"SessionID=([0-9A-Za-z]+)", r.text)
-        if m and "SessionID" not in self.s.cookies:
-            self.s.cookies.set("SessionID", m.group(1))
+        if "privkey" in r.text or "id_nosave_Password" in r.text:
+            raise RouterError("登录失败：用户名或密码不对（连续失败多次路由器可能暂时锁定登录）")
 
-        # Step 2 of login: the router sends the browser to login_time.html, which auto-posts
-        # the PC's clock to redirect.html. Until that is done every admin page bounces back
-        # to login_time.html, so we do it ourselves.
-        self.post_pc_time()
+        # The session cookie is NOT sent as a Set-Cookie header. The login response only says
+        # "go to index.html", and index.html's JavaScript does
+        #     var sessionID="<32 hex>"; setCookie("SessionID", sessionID)
+        # (plus language / mobile cookies). A browser runs that script; we copy it by hand.
+        idx = self._get("/index.html", referer=self.base + "/login.html")
+        self._dump("2a_index.html", idx.text)
+        self._adopt_js_cookies(idx.text)
+        if "SessionID" not in self.s.cookies:
+            raise RouterError("登录后 index.html 里没找到 sessionID（固件可能变了），见 debug/2a_index.html")
 
         # Verify by opening a page that needs authentication.
         init = self._get("/init.html", referer=self.base + "/index_adv.html")
         if "login_time.html" in init.text and "rebootForm" not in init.text:
-            self.post_pc_time()          # one more try, in case the first one was too early
+            # Seen when the session is not recognised yet: the router wants the PC clock first.
+            self.post_pc_time()
             init = self._get("/init.html", referer=self.base + "/index_adv.html")
         self._dump("3_init_page.html", init.text)
         if "rebootForm" in init.text:
@@ -184,6 +188,17 @@ class BuffaloRouter:
         if "privkey" in init.text or "id_nosave_Password" in init.text:
             raise RouterError("登录失败：用户名或密码不对（连续失败多次路由器可能暂时锁定登录）")
         raise RouterError("登录后打不开 init.html，返回内容不认识，见 debug/3_init_page.html")
+
+    def _adopt_js_cookies(self, html):
+        domain = self.host.split(":")[0]
+        m = re.search(r'var\s+sessionID\s*=\s*"([^"]+)"', html)
+        if m:
+            self.s.cookies.set("SessionID", m.group(1), domain=domain, path="/")
+        m = re.search(r'var\s+language\s*=\s*"([^"]*)"', html)
+        self.s.cookies.set("language", m.group(1) if m else "JP", domain=domain, path="/")
+        m = re.search(r'var\s+mobile_enable\s*=\s*"([^"]*)"', html)
+        self.s.cookies.set("mobile", "enable" if (m and m.group(1) == "1") else "disable",
+                           domain=domain, path="/")
 
     def post_pc_time(self):
         """login_time.html: <form name="internet_detect" action="redirect.html"> with
