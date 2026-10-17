@@ -38,11 +38,13 @@ if not defined BLENDER (
     if exist "%ProgramFiles(x86)%\Steam\steamapps\common\Blender\blender.exe" set "BLENDER=%ProgramFiles(x86)%\Steam\steamapps\common\Blender\blender.exe"
 )
 
-rem ---- export the model (needs Blender; reuses the last export if Blender is missing) ----
+rem ---- export the model + generate textures/sounds (Blender's own Python has numpy) ----
 if defined BLENDER (
     echo Using Blender: "%BLENDER%"
     echo Exporting villa.glb ...
     "%BLENDER%" --background --factory-startup --python "%~dp0export_godot.py"
+    echo Generating textures and sounds ^(first time ~15s, then skipped^) ...
+    "%BLENDER%" --background --factory-startup --python "%~dp0make_assets.py"
 ) else (
     echo [WARN] Blender not found ^(put blender.exe path into blender_path.txt^).
 )
@@ -87,5 +89,6 @@ echo.
 echo Using Godot: "%GODOT%"
 echo Put on Quest 3 and connect Virtual Desktop first ^(OpenXR runtime = VDXR^).
 echo Without a headset it opens in desktop mode ^(WASD + mouse^).
+echo First start bakes global illumination ^(a few seconds^). Settings: godot\settings.cfg
 start "" "%GODOT%" --path "%~dp0godot"
 endlocal

@@ -13,6 +13,7 @@
 兼容: Blender 3.6 ~ 5.x（只用 from_pydata / bmesh 建模，不依赖版本专有的 bpy.ops）
 """
 import math
+import os
 import sys
 
 import bpy
@@ -33,6 +34,9 @@ STAIR_RUN = 0.28
 STAIR_Y = (-4.8, -3.7)
 STAIR_X1 = STAIR_X0 + (STAIR_N - 1) * STAIR_RUN      # = 0.26，到二楼的位置
 HOLE_X = (STAIR_X0 + 0.8, STAIR_X1)                  # 二楼楼板开洞（保证 2m 以上头顶净空）
+POOL_FLOOR = -2.25   # 泳池底（2.4m 深: 站在池底时头也在水下，才能潜水）
+POOL_WATER = 0.15    # 泳池水面（比平台低 15cm）
+SEA_LEVEL = -0.3     # 海平面；沙滩坡面 y 30→60 从 0 降到 -3，所以海岸线在 y≈33
 
 
 # ---------------------------------------------------------------- 基础工具
@@ -349,8 +353,15 @@ def build_outdoor(M):
     for tag, r in {"前": (-8, 5, 8, 6), "后": (-8, 9, 8, 10), "左": (-8, 6, 1, 9), "右": (7, 6, 8, 9)}.items():
         box(f"木平台{tag}", r[0], r[1], 0, r[2], r[3], F1, M["deck"], C)
     box("下沙滩台阶", -3, 10, 0, 3, 10.4, 0.15, M["deck"], C)
-    box("泳池池体", 1, 6, -1.2, 7, 9, 0.0, M["pooltile"], C)
-    box("泳池水面", 1, 6, 0.0, 7, 9, 0.22, M["pool"], C)
+    # 泳池: 空心池体（深 2.4m，能潜水）+ 东北角 7 级入水台阶（每级 32cm，能直接迈）
+    box("泳池池底", 1, 6, POOL_FLOOR - 0.1, 7, 9, POOL_FLOOR, M["pooltile"], C)
+    for tag, r in {"西": (0.8, 5.8, 1.0, 9.2), "东": (7.0, 5.8, 7.2, 9.2),
+                   "南": (1.0, 5.8, 7.0, 6.0), "北": (1.0, 9.0, 7.0, 9.2)}.items():
+        box(f"泳池壁{tag}", r[0], r[1], POOL_FLOOR - 0.1, r[2], r[3], 0.0, M["pooltile"], C)
+    for i in range(7):
+        box(f"泳池台阶{i}", 7 - 0.3 * (i + 1), 8.1, POOL_FLOOR, 7 - 0.3 * i, 9.0, -0.02 - 0.32 * i, M["pooltile"], C)
+    mesh_obj("泳池水面", [(1, 6, POOL_WATER), (7, 6, POOL_WATER), (7, 9, POOL_WATER), (1, 9, POOL_WATER)],
+             [(0, 1, 2, 3)], M["pool"], C)
     for k, x in enumerate((-2.5, -1.3)):
         lounger(f"池边躺椅{k}", x, 6.8, F1, M, C)
     # 遮阳伞
@@ -361,9 +372,16 @@ def build_outdoor(M):
     bm_obj("伞面", bm, M["umbrella"], C, smooth=True)
 
     # 沙滩: 平地 + 往海里的缓坡（海平面 z=-0.3，与坡面相交处自然形成海岸线，约 y≈33）
-    mesh_obj("沙滩", [(-400, -300, 0), (400, -300, 0), (400, 30, 0), (-400, 30, 0)],
-             [(0, 1, 2, 3)], M["sand"], C)
+    # 沙滩平地在泳池处留洞（否则会把空心泳池盖住），所以拆成 4 块
+    sv, sf = [], []
+    for (xa, ya, xb, yb) in [(-400, -300, 400, 6), (-400, 9, 400, 30), (-400, 6, 1, 9), (7, 6, 400, 9)]:
+        i = len(sv)
+        sv += [(xa, ya, 0), (xb, ya, 0), (xb, yb, 0), (xa, yb, 0)]
+        sf.append((i, i + 1, i + 2, i + 3))
+    mesh_obj("沙滩", sv, sf, M["sand"], C)
     mesh_obj("沙滩入水坡", [(-400, 30, 0), (400, 30, 0), (400, 60, -3), (-400, 60, -3)],
+             [(0, 1, 2, 3)], M["sand"], C)
+    mesh_obj("海底", [(-400, 60, -3), (400, 60, -3), (400, 600, -3), (-400, 600, -3)],
              [(0, 1, 2, 3)], M["sand"], C)
     # 海: 一张大平面 + 程序凹凸（不用 Ocean 修改器，VR 帧率友好）
     mesh_obj("海面", [(-3000, 25, -0.3), (3000, 25, -0.3), (3000, 3000, -0.3), (-3000, 3000, -0.3)],
@@ -482,6 +500,8 @@ VR_POINTS = [
     ("04_卧室床边", -2.2, -2.2, F2, 20),
     ("05_楼梯口", -5.6, -3.0, F1, -90),
     ("06_沙滩回望", 3.0, 30.0, 0.0, 180),
+    ("07_栈桥尽头", 13.0, 67.0, 1.0, 20),
+    ("08_篝火边", -7.0, 19.6, 0.0, 10),
 ]
 
 
@@ -548,6 +568,10 @@ def main():
     build_house(M)
     build_furniture(M)
     build_outdoor(M)
+    # 陈设和室外扩展在单独的文件里（scene_extras.py），这里注入本模块的工具函数给它用
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import scene_extras
+    scene_extras.build(M, sys.modules[__name__])
     build_lighting()
     build_vr_points()
 

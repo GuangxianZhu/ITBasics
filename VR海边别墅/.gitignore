@@ -5,3 +5,8 @@ godot_path.txt
 tools/
 godot/.godot/
 godot/model/
+godot/hd/*
+!godot/hd/说明.txt
+godot/art/*
+!godot/art/说明.txt
+__pycache__/
