@@ -1,0 +1,9 @@
+把真实素材放在这里，会替换程序生成的同名素材（不进 git 仓库）:
+
+贴图（.png 或 .jpg）: wood_floor / deck / stone_tile / pool_tile / sand / plaster / concrete / fabric / rock / bark
+  每种三张: <名字>_albedo, <名字>_normal (OpenGL 法线), <名字>_rough
+  例: sand_albedo.jpg  sand_normal.jpg  sand_rough.jpg （Poly Haven / ambientCG 的 CC0 贴图改名即可）
+
+声音（.ogg 或 .wav）: ocean wind fire underwater radio splash ball click door_slide gull_0 gull_1
+  step_wood_0~2 step_sand_0~2 step_stone_0~2
+  例: ocean.ogg（真实海浪录音，Freesound 上筛选 CC0）
