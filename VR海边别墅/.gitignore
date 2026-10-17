@@ -10,3 +10,9 @@ godot/hd/*
 godot/art/*
 !godot/art/说明.txt
 __pycache__/
+ai_furniture/images/
+ai_furniture/models/
+ai_furniture/my_images/
+ai_furniture/images_sheet.jpg
+ai_furniture/report.txt
+ai_furniture/genimgs_path.txt
