@@ -19,6 +19,7 @@
 |---|---|---|
 | 取公钥 | `GET /login.html` | 页面里内嵌了一把 RSA 公钥（`<textarea id="privkey">`） |
 | 登录 | `POST /login.html` | 密码先用这把公钥做 RSA **PKCS#1 v1.5** 加密，再转成 Base64，放进 `nosave_encryptedPassword` 字段发送。浏览器里的 JSEncrypt 做的就是这件事。服务端登录成功后会下发 `SessionID` cookie |
+| 上报电脑时间 | `GET /login_time.html` → `POST /redirect.html` | 登录后路由器会先把浏览器带到这个页面，页面里的 JS 自动把电脑时间（`nosave_PCTIME`）提交上去。**不做这一步，所有管理页面都会被弹回 login_time.html**。这一步是第一次实测时才发现的 |
 | 防呆检查 | `GET /Ajax_get_value.html&action=GetMovingRestore` | 官方页面在「スマート引っ越し」恢复设置期间会拒绝重启，脚本照着做同样的检查 |
 | 取令牌 | `GET /init.html` | `rebootForm` 里有一个一次性的 `nosave_session_num`，每次打开页面都会变，作用类似 CSRF 令牌 |
 | 重启 | `POST /init.html` | 发送 `nosave_reboot=1` 和刚拿到的那个 `nosave_session_num` |
@@ -37,6 +38,7 @@
 - **固件更新后，登录或重启的接口变了**。这时日志会提示失败，`debug/` 文件夹里保存了每一步路由器返回的页面（里面不含密码），拿来给 Claude 看就能重新适配。
 - **到点时电脑没开，或者账号已注销**：任务不会运行，这一天就跳过。
 - **路由器已经彻底卡死、管理页面也打不开**：脚本发不出重启请求。这个工具只能起「预防」作用，救不了已经死机的路由器。真要兜底，得用智能插座之类的方式直接断电。
+- **只允许一个人登录**：脚本一登录，你在浏览器里打开的管理页面就会被踢回登录页（这是实测看到的）。
 - **你正开着路由器管理页面时，脚本恰好到点运行**：Buffalo 的管理页面可能同时只允许一个会话登录，脚本可能把你挤下线，或者自己登录失败。凌晨基本碰不到这种情况。
 
 ## 命令行
