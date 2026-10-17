@@ -108,6 +108,26 @@ func _update_boat() -> void:
 	boat_pivot.rotation = Vector3(atan2(hf - hb, 3.2) * 0.8, 0, atan2(hl - hr, 1.2) * 0.6)
 
 
+# ================================================================== 泳池里的充气火烈鸟（漂着晃）
+var float_node: Node3D
+var float_base: Transform3D
+
+
+func setup_float(n: Node3D) -> void:
+	float_node = n
+	float_base = n.global_transform
+
+
+func _update_float() -> void:
+	if float_node == null:
+		return
+	var t := Time.get_ticks_msec() / 1000.0
+	var x := float_base
+	x.origin += Vector3(sin(t * 0.13) * 0.6, sin(t * 1.4) * 0.03, cos(t * 0.11) * 0.25)
+	x.basis = Basis(Vector3.UP, t * 0.05) * Basis(Vector3.RIGHT, sin(t * 1.1) * 0.04) * x.basis
+	float_node.global_transform = x
+
+
 # ================================================================== 灯塔
 func setup_lighthouse(marker: Node3D, glass: StandardMaterial3D) -> void:
 	lh_glass = glass
@@ -274,6 +294,7 @@ func set_fire(on: bool) -> void:
 # ================================================================== 每帧
 func _process(delta: float) -> void:
 	_update_birds(delta)
+	_update_float()
 	if lh_pivot and lh_level > 0.0:
 		lh_pivot.rotate_y(TAU / 8.0 * delta)            # 8 秒转一圈
 	if fire_on and fire_light:

@@ -25,7 +25,8 @@ const TVShader := preload("res://tv.gdshader")
 
 ## 不需要碰撞的物体（名字开头）
 const NO_COLLISION := ["海面", "远山", "泳池水面", "伞面", "沙滩伞面", "灯位", "窗帘", "沙草", "吊灯_", "可拿_",
-	"篝火位", "灯塔灯位", "吊扇叶", "冰箱隔板", "冰箱食材", "水龙头", "台灯", "画_", "画框"]
+	"篝火位", "灯塔灯位", "吊扇叶", "冰箱隔板", "冰箱食材", "水龙头", "台灯", "画_", "画框", "LED_", "筒灯_",
+	"烧烤火位", "迪斯科球", "山上树木", "山坡", "对岸城市", "货轮", "AI_flamingo", "山脚房子"]
 ## 两层楼的海景门（都关着时，屋里听到的海浪是闷的）
 const SEA_DOORS := ["滑门_一楼_L", "滑门_一楼_R", "滑门_二楼_L"]
 
@@ -66,6 +67,14 @@ var light_groups := {}         # "一楼"/"二楼" -> [OmniLight3D]
 var lights_on := {}
 var doors_open := {}
 var curtain_mat: ShaderMaterial
+var curtain1_mat: ShaderMaterial
+var ktv_mat: ShaderMaterial
+var ktv_on := false
+var ktv_music: AudioStreamPlayer3D
+var ktv_lights: Array = []
+var disco_pivot: Node3D
+var meta := {}
+var probes: Array = []
 var time_idx := 1
 var cur := {}                  # 当前（插值中的）时间段数值
 var points: Array = []
@@ -94,6 +103,7 @@ func _ready() -> void:
 	audio = AudioFX.new()
 	add_child(audio)
 	audio.setup()
+	_load_meta()
 	_build_environment()
 	_build_materials()
 	fx = WorldFX.new()
@@ -103,7 +113,7 @@ func _ready() -> void:
 	_build_sea()
 	_build_world_bounds()
 	_finish_pending()
-	_load_meta()
+	_setup_reflections()
 
 	player = PlayerScript.new()
 	player.name = "Player"
@@ -187,6 +197,8 @@ func _build_environment() -> void:
 	env.ssao_enabled = cfg.get_value("graphics", "ssao", true)
 	env.ssao_radius = 0.8
 	env.ssao_intensity = 1.6
+	env.ssr_enabled = cfg.get_value("graphics", "ssr", true)      # 屏幕空间反射: 亮面地砖映出家具
+	env.ssr_max_steps = 48
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -213,9 +225,12 @@ func set_time(i: int, instant := false) -> void:
 		_set_lights(g, to.lights)
 	if instant:
 		_blend_time(from, to, 1.0)
+		if not probes.is_empty():
+			_setup_reflections.call_deferred()
 	else:
 		var tw := create_tween()
 		tw.tween_method(func(k: float): _blend_time(from, to, k), 0.0, 1.0, 3.0)
+		tw.finished.connect(_setup_reflections)            # 光线变了，反射重拍
 	print("[villa] time -> ", to.name)
 
 
@@ -322,6 +337,30 @@ func _build_materials() -> void:
 	mats["户外柚木"] = _pbr("deck", 1.2)
 	mats["阳台石材"] = _pbr("stone_tile", 1.2)
 	mats["泳池瓷砖"] = _pbr("pool_tile", 0.6)
+	mats["泳池条石"] = _pbr("pool_stone", 1.2)
+	mats["抛光地砖"] = _pbr("porcelain", 1.6, Color.WHITE, 1.0)
+	mats["大理石"] = _pbr("marble", 1.2)
+	mats["露台石材"] = _pbr("stone_tile", 1.2, Color(0.82, 0.82, 0.80))
+	mats["海堤毛石"] = _pbr("seawall", 3.0)
+	mats["草坪"] = _pbr("grass", 3.0)
+	mats["山林"] = _pbr("forest", 40.0)
+	mats["树冠"] = _pbr("forest", 9.0, Color(1.15, 1.15, 1.1))
+	mats["岩石"] = _pbr("rock", 3.0)
+	# AI 家具: 颜色/质感来自 ai_furniture/furniture.json（经 villa_meta.json 传过来）
+	for k in meta.get("ai_materials", {}):
+		var am: Dictionary = meta.ai_materials[k]
+		var c: Array = am.get("color", [0.7, 0.7, 0.7])
+		var col := Color(c[0], c[1], c[2])
+		var tex: String = am.get("tex", "")
+		var m: StandardMaterial3D
+		if tex != "":
+			m = _pbr(tex, {"fabric": 0.4, "marble": 1.0, "wood_floor": 1.2}.get(tex, 1.0), col * 1.25, am.get("rough", 0.6))
+		else:
+			m = StandardMaterial3D.new()
+			m.albedo_color = col
+			m.roughness = am.get("rough", 0.6)
+		m.metallic = am.get("metal", 0.0)
+		mats[k] = m
 	mats["沙滩"] = _pbr("sand", 3.0)
 	mats["椰树干"] = _pbr("bark", 1.5)
 	mats["岩石"] = _pbr("rock", 3.0)
@@ -340,6 +379,9 @@ func _build_materials() -> void:
 	mats["_沙草"] = _foliage(1, Color(0.42, 0.45, 0.22))
 	curtain_mat = _foliage(2, Color(0.93, 0.90, 0.84), 0.3)
 	mats["窗帘"] = curtain_mat
+	curtain1_mat = _foliage(2, Color(0.20, 0.36, 0.42), 0.3)
+	curtain1_mat.set_shader_parameter("top_y", 3.17)
+	mats["窗帘_一楼"] = curtain1_mat
 	var plant := StandardMaterial3D.new()
 	plant.albedo_color = Color(0.10, 0.32, 0.12)
 	plant.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -369,6 +411,9 @@ func _build_materials() -> void:
 	tv_mat = ShaderMaterial.new()
 	tv_mat.shader = TVShader
 	mats["电视屏幕"] = tv_mat
+	ktv_mat = ShaderMaterial.new()
+	ktv_mat.shader = TVShader
+	mats["KTV屏幕"] = ktv_mat
 	mats["泳池水"] = _water_mat(true, false)
 	fridge_mat = StandardMaterial3D.new()
 	fridge_mat.albedo_color = Color(0.95, 0.97, 1.0)
@@ -422,7 +467,7 @@ func _process_node(n: Node) -> void:
 	if nm == "灯塔灯位":
 		_pending.lh_marker = n
 		return
-	if nm == "篝火位":
+	if nm == "篝火位" or nm == "烧烤火位":
 		_pending.fire = n
 		return
 	if not n is MeshInstance3D:
@@ -445,6 +490,10 @@ func _process_node(n: Node) -> void:
 		mi.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
 	if nm == "吊扇叶":
 		_pending.fan = mi
+	if nm == "迪斯科球":
+		_pending["disco"] = mi
+	if nm.begins_with("AI_flamingo"):
+		_pending["float"] = mi
 	if nm.begins_with("冰箱门"):
 		_pending.fridge.append(mi)
 
@@ -456,7 +505,11 @@ func _process_node(n: Node) -> void:
 	var body := _add_collision(mi, nm.begins_with("小船"))
 	if nm.begins_with("小船"):
 		_pending.boat.append(mi)
-	if nm.contains("座") or nm.ends_with("_垫"):
+	if nm.begins_with("AI_") and nm.contains("_座"):
+		# AI 家具: 名字里写着座面高度（厘米），座位点 = 家具原点（底面中心）往上 seat_h
+		var seat_h := float(nm.get_slice("_座", 1).to_int()) / 100.0
+		body.set_meta("seat", mi.global_position + Vector3(0, seat_h, 0))
+	elif nm.contains("座") or nm.ends_with("_垫"):
 		var bb := mi.global_transform * mi.get_aabb()
 		body.set_meta("seat", Vector3(bb.get_center().x, bb.end.y, bb.get_center().z))
 
@@ -475,7 +528,9 @@ func _process_node(n: Node) -> void:
 		body.set_meta("interact", _toggle_tv)
 	elif nm == "吊扇电机":
 		body.set_meta("interact", func(): fan_on = not fan_on; audio.play_at("click", Vector3(-4.0, 6.2, 0.6)))
-	elif nm == "篝火柴堆" or nm == "篝火石圈":
+	elif nm == "KTV电视" or nm == "KTV屏幕":
+		body.set_meta("interact", _toggle_ktv)
+	elif nm == "篝火柴堆" or nm == "篝火石圈" or nm == "烧烤台" or nm.begins_with("AI_bbq_grill"):
 		body.set_meta("interact", func(): fx.set_fire(not fx.fire_on); audio.play_at("click", body.global_position, -6.0))
 
 
@@ -489,6 +544,9 @@ func _replace_materials(mi: MeshInstance3D, nm: String) -> void:
 		var key := m.resource_name
 		if nm == "沙草":
 			key = "_沙草"
+		if nm.begins_with("LED_") or nm.begins_with("筒灯_"):
+			mi.set_surface_override_material(s, lamp_mats[nm.split("_")[1]])
+			continue
 		if nm.begins_with("吊灯_") and nm.ends_with("_罩") or nm == "落地灯罩":
 			mi.set_surface_override_material(s, lamp_mats["一楼"])
 			continue
@@ -505,7 +563,7 @@ func _replace_materials(mi: MeshInstance3D, nm: String) -> void:
 				mi.set_surface_override_material(s, mats[key])
 
 
-const SURFACE := {"室内木地板": "wood", "户外柚木": "wood", "家具木": "wood", "沙滩": "sand", "海岬草地": "sand"}
+const SURFACE := {"室内木地板": "wood", "户外柚木": "wood", "家具木": "wood", "沙滩": "sand", "海岬草地": "sand", "草坪": "sand"}
 
 
 func _add_collision(mi: MeshInstance3D, animatable := false) -> PhysicsBody3D:
@@ -529,10 +587,9 @@ func _make_sliding_door(mi: MeshInstance3D, body: PhysicsBody3D, to_left: bool, 
 		var tw := create_tween()
 		tw.tween_property(mi, "position:x", target, 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		audio.play_at("door_slide", mi.global_transform * mi.get_aabb().get_center(), -2.0)
-		var any_open := false
-		for d in ["滑门_二楼_L"]:
-			any_open = any_open or doors_open.get(d, false)
-		curtain_mat.set_shader_parameter("wind", 1.0 if any_open else 0.3))
+		curtain_mat.set_shader_parameter("wind", 1.0 if doors_open.get("滑门_二楼_L", false) else 0.3)
+		var open1: bool = doors_open.get("滑门_一楼_L", false) or doors_open.get("滑门_一楼_R", false)
+		curtain1_mat.set_shader_parameter("wind", 1.0 if open1 else 0.3))
 
 
 func _pivot_for(parts: Array, at: Vector3) -> Node3D:
@@ -549,7 +606,11 @@ func _pivot_for(parts: Array, at: Vector3) -> Node3D:
 
 func _finish_pending() -> void:
 	if _pending.fan:
-		fan_pivot = _pivot_for([_pending.fan], Vector3(-4.0, 6.08, 0.6))
+		fan_pivot = _pivot_for([_pending.fan], Vector3(4.25, 6.08, -0.3))
+	if _pending.get("disco"):
+		disco_pivot = _pivot_for([_pending.disco], Vector3(-5.4, 5.9, 1.4))
+	if _pending.get("float"):
+		fx.setup_float(_pending.float)
 	if not _pending.fridge.is_empty():
 		fridge_pivot = _pivot_for(_pending.fridge, Vector3(-6.10, 0.0, 4.78))   # 铰链在靠北墙那条边
 		fridge_light = OmniLight3D.new()
@@ -559,7 +620,7 @@ func _finish_pending() -> void:
 		add_child(fridge_light)
 		fridge_light.global_position = Vector3(-6.0, 1.4, 4.4)
 	if not _pending.boat.is_empty():
-		fx.setup_boat(_pending.boat, Vector3(17.6, 0.0, -66.0))
+		fx.setup_boat(_pending.boat, Vector3(9.8, 0.0, -16.6))
 	if _pending.lh_marker:
 		fx.setup_lighthouse(_pending.lh_marker, _pending.lh_glass)
 	if _pending.fire:
@@ -685,17 +746,17 @@ func _build_sea() -> void:
 	# 近岸: 400×236m、每米一格的细分网格 → 顶点真的起伏；远处: 只有法线波光的大平面
 	var near := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(400, 236)
+	pm.size = Vector2(400, 238)
 	pm.subdivide_width = 399
-	pm.subdivide_depth = 235
+	pm.subdivide_depth = 237
 	near.mesh = pm
-	near.position = Vector3(0, W.SEA_LEVEL, -142)
+	near.position = Vector3(0, W.SEA_LEVEL, -131)
 	near.material_override = _water_mat()
 	near.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	near.extra_cull_margin = 2.0
 	add_child(near)
 	var far_m := _water_mat(false, false)
-	for r in [Rect2(-3000, -3000, 6000, 2740), Rect2(-3000, -260, 2800, 236), Rect2(200, -260, 2800, 236)]:
+	for r in [Rect2(-3000, -3000, 6000, 2750), Rect2(-3000, -250, 2800, 238), Rect2(200, -250, 2800, 238)]:
 		var f := MeshInstance3D.new()
 		var fm := PlaneMesh.new()
 		fm.size = r.size
@@ -759,8 +820,8 @@ func _setup_gi() -> void:
 		# VoxelGI: 把房子切成 256 格的体素，记住"哪里有墙、什么颜色"；光照本身每帧实时算 →
 		# 换时间段、开关灯，反弹光都会跟着变（这就是能保留昼夜切换的原因）
 		vgi = VoxelGI.new()
-		vgi.position = Vector3(0, 3.0, -2.5)
-		vgi.size = Vector3(20, 10, 19)
+		vgi.position = Vector3(0, 3.7, -1.3)
+		vgi.size = Vector3(19, 9, 15)
 		vgi.subdiv = VoxelGI.SUBDIV_256
 		add_child(vgi)
 		var t0 := Time.get_ticks_msec()
@@ -800,12 +861,17 @@ func _process(delta: float) -> void:
 	fx.wave_time = wt
 	if fan_pivot and fan_on:
 		fan_pivot.rotate_y(delta * 4.0)
+	if disco_pivot and ktv_on:
+		disco_pivot.rotate_y(delta * 1.2)
+		for i in ktv_lights.size():
+			var a := wt * (1.3 + i * 0.4) + i * 2.1
+			ktv_lights[i].position = Vector3(-4.6 + cos(a) * 1.4, 4.4, 0.8 + sin(a) * 1.6)
 	if player == null:
 		return
 	var eye: Vector3 = player.get_eye().global_position
 	# 海浪声源始终在"离你最近的那段海岸线"上
 	if ocean_snd:
-		ocean_snd.get_parent().global_position = Vector3(clampf(eye.x, -150, 150), 0.0, -33.0)
+		ocean_snd.get_parent().global_position = Vector3(clampf(eye.x, -150, 150), W.SEA_LEVEL + 0.5, -13.8)
 	# 水下: 画面变蓝变雾、声音变闷
 	var wh := W.water_height(eye.x, eye.z, wt)
 	var under := eye.y < wh
@@ -839,6 +905,7 @@ func _load_meta() -> void:
 		return
 	var data = JSON.parse_string(f.get_as_text())
 	if data is Dictionary:
+		meta = data
 		points = data.get("vr_points", [])
 
 
@@ -849,3 +916,46 @@ func _goto_point(i: int) -> void:
 	var p: Dictionary = points[point_idx]
 	player.teleport_to(Vector3(p.pos[0], p.pos[1] + 0.05, p.pos[2]), p.yaw_deg)
 	print("[villa] point -> ", p.name)
+
+
+# ================================================================== KTV（二楼娱乐室）
+func _toggle_ktv() -> void:
+	ktv_on = not ktv_on
+	ktv_mat.set_shader_parameter("on", 1.0 if ktv_on else 0.0)
+	if ktv_music == null:
+		var n := Node3D.new()
+		add_child(n)
+		n.global_position = Vector3(-6.4, 5.0, 1.4)
+		ktv_music = audio.loop_3d("radio", n, 0.0, 3.0, "SFX", false)
+		for c in [Color(1, 0.2, 0.6), Color(0.2, 0.6, 1), Color(0.4, 1, 0.3)]:
+			var l := OmniLight3D.new()
+			l.light_color = c
+			l.omni_range = 3.0
+			l.light_energy = 0.7
+			add_child(l)
+			ktv_lights.append(l)
+	if ktv_on:
+		ktv_music.play()
+	else:
+		ktv_music.stop()
+	for l in ktv_lights:
+		l.visible = ktv_on
+	audio.play_at("click", Vector3(-6.4, 4.5, 1.4))
+
+
+# ================================================================== 反射（抛光地砖、玻璃要能映出东西）
+## ReflectionProbe = 在房间中间拍一张 360° 照片当反射贴图；box_projection 让反射按房间形状校正，
+## 不会"飘在无穷远"。换时间段后重拍（UPDATE_ONCE 不会自己更新）。
+func _setup_reflections() -> void:
+	for p in probes:
+		p.queue_free()
+	probes.clear()
+	for spec in [[Vector3(0, 1.9, 0), Vector3(14, 3.0, 10)], [Vector3(0, 5.0, -0.5), Vector3(14, 3.0, 11)]]:
+		var rp := ReflectionProbe.new()
+		rp.position = spec[0]
+		rp.size = spec[1]
+		rp.box_projection = true
+		rp.update_mode = ReflectionProbe.UPDATE_ONCE
+		rp.intensity = 0.9
+		add_child(rp)
+		probes.append(rp)
