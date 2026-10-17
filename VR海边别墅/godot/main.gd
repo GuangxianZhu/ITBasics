@@ -51,6 +51,9 @@ const TIMES := [
 ]
 
 var cfg := ConfigFile.new()
+var xr_mode := false
+var fx_step := 0
+var fx_base := {}
 var player: CharacterBody3D
 var audio
 var fx
@@ -100,6 +103,7 @@ var _pending := {"fridge": [], "boat": [], "fan": null, "lh_marker": null, "lh_g
 func _ready() -> void:
 	cfg.load(SETTINGS)
 	var xr_ok := _init_xr()
+	xr_mode = xr_ok
 	audio = AudioFX.new()
 	add_child(audio)
 	audio.setup()
@@ -126,6 +130,7 @@ func _ready() -> void:
 	player.step.connect(func(s: String, p: Vector3): audio.play_at("step_%s_%d" % [s, randi() % 3], p, -6.0 if s == "sand" else -2.0))
 	player.splash.connect(func(p: Vector3): audio.play_at("splash", p, 0.0))
 	player.toggle_gi.connect(_toggle_gi)
+	player.fx_cycle.connect(_fx_cycle)
 
 	_setup_ambient_audio()
 	fx.setup_birds(7)
@@ -195,9 +200,14 @@ func _build_environment() -> void:
 	env.glow_enabled = true
 	env.glow_intensity = 0.45
 	env.ssao_enabled = cfg.get_value("graphics", "ssao", true)
+	if xr_mode:
+		# VR 双眼渲染下，屏幕空间特效（SSAO、SSR）容易只对左眼正确、右眼出白影 → VR 里默认关
+		env.ssao_enabled = cfg.get_value("graphics", "xr_ssao", false)
 	env.ssao_radius = 0.8
 	env.ssao_intensity = 1.6
 	env.ssr_enabled = cfg.get_value("graphics", "ssr", true)      # 屏幕空间反射: 亮面地砖映出家具
+	if xr_mode:
+		env.ssr_enabled = cfg.get_value("graphics", "xr_ssr", false)
 	env.ssr_max_steps = 48
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -959,3 +969,40 @@ func _setup_reflections() -> void:
 		rp.intensity = 0.9
 		add_child(rp)
 		probes.append(rp)
+
+
+
+# ================================================================== 画面特效排查（左手柄 ☰ / 桌面 F 键）
+## 每按一次多关一个特效，眼前显示当前状态；找到"关了哪个之后右眼白影消失"就知道是谁的问题。
+const FX_STEPS := [
+	["全部按设置", []],
+	["关 屏幕反射SSR", ["ssr"]],
+	["关 SSR + 环境光遮蔽SSAO", ["ssr", "ssao"]],
+	["关 SSR + SSAO + 辉光", ["ssr", "ssao", "glow"]],
+	["关 SSR + SSAO + 辉光 + 全局光照", ["ssr", "ssao", "glow", "gi"]],
+	["再关 雾", ["ssr", "ssao", "glow", "gi", "fog"]],
+	["再关 阴影", ["ssr", "ssao", "glow", "gi", "fog", "shadow"]],
+]
+
+
+func _fx_cycle() -> void:
+	if fx_base.is_empty():
+		fx_base = {"ssr": env.ssr_enabled, "ssao": env.ssao_enabled, "glow": env.glow_enabled, "fog": env.fog_enabled,
+			"gi": vgi.visible if vgi else env.sdfgi_enabled, "shadow": sun.shadow_enabled}
+	fx_step = (fx_step + 1) % FX_STEPS.size()
+	var off: Array = FX_STEPS[fx_step][1]
+	env.ssr_enabled = fx_base.ssr and not off.has("ssr")
+	env.ssao_enabled = fx_base.ssao and not off.has("ssao")
+	env.glow_enabled = fx_base.glow and not off.has("glow")
+	env.fog_enabled = fx_base.fog and not off.has("fog")
+	if vgi:
+		vgi.visible = fx_base.gi and not off.has("gi")
+	else:
+		env.sdfgi_enabled = fx_base.gi and not off.has("gi")
+	sun.shadow_enabled = fx_base.shadow and not off.has("shadow")
+	moon.shadow_enabled = sun.shadow_enabled
+	var state := "SSR%s SSAO%s 辉光%s GI%s 雾%s 阴影%s" % [
+		"开" if env.ssr_enabled else "关", "开" if env.ssao_enabled else "关", "开" if env.glow_enabled else "关",
+		("开" if vgi.visible else "关") if vgi else ("开" if env.sdfgi_enabled else "关"),
+		"开" if env.fog_enabled else "关", "开" if sun.shadow_enabled else "关"]
+	player.notice("特效 %d/%d: %s\n%s" % [fx_step + 1, FX_STEPS.size(), FX_STEPS[fx_step][0], state])

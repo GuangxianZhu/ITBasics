@@ -15,6 +15,7 @@ signal goto_point(index: int)
 signal step(surface: String, pos: Vector3)
 signal splash(pos: Vector3)
 signal toggle_gi
+signal fx_cycle               # 左手柄 ☰ 菜单键: 逐个关画面特效（排查右眼白影用）
 
 const WALK := 1.8
 const RUN := 3.6
@@ -502,6 +503,8 @@ func _on_button(name: String, c: XRController3D) -> void:
 					_act(_probe(h.ray))
 		"ax_button":
 			time_cycle.emit()
+		"menu_button":
+			fx_cycle.emit()
 		"by_button":
 			next_point.emit()
 		"primary_click":
@@ -553,7 +556,32 @@ func _unhandled_input(event: InputEvent) -> void:
 				time_cycle.emit()
 			KEY_G:
 				toggle_gi.emit()
+			KEY_F:
+				fx_cycle.emit()
 			KEY_TAB:
 				next_point.emit()
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9:
 				goto_point.emit(event.physical_keycode - KEY_1)
+
+
+
+## 在眼前显示一行字，几秒后消失（VR 里没有屏幕 UI，只能放 3D 文字）
+var _notice: Label3D
+
+
+func notice(text: String, secs := 4.0) -> void:
+	if _notice == null:
+		_notice = Label3D.new()
+		_notice.font = font
+		_notice.font_size = 40
+		_notice.pixel_size = 0.0008
+		_notice.outline_size = 8
+		_notice.no_depth_test = true
+		_notice.fixed_size = false
+		get_eye().add_child(_notice)
+	_notice.position = Vector3(0, -0.12, -0.9)
+	_notice.text = text
+	_notice.visible = true
+	var t := get_tree().create_timer(secs)
+	t.timeout.connect(func(): if _notice and _notice.text == text: _notice.visible = false)
+	print("[villa] ", text)

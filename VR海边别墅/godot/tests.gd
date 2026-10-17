@@ -159,6 +159,13 @@ func walktest() -> void:
 	var bp0: float = m.fx.boat_pivot.position.y
 	await get_tree().create_timer(1.5).timeout
 	_check("小船随浪起伏", absf(m.fx.boat_pivot.position.y - bp0) > 0.005, "%.3f → %.3f" % [bp0, m.fx.boat_pivot.position.y])
+	# 特效排查键: 转一整圈应回到初始状态
+	var s0: bool = m.env.glow_enabled
+	for i in m.FX_STEPS.size() - 1:
+		m.player.fx_cycle.emit()
+	var mid_off: bool = not m.env.glow_enabled and not m.sun.shadow_enabled
+	m.player.fx_cycle.emit()
+	_check("特效排查键转一圈", mid_off and m.env.glow_enabled == s0 and m.fx_step == 0, "")
 	var fails := results.filter(func(r): return not r[1]).size()
 	print("[test] done: %d/%d passed" % [results.size() - fails, results.size()])
 
