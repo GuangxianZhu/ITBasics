@@ -1,0 +1,186 @@
+﻿=== MCP test 2026-10-18T00:37:30  http://127.0.0.1:8000/mcp ===
+[0] Port 8000 listening: True
+[1] initialize -> serverInfo: {"name":"","title":"","version":""}  protocol: 2025-06-18  session: ee068fec45494de3b3bc9888d6291e53
+[2] notifications/initialized sent
+[3] tools/list -> 3 tools: list_toolsets, describe_toolset, call_tool
+[4] list_toolsets ->
+- ToolsetRegistry.AgentSkillToolset: 提供用于列出、读取和创建/更新技能的工具。
+- ConfigSettingsToolset.ConfigSettingsToolset: 用于列出、检查和编辑配置设置分段的工具
+- DataflowAgent.DataflowAgentToolset: 数据流代理工具集——将数据流图编辑操作公开为AI代理工具。
+- DataRegistryToolset.DataRegistryTools: 提供用于查询和检查数据注册表的工具。
+- EditorToolset.EditorAppToolset: 用于查询和修改虚幻编辑器状态的工具：控制台变量、资产成像、
+Actor和资产选择、视口摄像机、内容浏览器导航和PIE
+会话控制。
+- EditorToolset.LogsToolset: 提供用于读取虚幻引擎输出日志和控制
+日志类别详细程度的工具。
+- GameFeaturesToolset.GameFeaturesToolset: 提供用于列出、激活和停用游戏功能插件的工具。
+- AutomationTestToolset.AutomationTestToolset: 自动化测试发现和执行工具集。
+
+包装IAutomationControllerManager API（与会话
+前端使用的后端相同），以允许MCP客户端列出可用测试、运行它们并
+获取结果。
+
+典型工作流：
+  1. 每个会话执行一次DiscoverTests()以初始化工作器并加载测试列表。
+2. ListTests()按名称或标签查找测试。
+  3. 使用所需的测试名称调用RunTests()。
+4. GetTestStatus() / GetTestResults() 用于监控和获取结果。
+  5. 如有需要，可使用StopTests()终止测试。
+- GASToolsets.GameplayCueToolset: 提供检查、执行和管理Gameplay提示及其通知资产的工具。
+- GASToolsets.AttributeSetToolset: 提供用于发现AttributeSet类及其Gameplay属性的工具。
+- GASToolsets.AbilitySystemInspectorToolset: 提供用于检查AbilitySystemComponent的运行时状态的工具。
+每个函数都接受一个直接Actor指针，如果Actor为null或没有AbilitySystemComponent，则会
+引发脚本错误。
+- GameplayTagsToolset.GameplayTagsToolset: 在项目的GameplayTagsManager中提供用于读取和管理gameplay标签的工具。
+- NiagaraToolsets.NiagaraToolset_Info: Niagara工具集，用于获取常规Niagara信息和指导。
+
+提供：
+- 枚举值查找
+- 一般用法信息
+需要了解Niagara类型的上下文时，可以调用这些函数。
+- NiagaraToolsets.NiagaraToolset_Component: 用于Niagara组件操作的Niagara工具集。
+
+在以下情况下使用此工具集：
+- Actor上的Niagara组件
+- 运行时Niagara系统操作
+- 组件实例上的用户变量重载
+- 关卡或蓝图中的FX相关操作
+
+这是运行时Niagara操作的主要工具集。
+- NiagaraToolsets.NiagaraToolset_Blueprint: 用于Niagara和蓝图集成的Niagara工具集。
+
+提供实用工具，用于围绕Niagara系统创建蓝图封装器，
+使Niagara特效更易作为可复用的蓝图Actor进行公开和使用。
+
+当需要从Niagara系统创建基于蓝图的FX Actor时，请使用此工具集。
+- NiagaraToolsets.NiagaraToolset_System: 用于Niagara系统操作的Niagara工具集。
+提供对Niagara系统编辑的全面访问，包括：
+- 系统、发射器和模块的创建和修改
+- 模式发现，用于理解结构
+- 拓扑和摘要检查，用于查看当前配置
+- 数据访问，用于读取和写入属性
+- 通过GetSystemDependencies进行依赖项汇总
+- 通过GetDynamicInputChain进行动态输入链遍历
+
+这是在编辑器中处理Niagara系统的主要工具集。
+- NiagaraToolsets.NiagaraToolset_Assets: Niagara工具集，用于发现Niagara脚本资产。
+
+提供：
+- GetAssetDiscoveryInfo：项目配置的资产发现组
+- FindNiagaraScripts：按使用情况、可见性、名称和模块使用位掩码过滤的资产注册表搜索
+- GetNiagaraScriptDigest：单个脚本的已解码资产注册表标签
+
+所有函数都从资产注册表中读取，无需LoadObject。与
+NiagaraToolset_System.AddModule配对，将发现的模块放入堆栈中。
+
+注意：FAssetData JSON序列化不包含TagsAndValues映射（它
+不是一个UPROPERTY），因此需要从
+FindNiagaraScripts获取结果行的解码元数据的调用者必须通过GetNiagaraScriptDigest进行往返。
+- PCGToolset.PCGToolset: 用于构建和修改PCG图表的工具集
+- PCGToolset.PCGSpatialToolset: PCGSpatial Toolset
+- PhysicsToolsets.PhysicsAssetToolset: 提供用于创建和管理物理资产的工具。
+- PluginToolset.PluginToolset: 用于创建、编辑、启用和查询Unreal插件的工具
+- SemanticSearchToolset.SemanticSearchToolset: 将SemanticSearch插件的混合向量+BM25资产搜索公开到
+AI工具集注册表的工具集。
+- SlateInspectorToolset.SlateInspectorToolset: Playwright风格的Slate UI自动化工具集。
+
+公开快照、屏幕截图和交互工具，用于以编程方式驱动
+虚幻编辑器UI。通过UToolsetRegistry注册，
+因此ModelContextProtocol插件会自动将其拾取。
+
+浅根观察者（深度0）持续追踪顶层
+窗口。在使用特定窗口或面板之前，在其上调用
+Observe()以获取深度控件覆盖，完成后再调用
+Unobserve()。观察者每~100ms遍历其子树，将引用分配给新出现的控件，并持续更新引用缓存。
+
+输入模拟使用直接的Slate事件API（ProcessKeyCharEvent、
+ProcessMouseButtonDownEvent等），而不是AutomationDriver，
+因AutomationDriver 的同步AI在从
+游戏线程（MCP工具调用执行所在的线程）调用时会发生死锁。
+- WorldConditionsToolset.WorldConditionTools: 检查WorldCondition（FWorldConditionQueryDefinition、FWorldConditionBase）结构体。
+- UMGToolSet.UMGToolSet: UMG控件工具集，用于AI驱动的控件创建和树操作。
+
+重要工作流 - 对于此工具集返回的每个控件和插槽：
+  1.调用ObjectTools.list_properties(widget)以发现确切的属性名称。
+2. 使用这些确切的名称调用ObjectTools.get_properties(widget,[...]）。
+3.使用这些确切的名称调用ObjectTools.set_properties(widget,{...}) 。
+属性名称因控件类而异，无法猜测 - 需要list_properties。
+跳过步骤1会导致set_properties静默失败或设置错误的属性。
+
+返回UObject指针 - ToolsetRegistry自动将其序列化为{"refPath": "..."}。
+将返回的控件、插槽和父指针直接传递给ObjectTools或返回到此工具集。
+- state_tree_toolset.toolsets.state_tree.StateTreeTools: Inspect StateTree (ST) assets.
+- editor_toolset.toolsets.actor.ActorTools: Provides tools for inspecting and modifying actors, including
+    their transforms, labels, parent-child relationships, and components.
+- editor_toolset.toolsets.asset.AssetTools: Provides tools for interacting with assets in the Unreal project and files on disk.
+- editor_toolset.toolsets.blueprint.BlueprintTools: Provides tools for working with Blueprints.
+- editor_toolset.toolsets.curve_table.CurveTableTools: Provides tools for creating and editing CurveTable assets.
+- editor_toolset.toolsets.data_asset.DataAssetTools: Provides tools for working with Data Assets.
+- editor_toolset.toolsets.data_table.DataTableTools: Provides tools for creating and editing DataTable assets.
+- editor_toolset.toolsets.material.MaterialTools: Provides tools for creating and editing Material and MaterialFunction assets.
+- editor_toolset.toolsets.material_instance.MaterialInstanceTools: Provides tools for creating and modifying MaterialInstanceConstant assets.
+- editor_toolset.toolsets.object.ObjectTools: Provides tools for inspecting and modifying the properties of
+    Unreal Objects and Unreal Classes, including those in Blueprints.
+    Also use this toolset to discover available classes and subclasses.
+- editor_toolset.toolsets.primitive.PrimitiveTools: Provides tools for adding primitive geometry components to actors.
+- editor_toolset.toolsets.scene.SceneTools: Provides tools for working with the currently loaded level, including
+    loading levels, placing and removing actors, controlling the level camera,
+    and organizing actors in the outliner.
+- editor_toolset.toolsets.skeletal_mesh.SkeletalMeshTools: Provides tools for inspecting and modifying skeletal mesh assets, including
+    the mesh/materials, bone hierarchies, and sockets.
+- editor_toolset.toolsets.static_mesh.StaticMeshTools: Provides tools for inspecting and modifying static mesh assets.
+- editor_toolset.toolsets.string_table.StringTableTools: Provides tools for creating and editing StringTable assets.
+- editor_toolset.toolsets.programmatic.ProgrammaticToolset: Batches calls to other registered tools through a small sandboxed Python
+    script that glues them together with custom logic. The script's purpose is
+    tool orchestration, not general Python execution.
+- editor_toolset.toolsets.texture.TextureTools: Provides tools for working with Texture assets.
+- conversation_toolset.toolsets.conversation.ConversationTools: Inspect Conversation Graph (UConversationDatabase) dialogue assets.
+- aimodule_toolset.toolsets.behavior_tree.BehaviorTreeTools: Inspect BehaviorTree (BT) assets.
+- animation_toolset.toolsets.controlrig.ControlRigTools: Tools for creating and editing Control Rig assets, including hierarchy
+    management, graph operations, and node/pin manipulation.
+- animation_toolset.toolsets.sequencer.SequencerTools: Core tools for creating and editing Level Sequences in Sequencer. Use
+    whenever working with Sequencer - covers sequence lifecycle (create, open,
+    close), playback control (play, pause, scrub, speed, loop), sequence
+    properties (display rate, frame ranges, marked frames, tick resolution),
+    actor bindings (add actors, spawnables, cameras, find and manage bindings),
+    tracks (add, find, remove any track type), sections (range, easing, blend
+    type, completion mode), selection state, folder organization, sub-sequence
+    navigation, event tracks, track filters, and sequence locking. For
+    keyframing use SequencerKeyframingTools. For Control Rig use
+    SequencerControlRigTools. For outliner inspection use
+    SequencerOutlinerTools.
+- animation_toolset.toolsets.keyframing.SequencerKeyframingTools: Tools for keyframing and animating properties on the Sequencer
+    timeline. Use when adding, querying, or removing keyframes on channels,
+    setting default values, evaluating channels at specific times, working
+    with the Curve Editor, or managing channel selection. Covers float, bool,
+    integer, and string key types with configurable interpolation.
+- animation_toolset.toolsets.controlrig_sequencer.SequencerControlRigTools: Tools for animating with Control Rig inside Sequencer. Use when adding
+    Control Rig tracks to bindings, getting or setting control values (bool,
+    float, int, position, rotator, scale, euler transform, transform), keying
+    controls, baking animation to Control Rig, managing layered rigs and
+    priority, masking controls per section, space switching (world, parent,
+    control, bone), tweening and blending between keys, snapping controls to
+    actors, mirroring poses, zeroing transforms, or managing animation layers
+    (add, delete, duplicate, reorder, merge, collapse).
+- animation_toolset.toolsets.outliner.SequencerOutlinerTools: Tools for inspecting and managing the Sequencer outliner tree. Use when
+    getting a snapshot of the outliner hierarchy, querying node children,
+    managing outliner selection, expanding or collapsing nodes, or toggling
+    node states like mute, solo, deactivate, lock, and pin. Also useful for
+    test verification of Sequencer UI state.
+- animation_toolset.toolsets.conditions.SequencerConditionTools: Tools for managing runtime conditions on Sequencer tracks, sections, and
+    track rows. Use when setting up dynamic conditions that control whether
+    tracks or sections evaluate at runtime based on platform, gameplay state,
+    or custom logic. Supports MovieScenePlatformCondition,
+    MovieSceneDirectorBlueprintCondition, and MovieSceneGroupCondition types.
+- animation_toolset.toolsets.custom_bindings.SequencerCustomBindingTools: Tools for converting and managing custom binding types in Sequencer. Use
+    when converting between possessable, spawnable, and custom/replaceable
+    bindings, querying what custom binding type a binding uses, accessing
+    custom binding objects for property inspection, or changing the actor
+    template class on spawnables/replaceables.
+- animation_toolset.toolsets.import_export.SequencerImportExportTools: Tools for importing and exporting animation data to and from Sequencer.
+    Use when exporting bindings or Control Rig animation to FBX files,
+    importing FBX animation onto bindings or Control Rig tracks, exporting
+    animation to AnimSequence assets, or linking AnimSequences for
+    auto-updates.
+
+RESULT: PASS
