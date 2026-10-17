@@ -14,7 +14,9 @@ uniform float scale_a = 0.045;
 uniform float scale_b = 0.11;
 uniform float normal_strength = 0.6;
 uniform float wave_time = 0.0;
-uniform float sea_level = -0.3;
+uniform float sea_level = -2.8;
+uniform float wall_z = -13.4;      // 海堤外侧（浪拍墙的地方起白沫）
+uniform float seabed = -7.0;
 uniform float waves_on = 1.0;       // 0 = 远海平面 / 泳池
 uniform vec4 w1;
 uniform vec4 w2;
@@ -22,7 +24,7 @@ uniform vec4 w3;
 uniform vec4 w4;
 uniform float swash_amp = 0.15;
 uniform float swash_period = 9.0;
-uniform vec4 grid_bounds = vec4(-200.0, 200.0, -260.0, -24.0);   // x_min x_max z_min z_max
+uniform vec4 grid_bounds = vec4(-200.0, 200.0, -250.0, -12.0);   // x_min x_max z_min z_max
 uniform float pool_mode = 0.0;
 uniform float pool_floor = -2.25;
 
@@ -31,7 +33,7 @@ varying float crest;
 varying float wdepth;
 
 float ground_h(vec2 p) {
-	return -3.0 * clamp((-p.y - 30.0) / 30.0, 0.0, 1.0);
+	return p.y > wall_z ? 0.3 : seabed;
 }
 
 vec3 gerstner(vec4 w, vec2 p, float t, inout vec3 tang, inout vec3 binorm) {
@@ -88,8 +90,12 @@ void fragment() {
 	vec3 col = mix(shallow_color, deep_color, smoothstep(0.0, 6.0, dep));
 	float fn = texture(foam_noise, uv * 0.35 + vec2(0.0, t * 0.05)).r;
 	float shore_foam = (1.0 - smoothstep(0.0, 0.4, dep)) * smoothstep(0.35, 0.6, fn + 0.35 * (1.0 - dep / 0.4));
-	float crest_foam = smoothstep(0.30, 0.50, crest + fn * 0.12) * smoothstep(0.3, 0.7, fn);
-	float foam = max(shore_foam, crest_foam) * (1.0 - pool_mode);
+	float crest_foam = smoothstep(0.36, 0.56, crest + fn * 0.1) * smoothstep(0.45, 0.8, fn) * 0.7;
+	// 浪拍海堤: 离墙 2m 内起白沫，跟着涌浪（swash）一起一涨一退
+	float wall_d = wall_z - wpos.z;
+	float surge = 0.55 + 0.45 * sin(6.2831853 * wave_time / swash_period + 1.2);
+	float wall_foam = (1.0 - smoothstep(0.0, 1.2 + 1.6 * surge, wall_d)) * smoothstep(0.3, 0.6, fn + 0.3 * surge);
+	float foam = max(max(shore_foam, crest_foam), wall_foam) * (1.0 - pool_mode);
 
 	ALBEDO = mix(col, foam_color, foam);
 	ROUGHNESS = mix(0.03, 0.7, foam);

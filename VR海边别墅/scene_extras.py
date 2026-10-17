@@ -122,7 +122,10 @@ def plant(name, x, y, z, height, M, c, seed):
 # ===================================================================== 材质
 def materials(M):
     P = V.principled
-    M["metal"], _ = P("不锈钢", (0.75, 0.76, 0.78), 0.25, metal=1.0)
+    M["metal"] = M["steel"]
+    M["leather"], _ = P("黑色皮革", (0.04, 0.04, 0.045), 0.35)
+    M["ktv_screen"], _ = P("KTV屏幕", (0.01, 0.01, 0.012), 0.08)
+    M["curtain1"], _ = P("窗帘_一楼", (0.20, 0.36, 0.42), 0.95)
     M["fridge"], _ = P("冰箱白", (0.92, 0.92, 0.91), 0.3)
     M["fridge_in"], _ = P("冰箱内壁", (0.95, 0.97, 1.0), 0.4)
     M["ceramic"], _ = P("陶瓷", (0.96, 0.96, 0.95), 0.1)
@@ -130,8 +133,7 @@ def materials(M):
     M["tv"], _ = P("电视外壳", (0.03, 0.03, 0.035), 0.4)
     M["pot"], _ = P("花盆", (0.62, 0.33, 0.22), 0.8)
     M["plantleaf"], _ = P("绿植叶", (0.10, 0.32, 0.12), 0.5)
-    M["rock"], _ = P("岩石", (0.38, 0.36, 0.33), 0.85)
-    M["grass"], _ = P("海岬草地", (0.22, 0.34, 0.15), 0.95)
+    M["cliffgrass"], _ = P("海岬草地", (0.22, 0.34, 0.15), 0.95)
     M["lh_white"], _ = P("灯塔白", (0.92, 0.91, 0.88), 0.6)
     M["lh_red"], _ = P("灯塔红", (0.62, 0.08, 0.06), 0.6)
     M["lh_glass"], _ = P("灯室玻璃", (0.95, 0.92, 0.70), 0.05)
@@ -176,11 +178,6 @@ def interior(M):
         add_cyl(bm, x, -2.05, F2 - SLAB - 0.9, F2 - SLAB, 0.004)
         V.bm_obj(f"吊灯_{k}_线", bm, M["frame"], C)
         cyl(f"吊灯_{k}_罩", x, -2.05, F2 - SLAB - 1.15, F2 - SLAB - 0.9, 0.18, M["shade"], C, r1=0.05)
-        bm = bmesh.new()
-        add_cyl(bm, x, -1.30, F1, F1 + 0.70, 0.025)
-        add_cyl(bm, x, -1.30, F1, F1 + 0.02, 0.18)
-        V.bm_obj(f"吧凳{k}_腿", bm, M["metal"], C)
-        cyl(f"吧凳{k}_座", x, -1.30, F1 + 0.70, F1 + 0.76, 0.19, M["wood_furn"], C)
     # 餐桌上: 花瓶 + 果盘
     cyl("花瓶", -4.2, 1.5, F1 + 0.76, F1 + 1.05, 0.06, M["ceramic"], C, r1=0.04)
     cyl("果盘", -3.5, 1.5, F1 + 0.76, F1 + 0.82, 0.16, M["wood_furn"], C, r1=0.2)
@@ -214,18 +211,18 @@ def interior(M):
         V.bm_obj(f"书_{k}", g, M[f"book{k}"], C)
     for k, z in enumerate((0.45, 0.87, 1.29, 1.71)):
         box(f"书架隔板{k}", -6.45, 2.25, F1 + z, -6.10, 4.45, F1 + z + 0.02, M["wood_furn"], C)
-    for k, (x, y) in enumerate([(6.25, 4.25), (-6.1, 4.55), (-3.2, 4.4)]):
-        plant(f"大盆栽{k}", x, y, F1, 1.3, M, C, 10 + k)
     # 电视角: 电视挂在卫生间外墙上，对面一张单人沙发
-    box("电视", 5.00, -2.45, F1 + 0.95, 6.40, -2.40, F1 + 1.75, M["tv"], C)
+    box("大理石背景墙", 4.70, -2.45, F1, 6.70, -2.435, F2 - SLAB - 0.25, M["marble"], C)
+    bm = bmesh.new()
+    for side in (4.55, 6.62):                             # 两侧木格栅（照片里 PL02 电视墙那种）
+        for k in range(4):
+            add_box(bm, side + k * 0.045, -2.45, F1, side + k * 0.045 + 0.025, -2.39, F2 - SLAB - 0.25)
+    V.bm_obj("木格栅", bm, M["wood_furn"], C)
+    box("电视", 5.00, -2.435, F1 + 0.95, 6.40, -2.39, F1 + 1.75, M["tv"], C)
     # 注意顶点顺序决定正面朝向: 从观看者角度"左下→右下→右上→左上"（这面墙朝 +y，观看者面朝 -y，所以 x 从大到小）
-    quad_uv("电视屏幕", [(6.36, -2.395, F1 + 0.99), (5.04, -2.395, F1 + 0.99),
-                     (5.04, -2.395, F1 + 1.71), (6.36, -2.395, F1 + 1.71)], M["screen"], C)
+    quad_uv("电视屏幕", [(6.36, -2.385, F1 + 0.99), (5.04, -2.385, F1 + 0.99),
+                     (5.04, -2.385, F1 + 1.71), (6.36, -2.385, F1 + 1.71)], M["screen"], C)
     box("电视柜", 4.9, -2.45, F1, 6.5, -2.05, F1 + 0.4, M["wood_furn"], C)
-    box("单人沙发_座", 5.25, 0.15, F1, 6.15, 1.05, F1 + 0.42, M["fabric"], C)
-    box("单人沙发_背", 5.25, 0.80, F1 + 0.42, 6.15, 1.05, F1 + 0.95, M["fabric"], C)
-    box("单人沙发_扶手L", 5.10, 0.15, F1, 5.25, 1.05, F1 + 0.62, M["fabric"], C)
-    box("单人沙发_扶手R", 6.15, 0.15, F1, 6.30, 1.05, F1 + 0.62, M["fabric"], C)
     box("电视角地毯", 4.9, -1.6, F1, 6.6, 1.3, F1 + 0.012, M["rug"], C)
     # 画（一楼北墙 冰箱和楼梯之间）
     quad_uv("画_1", [(-4.95, -4.785, F1 + 1.1), (-5.7, -4.785, F1 + 1.1),
@@ -243,88 +240,72 @@ def interior(M):
     box("淋浴底盘", 5.97, -3.42, F1, 6.80, -2.55, F1 + 0.03, M["ceramic"], C)
     cyl("花洒", 6.5, -3.0, F1 + 2.05, F1 + 2.08, 0.12, M["metal"], C)
 
-    # ---- 二楼卧室: 衣柜、书桌、吊扇、窗帘、地毯、绿植、画
-    box("衣柜", -6.80, -4.70, F2, -6.20, -2.40, F2 + 2.2, M["wood_furn"], C)
-    box("衣柜缝", -6.199, -3.56, F2 + 0.05, -6.195, -3.54, F2 + 2.15, M["frame"], C)
-    box("卧室地毯", -5.8, -1.0, F2, -2.2, 1.6, F2 + 0.012, M["rug"], C)
-    box("书桌", 2.0, 0.6, F2 + 0.72, 2.75, 2.0, F2 + 0.76, M["wood_furn"], C)
-    for k, (x, y) in enumerate([(2.05, 0.65), (2.65, 0.65), (2.05, 1.9), (2.65, 1.9)]):
+    # ---- 一楼海景落地窗两端的窗帘（青蓝色，照片里 PL02 那种）
+    for k, (xa, xb) in enumerate([(-6.75, -6.05), (6.05, 6.75)]):
+        curtain(f"窗帘一楼_{k}", xa, xb, 4.66, F1 + 0.03, F2 - SLAB - 0.08, M["curtain1"], C)
+
+    # ---- 二楼东: 弧形玻璃卧室（圆床在 furniture_slots.py）
+    box("衣柜", 1.55, -3.60, F2, 2.15, -1.40, F2 + 2.2, M["wood_furn"], C)
+    box("衣柜缝", 2.151, -2.51, F2 + 0.05, 2.155, -2.49, F2 + 2.15, M["frame"], C)
+    box("书桌", 6.05, -3.8, F2 + 0.72, 6.8, -2.4, F2 + 0.76, M["wood_furn"], C)
+    for k, (x, y) in enumerate([(6.1, -3.75), (6.7, -3.75), (6.1, -2.5), (6.7, -2.5)]):
         box(f"书桌腿{k}", x, y, F2, x + 0.05, y + 0.05, F2 + 0.72, M["frame"], C)
-    box("书桌椅_座", 1.40, 1.05, F2 + 0.45, 1.85, 1.50, F2 + 0.50, M["wood_furn"], C)
-    box("书桌椅_背", 1.40, 1.05, F2 + 0.50, 1.45, 1.50, F2 + 0.95, M["wood_furn"], C)
-    box("书桌椅_腿", 1.58, 1.23, F2, 1.67, 1.32, F2 + 0.45, M["frame"], C)
-    cyl("台灯罩", 2.5, 1.7, F2 + 1.05, F2 + 1.2, 0.12, M["shade"], C, r1=0.08)
-    box("台灯杆", 2.49, 1.69, F2 + 0.76, 2.51, 1.71, F2 + 1.05, M["frame"], C)
-    cyl("吊扇电机", -4.0, -0.6, ROOF - 0.45, ROOF, 0.09, M["frame"], C)
+    box("书桌椅_座", 5.30, -3.35, F2 + 0.45, 5.75, -2.90, F2 + 0.50, M["wood_furn"], C)
+    box("书桌椅_背", 5.30, -3.35, F2 + 0.50, 5.35, -2.90, F2 + 0.95, M["wood_furn"], C)
+    box("书桌椅_腿", 5.48, -3.17, F2, 5.57, -3.08, F2 + 0.45, M["frame"], C)
+    cyl("台灯罩", 6.5, -3.5, F2 + 1.05, F2 + 1.2, 0.12, M["shade"], C, r1=0.08)
+    box("台灯杆", 6.49, -3.51, F2 + 0.76, 6.51, -3.49, F2 + 1.05, M["frame"], C)
+    fx, fy = 4.25, 0.3
+    cyl("吊扇电机", fx, fy, ROOF - 0.45, ROOF, 0.09, M["frame"], C)
     bm = bmesh.new()
     for k in range(4):
         a = k * math.pi / 2
         vs = add_box(bm, 0.12, -0.07, -0.006, 0.75, 0.07, 0.006)
         bmesh.ops.rotate(bm, verts=vs, cent=(0, 0, 0), matrix=Matrix.Rotation(a, 3, "Z"))
-    bmesh.ops.translate(bm, vec=(-4.0, -0.6, ROOF - 0.42), verts=bm.verts)
+    bmesh.ops.translate(bm, vec=(fx, fy, ROOF - 0.42), verts=bm.verts)
     V.bm_obj("吊扇叶", bm, M["wood_furn"], C)
-    plant("卧室盆栽", -1.2, 2.3, F2, 1.1, M, C, 21)
+    quad_uv("画_2", [(1.44, 3.6, F2 + 1.2), (1.44, 2.2, F2 + 1.2),
+                    (1.44, 2.2, F2 + 2.25), (1.44, 3.6, F2 + 2.25)], M["canvas2"], C)
+    box("画框_2", 1.43, 2.16, F2 + 1.16, 1.44, 3.64, F2 + 2.29, M["frame"], C)
+    for k, (xa, xb) in enumerate([(1.62, 2.3), (6.2, 6.85)]):          # 弧形玻璃两端的窗帘
+        curtain(f"窗帘_{k}", xa, xb, 4.75, F2 + 0.05, F2 + 2.6, M["curtain"], C)
+
+    # ---- 二楼西: 台球 + KTV 娱乐室（照片 BH19 有 KTV 房和桌球室）
     quad_uv("画_0", [(-2.0, -4.785, F2 + 1.2), (-3.4, -4.785, F2 + 1.2),
                     (-3.4, -4.785, F2 + 2.25), (-2.0, -4.785, F2 + 2.25)], M["canvas0"], C)
     box("画框_0", -3.44, -4.80, F2 + 1.16, -1.96, -4.79, F2 + 2.29, M["frame"], C)
-    quad_uv("画_2", [(2.785, -2.8, F2 + 1.2), (2.785, -4.2, F2 + 1.2),
-                    (2.785, -4.2, F2 + 2.25), (2.785, -2.8, F2 + 2.25)], M["canvas2"], C)
-    box("画框_2", 2.79, -4.24, F2 + 1.16, 2.80, -2.76, F2 + 2.29, M["frame"], C)
-    # 窗帘: 带褶皱的细分面（Godot 里用顶点着色器让它飘）
-    for k, (xa, xb) in enumerate([(-6.75, -6.0)]):
-        nx, nz = 24, 20
-        verts, faces = [], []
-        for j in range(nz + 1):
-            z = F2 + 0.05 + (2.55 * j / nz)
-            for i in range(nx + 1):
-                x = xa + (xb - xa) * i / nx
-                verts.append((x, 2.66 + 0.04 * math.sin(i * math.pi / 2), z))
-        for j in range(nz):
-            for i in range(nx):
-                a = j * (nx + 1) + i
-                faces.append((a, a + 1, a + nx + 2, a + nx + 1))
-        V.mesh_obj(f"窗帘_{k}", verts, faces, M["curtain"], C)
-    box("窗帘杆", -6.8, 2.62, F2 + 2.62, -5.9, 2.70, F2 + 2.65, M["frame"], C)
+    box("KTV电视", -6.80, -2.45, F2 + 0.85, -6.74, -0.35, F2 + 2.05, M["tv"], C)
+    quad_uv("KTV屏幕", [(-6.735, -2.40, F2 + 0.9), (-6.735, -0.40, F2 + 0.9),
+                       (-6.735, -0.40, F2 + 2.0), (-6.735, -2.40, F2 + 2.0)], M["ktv_screen"], C)
+    for y in (-3.0, 0.2):
+        box(f"KTV音箱{y}", -6.78, y - 0.2, F2, -6.38, y + 0.2, F2 + 1.1, M["tv"], C)
+    box("KTV柜", -6.80, -2.6, F2, -6.35, -0.2, F2 + 0.45, M["wood_furn"], C)
+    box("KTV沙发_座", -4.55, -3.1, F2, -3.75, 0.5, F2 + 0.42, M["leather"], C)
+    box("KTV沙发_背", -3.95, -3.1, F2 + 0.42, -3.75, 0.5, F2 + 0.9, M["leather"], C)
+    box("KTV沙发_转角座", -5.95, -3.4, F2, -3.75, -3.1, F2 + 0.42, M["leather"], C)
+    box("KTV茶几", -5.6, -2.2, F2, -4.9, -0.6, F2 + 0.4, M["glass"], C)
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=2, radius=0.18)
+    bmesh.ops.translate(bm, vec=(-5.4, -1.4, ROOF - 0.6), verts=bm.verts)
+    V.bm_obj("迪斯科球", bm, M["metal"], C)
+    bm = bmesh.new()
+    add_cyl(bm, -5.4, -1.4, ROOF - 0.42, ROOF, 0.004)
+    V.bm_obj("迪斯科球_线", bm, M["frame"], C)
 
 
 # ===================================================================== 室外
 def exterior(M):
     C = V.coll("室外扩展")
-    rnd = random.Random(42)
+    # 小船: 拴在下水台阶旁边
+    boat(M, C, 9.8, 16.6, V.SEA_LEVEL - 0.25)
+    cyl("系船桩", 8.6, 15.2, -3.5, -1.9, 0.08, M["trunk"], C)
 
-    # ---- 栈桥: 沙滩上的坡道 → 伸进海里 45m，桥面高 1m
-    deck_z = 1.0
-    V.mesh_obj("栈桥坡道", [(12, 18, 0.02), (14, 18, 0.02), (14, 24, deck_z), (12, 24, deck_z),
-                         (12, 18, -0.2), (14, 18, -0.2), (14, 24, deck_z - 0.2), (12, 24, deck_z - 0.2)],
-               [(0, 1, 2, 3), (7, 6, 5, 4), (0, 4, 5, 1), (1, 5, 6, 2), (3, 2, 6, 7), (0, 3, 7, 4)], M["deck"], C)
-    V.box("栈桥桥面", 12, 24, deck_z - 0.12, 14, 70, deck_z, M["deck"], C)
-    V.box("栈桥平台", 14, 62, deck_z - 0.12, 16.5, 70, deck_z, M["deck"], C)
-    bm = bmesh.new()
-    for y in range(24, 71, 3):
-        for x in (12.1, 13.9):
-            add_cyl(bm, x, y, -3.5, deck_z + (0.9 if y % 6 == 0 else -0.1), 0.12, seg=10)
-    for y in (62, 66, 70):
-        add_cyl(bm, 16.4, y, -3.5, deck_z + 0.5, 0.12, seg=10)
-    V.bm_obj("栈桥桩", bm, M["trunk"], C, smooth=True)
-    # 小船（系在栈桥平台边）: 按截面放样的开口船壳
-    boat(M, C, 17.6, 66.0, -0.55)
-
-    # ---- 礁石区（沙滩西侧，一半泡在水里）
-    for k in range(14):
-        x = -20 + rnd.uniform(-5, 5)
-        y = 33 + rnd.uniform(-4, 6)
-        s = rnd.uniform(0.6, 2.2)
-        rock(f"礁石_{k}", x, y, -0.2 - (y - 30) * 0.08, s * rnd.uniform(1, 1.6), s, s * rnd.uniform(0.5, 0.9),
-             100 + k, M["rock"], C)
-    for k in range(6):                                     # 栈桥脚下几块
-        rock(f"礁石_桥{k}", 11 + rnd.uniform(-2, 0), 36 + k * 4, -0.8 - k * 0.3, 0.8, 0.6, 0.5, 200 + k, M["rock"], C)
-
-    # ---- 海岬 + 灯塔（右前方 ~100m）
-    rock("海岬", 78, 92, -2.0, 26, 18, 9, 300, M["rock"], C)
-    rock("海岬草顶", 78, 92, 1.8, 18, 12, 4, 301, M["grass"], C)
-    lx, ly, lz = 80, 94, 5.2
+    # 海岬 + 灯塔（右前方 ~100m，头顿也有灯塔）
+    rock("海岬", 78, 92, -2.0, 26, 18, 10, 300, M["rock"], C)
+    rock("海岬草顶", 78, 92, 2.6, 18, 12, 4, 301, M["cliffgrass"], C)
+    lx, ly, lz = 80, 94, 6.0
     h = 1.6
-    for k in range(8):                                     # 红白相间的塔身
+    for k in range(8):
         r0 = 1.6 - 0.07 * k
         cyl(f"灯塔_{k}", lx, ly, lz + k * h, lz + (k + 1) * h, r0, M["lh_red" if k % 2 else "lh_white"], C,
             r1=r0 - 0.07, seg=20)
@@ -334,66 +315,33 @@ def exterior(M):
     cyl("灯塔_顶", lx, ly, top + 1.6, top + 2.6, 1.0, M["lh_red"], C, r1=0.05, seg=16)
     empty("灯塔灯位", lx, ly, top + 0.9, C)
 
-    # ---- 篝火（沙滩上，房子西南）: 石圈 + 柴堆 + 三根坐的原木
-    fx, fy = -7.0, 22.0
-    bm = bmesh.new()
-    for k in range(12):
-        a = k / 12 * 2 * math.pi
-        vs = bmesh.ops.create_icosphere(bm, subdivisions=1, radius=0.16)["verts"]
-        bmesh.ops.scale(bm, vec=(1.2, 1.0, 0.7), verts=vs)
-        bmesh.ops.translate(bm, vec=(fx + 0.75 * math.cos(a), fy + 0.75 * math.sin(a), 0.06), verts=vs)
-    V.bm_obj("篝火石圈", bm, M["rock"], C)
-    bm = bmesh.new()
-    for k in range(5):
-        a = k / 5 * 2 * math.pi
-        log(bm, (fx + 0.5 * math.cos(a), fy + 0.5 * math.sin(a), 0.03), (fx + 0.05 * math.cos(a), fy + 0.05 * math.sin(a), 0.45), 0.06)
-    V.bm_obj("篝火柴堆", bm, M["charred"], C)
-    empty("篝火位", fx, fy, 0.25, C)
-    for k, a in enumerate((200, 270, 340)):
-        r = math.radians(a)
-        cx, cy = fx + 2.1 * math.cos(r), fy + 2.1 * math.sin(r)
-        t = (-math.sin(r) * 0.9, math.cos(r) * 0.9)
-        bm = bmesh.new()
-        log(bm, (cx - t[0], cy - t[1], 0.2), (cx + t[0], cy + t[1], 0.2), 0.2, seg=12)
-        V.bm_obj(f"篝火坐木{k}_座", bm, M["trunk"], C, smooth=True)
+    # 空调外机（照片 PL02 墙上那种）
+    for k, (y, z) in enumerate([(-2.2, 0.3), (-0.9, 0.3), (-3.0, V.F2 + 0.3)]):
+        V.box(f"空调外机{k}", -7.45, y - 0.42, z, -7.0, y + 0.42, z + 0.62, M["fridge"], C)
+        cyl(f"空调外机{k}_风扇", -7.46, y + 0.1, z + 0.31 - 0.0, z + 0.31, 0.24, M["frame"], C)
 
-    # ---- 沙滩遮阳伞 + 浴巾
-    for k, (x, y) in enumerate([(4.5, 23.5), (8.0, 25.5)]):
-        V.box(f"沙滩伞杆{k}", x - 0.025, y - 0.025, 0, x + 0.025, y + 0.025, 2.4, M["frame"], C)
-        bm = bmesh.new()
-        bmesh.ops.create_cone(bm, cap_ends=False, segments=12, radius1=1.3, radius2=0.02, depth=0.45,
-                              matrix=Matrix.Translation((x, y, 2.25)))
-        V.bm_obj(f"沙滩伞面{k}", bm, M["towel_a" if k else "towel_b"], C, smooth=False)
-        V.box(f"浴巾{k}", x + 0.3, y - 1.0, 0, x + 1.1, y + 0.9, 0.015, M["towel_a" if k == 0 else "towel_b"], C)
-
-    # ---- 更多椰树
-    for k, (x, y, tilt, yaw) in enumerate([(-20, 20, 14, 60), (-17, 26, 10, 120), (21, 21, 12, -60),
-                                           (25, 14, 9, 30), (-26, 11, 11, 200), (29, 27, 15, -100)]):
-        V.palm(f"椰树{6 + k}", x, y, 6.0 + (k % 3), tilt, yaw, M, V.coll("室外"))
-
-    # ---- 沙草（房子两侧和后面，一丛丛细叶）
-    verts, faces = [], []
-    for k in range(70):
-        side = rnd.choice([(-12, -8, -6, 8), (9, 13, -6, 8), (-10, 10, -9, -6)])
-        cx, cy = rnd.uniform(side[0], side[1]), rnd.uniform(side[2], side[3])
-        for b in range(9):
-            a = rnd.uniform(0, 6.28)
-            hgt = rnd.uniform(0.35, 0.7)
-            lean = rnd.uniform(0.1, 0.35)
-            dx, dy = math.cos(a), math.sin(a)
-            i = len(verts)
-            verts += [(cx - dy * 0.015, cy + dx * 0.015, 0), (cx + dy * 0.015, cy - dx * 0.015, 0),
-                      (cx + dx * lean, cy + dy * lean, hgt)]
-            faces.append((i, i + 1, i + 2))
-    V.mesh_obj("沙草", verts, faces, M["leaf"], C)
-
-    # ---- 可拿起来的东西（Godot 在这些空物体位置生成刚体）
-    empty("可拿_沙滩球", -1.0, 15.0, 0.4, C)
-    empty("可拿_沙滩球2", 6.0, 24.0, 0.4, C)
-    for k, (x, y) in enumerate([(-11, 12.6), (-7.4, 17.5), (10.8, 13.4), (21.4, 21.5)]):
-        empty(f"可拿_椰子_{k}", x, y, 0.3, C)
+    # 可拿起来的东西（Godot 在这些空物体位置生成刚体）
+    empty("可拿_沙滩球", -6.0, -7.0, 0.8, C)          # 后花园（东西向 25m 长，能扔）
+    empty("可拿_沙滩球2", 2.5, 7.8, 0.8, C)
+    for k, (x, y) in enumerate([(-8.2, 2.5), (9.4, 3.4), (13.6, 1.9), (-8.0, 9.9)]):
+        empty(f"可拿_椰子_{k}", x, y, 0.5, C)
     for k, x in enumerate((-4.4, -3.8, -3.2)):
-        empty(f"可拿_杯子_{k}", x, 1.2 + 0.2 * k, V.F1 + 0.85, C)
+        empty(f"可拿_杯子_{k}", x, 1.2 + 0.2 * k, V.F1 + 0.9, C)
+
+
+def curtain(name, xa, xb, y, z0, z1, mat, c):
+    """带褶皱的细分面窗帘（Godot 里用顶点着色器让它飘）。"""
+    nx, nz = 24, 20
+    verts, faces = [], []
+    for j in range(nz + 1):
+        z = z0 + (z1 - z0) * j / nz
+        for i in range(nx + 1):
+            verts.append((xa + (xb - xa) * i / nx, y + 0.04 * math.sin(i * math.pi / 2), z))
+    for j in range(nz):
+        for i in range(nx):
+            a = j * (nx + 1) + i
+            faces.append((a, a + 1, a + nx + 2, a + nx + 1))
+    V.mesh_obj(name, verts, faces, mat, c)
 
 
 def boat(M, C, x, y, z):

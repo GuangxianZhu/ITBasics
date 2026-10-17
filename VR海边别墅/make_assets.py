@@ -204,7 +204,125 @@ def make_textures():
     ring = (np.sin(yy * 2 * math.pi * 24 + n1 * 2) * 0.5 + 0.5) ** 3
     alb = lerp((0.26, 0.19, 0.12), (0.50, 0.40, 0.29), np.clip(0.35 + 0.5 * n1 - 0.35 * ring, 0, 1))
     save_set("bark", alb, 1 - ring + 0.3 * n1, 0.9 + 0 * n1, 6.0)
+    make_bh19_textures()
     make_paintings()
+
+
+def stones(tile_m, w_m, h_m, mortar_m, c_a, c_b, mortar_c, seed, jitter=0.35, stagger=True):
+    """随机长度的砌块（海堤毛石、泳池条石）: 每行高度固定，块长随机，行间错缝。"""
+    rnd = np.random.default_rng(seed)
+    px = N / tile_m
+    rows = int(round(tile_m / h_m))
+    rh = N / rows
+    yy, xx = np.mgrid[0:N, 0:N].astype(np.float64)
+    row = np.floor(yy / rh).astype(int)
+    alb = np.zeros((N, N, 3))
+    height = np.zeros((N, N))
+    ids = np.zeros((N, N), dtype=np.int64)
+    edge = np.full((N, N), 1e9)
+    for r in range(rows):
+        m = row == r
+        # 本行的接缝位置（周期: 总长正好 = N）
+        cuts = [0.0]
+        while cuts[-1] < N:
+            cuts.append(cuts[-1] + w_m * px * rnd.uniform(1 - jitter, 1 + jitter))
+        cuts = np.array(cuts) * (N / cuts[-1])
+        off = rnd.uniform(0, N) if stagger else 0.0
+        xs = (xx[m] + off) % N
+        k = np.searchsorted(cuts, xs, side="right") - 1
+        d = np.minimum(xs - cuts[k], cuts[k + 1] - xs)
+        ids[m] = r * 1000 + k
+        y_in = yy[m] - r * rh
+        edge[m] = np.minimum(d, np.minimum(y_in, rh - y_in))
+    tone = hash01(ids, seed)
+    n1 = noise(beta=1.8, seed=seed + 1)
+    n2 = noise(beta=2.8, seed=seed + 2)
+    t = np.clip(0.2 + 0.6 * tone + 0.25 * (n2 - 0.5) + 0.12 * (n1 - 0.5), 0, 1)
+    mp = mortar_m * px
+    joint = np.clip((edge - mp * 0.5) / 2.5, 0, 1)
+    alb = lerp(lerp(c_a, c_b, t), mortar_c, 1 - joint)
+    height = 0.7 * joint * (0.8 + 0.2 * n2) + 0.08 * n1
+    rough = np.clip(0.6 + 0.3 * (1 - joint) * 0 + 0.2 * (n1 - 0.5) + 0.25 * (1 - joint), 0, 1)
+    return alb, height, rough
+
+
+def marble_tex(seed, base, vein, scale=1.5, strength=1.0):
+    """大理石: 两层被低频噪声扭曲的条纹，取条纹"过零点"附近的细线 → 细长、曲折、分叉的纹路。"""
+    yy, xx = np.mgrid[0:N, 0:N] / N
+    w1 = noise(beta=3.2, seed=seed)
+    w2 = noise(beta=3.6, seed=seed + 1)
+    v1 = np.abs(np.sin((xx * scale + yy * scale * 0.7 + w1 * 2.0) * 2 * math.pi))
+    v2 = np.abs(np.sin((xx * scale * 2.3 - yy * scale * 0.9 + w2 * 3.0) * 2 * math.pi))
+    veins = np.clip(1 - v1 / 0.05, 0, 1) ** 1.5 * 0.8 + np.clip(1 - v2 / 0.03, 0, 1) * 0.35
+    veins = np.clip(veins * strength, 0, 1)
+    cloud = noise(beta=3.0, seed=seed + 2)
+    alb = lerp(base, np.array(base) * 0.94, cloud) * (1 - veins[..., None]) + np.array(vein) * veins[..., None]
+    return np.clip(alb, 0, 1), 0.3 * cloud - 0.2 * veins
+
+
+def voronoi_stones(cells_x, cells_y, seed, aspect=1.0):
+    """周期性 Voronoi（抖动网格，每格一个点，只查 3×3 邻格）→ 不规则毛石。返回 (到缝的距离px, 石块编号)。"""
+    rnd = np.random.default_rng(seed)
+    px_ = rnd.uniform(0.1, 0.9, (cells_y, cells_x))
+    py_ = rnd.uniform(0.1, 0.9, (cells_y, cells_x))
+    yy, xx = np.mgrid[0:N, 0:N].astype(np.float64)
+    cw, ch = N / cells_x, N / cells_y
+    cx, cy = np.floor(xx / cw).astype(int), np.floor(yy / ch).astype(int)
+    d1 = np.full((N, N), 1e9)
+    d2 = np.full((N, N), 1e9)
+    idx = np.zeros((N, N), dtype=np.int64)
+    for oy in (-1, 0, 1):
+        for ox in (-1, 0, 1):
+            gx, gy = cx + ox, cy + oy
+            wx, wy = gx % cells_x, gy % cells_y
+            ptx = (gx + px_[wy, wx]) * cw
+            pty = (gy + py_[wy, wx]) * ch
+            d = np.sqrt(((xx - ptx) * aspect) ** 2 + (yy - pty) ** 2)
+            closer = d < d1
+            d2 = np.where(closer, d1, np.minimum(d2, d))
+            idx = np.where(closer, wy * cells_x + wx, idx)
+            d1 = np.where(closer, d, d1)
+    return (d2 - d1) * 0.5, idx, d1
+
+
+def make_bh19_textures():
+    # 白色大理石（柱子、电视背景墙、茶几面）
+    alb, h = marble_tex(301, (0.93, 0.92, 0.90), (0.45, 0.45, 0.47))
+    save_set("marble", alb, h, 0.12 + 0.05 * noise(beta=2.0, seed=302), 0.8)
+    # 抛光地砖 80cm（BH19/P185 客厅那种亮面大砖）: 浅灰大理石纹 + 细缝
+    alb, h = marble_tex(311, (0.84, 0.83, 0.81), (0.62, 0.62, 0.63), scale=1.5, strength=0.6)
+    yy, xx = np.mgrid[0:N, 0:N].astype(np.float64)
+    s = N / 2                                              # 贴图 1.6m = 2×2 块
+    d = np.minimum(np.minimum(xx % s, s - xx % s), np.minimum(yy % s, s - yy % s))
+    joint = np.clip((d - 1.0) / 1.5, 0, 1)
+    alb = lerp(np.array([0.55, 0.55, 0.55]), alb, joint)
+    save_set("porcelain", alb, h * 0.2 + 0.6 * joint, 0.06 + 0.25 * (1 - joint), 2.0)
+    # 泳池条石: 深蓝灰长条（照片里 BH19 泳池那种）
+    a, h, r = stones(1.2, 0.6, 0.15, 0.004, (0.10, 0.20, 0.24), (0.30, 0.42, 0.46), (0.15, 0.18, 0.2), 321, 0.25)
+    grain = noise(beta=2.2, sx=6.0, sy=0.3, seed=322)
+    a = np.clip(a * (0.85 + 0.3 * grain[..., None]), 0, 1)
+    save_set("pool_stone", a, h + 0.1 * grain, r * 0.5, 4.0)
+    # 海堤毛石: 不规则石块（Voronoi）+ 深色砂浆；每块石头中间鼓、边缘低
+    edge, sid, dc = voronoi_stones(7, 10, 331, aspect=0.75)
+    n1, n2 = noise(beta=1.4, seed=332), noise(beta=2.6, seed=333)
+    tone = hash01(sid, 331)
+    joint = np.clip((edge - 5.0) / 6.0, 0, 1)
+    bulge = np.clip(edge / 40.0, 0, 1) ** 0.5
+    a = lerp(lerp((0.30, 0.28, 0.25), (0.64, 0.58, 0.50), np.clip(0.2 + 0.6 * tone + 0.3 * (n2 - 0.5), 0, 1)),
+             np.array([0.18, 0.17, 0.16]), 1 - joint)
+    a = np.clip(a * (0.85 + 0.3 * n1[..., None]), 0, 1)
+    save_set("seawall", a, 0.6 * bulge * joint + 0.25 * n1, np.clip(0.75 + 0.2 * (1 - joint), 0, 1), 10.0)
+    # 草坪
+    n1, n2, n3 = noise(beta=0.5, seed=341), noise(beta=2.4, seed=342), noise(beta=3.4, seed=343)
+    alb = lerp((0.14, 0.26, 0.07), (0.33, 0.45, 0.14), np.clip(0.45 + 0.5 * (n1 - 0.5) + 0.4 * (n2 - 0.5), 0, 1))
+    alb = lerp(alb, np.array([0.40, 0.38, 0.20]), np.clip((n3 - 0.62) * 3, 0, 1) * 0.5)
+    save_set("grass", alb, n1 * 0.6 + n2 * 0.4, 0.9 + 0 * n1, 3.0)
+    # 山上的树林（远看是一团团树冠）
+    n1, n2 = noise(beta=2.6, seed=351), noise(beta=1.2, seed=352)
+    blobs = np.clip((n1 - 0.3) * 2.2, 0, 1) * (0.7 + 0.3 * n2)
+    alb = lerp((0.06, 0.14, 0.05), (0.24, 0.38, 0.13), np.clip(blobs * 0.8 + 0.3 * n2, 0, 1))
+    save_set("forest", alb, blobs, 0.95 + 0 * n1, 8.0)
+    print("[assets] bh19 textures")
 
 
 def make_paintings():

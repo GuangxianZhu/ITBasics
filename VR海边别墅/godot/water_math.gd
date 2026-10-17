@@ -5,7 +5,7 @@ extends RefCounted
 ## 原理: Gerstner 波。每个波让水面上的点做小圆周运动（不只是上下），所以浪峰尖、浪谷平，比正弦波像真的海。
 ## 水深越浅，浪越小（att）；靠近岸边再叠加一个 9 秒周期的整体涨落（swash），水线就会在沙滩上来回推。
 
-const SEA_LEVEL := -0.3
+const SEA_LEVEL := -2.8          # 石砌海堤下 3m
 ## (方向x, 方向z, 陡度, 波长m)。方向 +z = 朝岸边（Godot 里海在 -Z）
 const WAVES := [
 	Vector4(0.15, 1.0, 0.10, 18.0),
@@ -15,15 +15,18 @@ const WAVES := [
 ]
 const SWASH_AMP := 0.15
 const SWASH_PERIOD := 9.0
-## 泳池（Godot 坐标 x 1~7, z -9~-6）
-const POOL_RECT := Rect2(1.0, -9.0, 6.0, 3.0)
+## 泳池（Godot 坐标 x -6~6, z -11~-8.5，与海平行的长条池）
+const POOL_RECT := Rect2(-6.0, -11.0, 12.0, 2.5)
 const POOL_WATER := 0.15
 const POOL_FLOOR := -2.25
 
 
-## 沙滩/海底高度: Blender 里 y 30→60 从 0 降到 -3（Godot z = -y）
+const WALL_Z := -13.4               # 海堤外侧（Godot z；Blender y = 13.4）
+const SEABED := -7.0
+
+## 地面/海底高度: 海堤以内是陆地（平台 0.3m），以外是 -7m 的海底
 static func ground_h(_x: float, z: float) -> float:
-	return -3.0 * clampf((-z - 30.0) / 30.0, 0.0, 1.0)
+	return 0.3 if z > WALL_Z else SEABED
 
 
 static func _att(depth0: float) -> float:
@@ -64,3 +67,5 @@ static func apply_to_shader(m: ShaderMaterial) -> void:
 	m.set_shader_parameter("swash_amp", SWASH_AMP)
 	m.set_shader_parameter("swash_period", SWASH_PERIOD)
 	m.set_shader_parameter("pool_floor", POOL_FLOOR)
+	m.set_shader_parameter("wall_z", WALL_Z)
+	m.set_shader_parameter("seabed", SEABED)

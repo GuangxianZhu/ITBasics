@@ -51,6 +51,7 @@ var held := {}                 # 0/1 = 左右手, 2 = 桌面: {rb, off: Transfor
 var stride_acc := 0.0
 var auto_move := Vector2.ZERO  # 自动测试用（模拟摇杆）
 var auto_look_pitch := 0.0
+var frozen := false            # 测试截图用: 悬在空中不掉下去
 
 
 func setup(use_xr: bool) -> void:
@@ -171,6 +172,8 @@ func _make_desktop_hud() -> void:
 
 # ================================================================== 每帧物理
 func _physics_process(delta: float) -> void:
+	if frozen:
+		return
 	if xr_on:
 		_follow_head()
 		_snap_turn_input()
@@ -186,6 +189,7 @@ func _physics_process(delta: float) -> void:
 	swimming = global_position.y + CHEST < wh
 	if swimming and not was and velocity.y < -1.0:
 		splash.emit(global_position + Vector3(0, CHEST, 0))
+		velocity.y *= 0.25                               # 入水: 水的阻力一下子把下落速度吃掉大半
 
 	if swimming:
 		_swim(delta, mv, cam, wh)
@@ -234,7 +238,7 @@ func _swim(delta: float, mv: Vector2, cam: Node3D, wh: float) -> void:
 	var dir := (fwd * mv.y + right * mv.x)
 	var target := dir * SWIM
 	if absf(fwd.y * mv.y) < 0.25:
-		target.y = clampf(((wh - FLOAT_DEPTH) - global_position.y) * 2.0, -0.8, 0.8)
+		target.y = clampf(((wh - FLOAT_DEPTH) - global_position.y) * 2.0, -1.0, 1.6)   # 浮力: 往上快、往下慢
 	if global_position.y > wh - FLOAT_DEPTH + 0.1 and target.y > 0.0:
 		target.y = 0.0                                   # 游到水面就不再往上冲
 	velocity = velocity.lerp(target, clampf(delta * 3.0, 0.0, 1.0))

@@ -97,11 +97,12 @@ def main():
     panel("滑门_一楼_L", -2.2, 0.0, 4.93, 4.98, F1 + 0.05, F1 + 2.85, True, Mk, C)
     panel("滑门_一楼_R", 0.0, 2.2, 4.93, 4.98, F1 + 0.05, F1 + 2.85, True, Mk, C)
 
-    # 3) 二楼海景窗: 最右一格 (0.3~2.55) 改成往左推的门
+    # 3) 二楼海景窗（娱乐室 → 弧形阳台）: 最右一段 (-0.9~1.25) 改成往左推的门
     remove("二楼南墙_海景_玻璃0")
+    remove("二楼南墙_海景_竖梃0_3")
     zs, zh = F2 + 0.05, F2 + 2.6 - 0.05
-    bv.box("二楼海景_固定玻璃", -6.55, 2.89, zs, 0.275, 2.91, zh, M["玻璃"], C)
-    panel("滑门_二楼_L", 0.325, 2.55, 2.93, 2.98, F2 + 0.05, F2 + 2.55, True, Mk, C)
+    bv.box("二楼海景_固定玻璃", -6.55, 4.89, zs, -0.925, 4.91, zh, M["玻璃"], C)
+    panel("滑门_二楼_L", -0.9, 1.25, 4.93, 4.98, F2 + 0.05, F2 + 2.55, True, Mk, C)
 
     # 4) 灯开关（白色小面板，激光指着按扳机就能开关）
     sw = M["台面"]
@@ -113,7 +114,6 @@ def main():
     # 踏步前缘连线: 过 (X0 + i*0.28, F1 + (i+1)*踢面高)，往前延一级正好落在一楼地面
     ramp("碰撞_楼梯坡", (bv.STAIR_X0 - bv.STAIR_RUN, F1), (bv.STAIR_X1, F2), "y",
          bv.STAIR_Y[0], bv.STAIR_Y[1], C, inv)
-    ramp("碰撞_平台台阶坡", (9.9, F1), (10.9, 0.0), "x", -3.0, 3.0, C, inv)
 
     # 6) 灯位（空物体），Godot 里换成点光源
     for k, (x, y, z) in enumerate([(1.5, 1.5, F2 - 0.4), (-4.0, -0.5, F2 - 0.4), (5.6, -3.6, F2 - 0.4),
@@ -121,8 +121,8 @@ def main():
         e = bpy.data.objects.new(f"灯位_一楼_{k}", None)
         e.location = (x, y, z)
         C.objects.link(e)
-    for k, (x, y, z) in enumerate([(-4.0, -0.5, bv.ROOF - 0.4), (0.5, -1.5, bv.ROOF - 0.4),
-                                   (-4.5, 2.0, bv.ROOF - 0.4)]):
+    for k, (x, y, z) in enumerate([(-3.0, -1.0, bv.ROOF - 0.4), (-2.3, 2.6, bv.ROOF - 0.4),
+                                   (4.25, -1.5, bv.ROOF - 0.4), (4.25, 3.0, bv.ROOF - 0.4)]):
         e = bpy.data.objects.new(f"灯位_二楼_{k}", None)
         e.location = (x, y, z)
         C.objects.link(e)
@@ -143,7 +143,12 @@ def main():
         bpy.ops.export_scene.gltf(**kw)
     except TypeError:            # 极老版本没有部分参数
         bpy.ops.export_scene.gltf(filepath=glb, export_format="GLB")
-    meta = {"vr_points": points, "floor1": F1, "floor2": F2}
+    # AI 家具的材质（颜色/质感）给 Godot
+    with open(os.path.join(HERE, "ai_furniture", "furniture.json"), encoding="utf-8") as f:
+        furn = json.load(f)
+    ai_mats = {f"AI_{it['name']}": it.get("material", {}) for it in furn["items"]}
+    ai_mats.update({f"AI_{it['name']}_2": it["split"].get("material", {}) for it in furn["items"] if it.get("split")})
+    meta = {"vr_points": points, "floor1": F1, "floor2": F2, "ai_materials": ai_mats}
     with open(os.path.join(OUT_DIR, "villa_meta.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
     print("[export] wrote", glb)
