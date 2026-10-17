@@ -18,8 +18,9 @@
 | 步骤 | 请求 | 说明 |
 |---|---|---|
 | 取公钥 | `GET /login.html` | 页面里内嵌了一把 RSA 公钥（`<textarea id="privkey">`） |
-| 登录 | `POST /login.html` | 密码先用这把公钥做 RSA **PKCS#1 v1.5** 加密，再转成 Base64，放进 `nosave_encryptedPassword` 字段发送。浏览器里的 JSEncrypt 做的就是这件事。服务端登录成功后会下发 `SessionID` cookie |
-| 上报电脑时间 | `GET /login_time.html` → `POST /redirect.html` | 登录后路由器会先把浏览器带到这个页面，页面里的 JS 自动把电脑时间（`nosave_PCTIME`）提交上去。**不做这一步，所有管理页面都会被弹回 login_time.html**。这一步是第一次实测时才发现的 |
+| 登录 | `POST /login.html` | 密码先用这把公钥做 RSA **PKCS#1 v1.5** 加密，再转成 Base64，放进 `nosave_encryptedPassword` 字段发送。浏览器里的 JSEncrypt 做的就是这件事。登录成功后只返回一句「跳转到 index.html」 |
+| 拿会话 cookie | `GET /index.html` | **坑**：`SessionID` 不在响应头里，而是写在 index.html 的 JS 里（`var sessionID="..."; setCookie(...)`），浏览器跑 JS 才拿得到。脚本用正则抠出来自己设上，同时设 `language=JP`、`mobile=disable` |
+| 上报电脑时间（备用） | `GET /login_time.html` → `POST /redirect.html` | 没带会话 cookie 时，所有管理页面都会被弹到这里。正常拿到 cookie 后用不到，只在万一时补一次 |
 | 防呆检查 | `GET /Ajax_get_value.html&action=GetMovingRestore` | 官方页面在「スマート引っ越し」恢复设置期间会拒绝重启，脚本照着做同样的检查 |
 | 取令牌 | `GET /init.html` | `rebootForm` 里有一个一次性的 `nosave_session_num`，每次打开页面都会变，作用类似 CSRF 令牌 |
 | 重启 | `POST /init.html` | 发送 `nosave_reboot=1` 和刚拿到的那个 `nosave_session_num` |
