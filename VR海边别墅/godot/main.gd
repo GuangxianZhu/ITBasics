@@ -54,6 +54,7 @@ var cfg := ConfigFile.new()
 var xr_mode := false
 var fx_step := 0
 var fx_base := {}
+var amb_base := 0.5
 var player: CharacterBody3D
 var audio
 var fx
@@ -266,7 +267,8 @@ func _blend_time(a: Dictionary, b: Dictionary, k: float) -> void:
 	sky_mat.set_shader_parameter("cloud_color", cur.cloud)
 	sky_mat.set_shader_parameter("cloud_cover", cur.cover)
 	sky_mat.set_shader_parameter("stars", cur.stars)
-	env.ambient_light_energy = cur.ambient
+	amb_base = cur.ambient
+	_apply_ambient()
 	env.ambient_light_color = cur.amb_color
 	env.tonemap_exposure = cur.exposure
 	if not underwater:
@@ -844,7 +846,24 @@ func _setup_gi() -> void:
 	elif mode == "sdfgi":
 		env.sdfgi_enabled = true
 		env.sdfgi_use_occlusion = true
+	if xr_mode and not cfg.get_value("graphics", "xr_gi", false):
+		# VR 实测: VoxelGI 在双眼渲染下右眼出白影 → VR 里默认先不显示（仍然烘焙好，☰ 排查键可以临时打开对比）
+		if vgi:
+			vgi.visible = false
+		env.sdfgi_enabled = false
+		mode += "（VR 里默认关，settings.cfg 的 xr_gi 可打开）"
 	print("[villa] GI = ", mode)
+	_apply_ambient()
+
+
+func gi_active() -> bool:
+	return (vgi != null and vgi.visible) or env.sdfgi_enabled
+
+
+## 没有全局光照时，屋里缺了墙面反弹的光会偏暗 → 把环境光调亮一点补回来
+func _apply_ambient() -> void:
+	var boost: float = 1.0 if gi_active() else cfg.get_value("graphics", "no_gi_ambient", 1.4)
+	env.ambient_light_energy = amb_base * boost
 
 
 func _toggle_gi() -> void:
@@ -853,6 +872,7 @@ func _toggle_gi() -> void:
 		print("[villa] VoxelGI ", vgi.visible)
 	else:
 		env.sdfgi_enabled = not env.sdfgi_enabled
+	_apply_ambient()
 
 
 # ================================================================== 声音
@@ -973,36 +993,49 @@ func _setup_reflections() -> void:
 
 
 # ================================================================== 画面特效排查（左手柄 ☰ / 桌面 F 键）
-## 每按一次多关一个特效，眼前显示当前状态；找到"关了哪个之后右眼白影消失"就知道是谁的问题。
+## 每按一次换一种组合，眼前显示当前状态。前 7 步逐个关特效（第一次排查用，结论: 关 GI 后右眼白影消失）；
+## 后 3 步只打开 GI 再变一个条件，用来查 GI 为什么在右眼出错（假设: MSAA 抗锯齿 / VoxelGI 本身 / 两者都）。
 const FX_STEPS := [
-	["全部按设置", []],
-	["关 屏幕反射SSR", ["ssr"]],
-	["关 SSR + 环境光遮蔽SSAO", ["ssr", "ssao"]],
-	["关 SSR + SSAO + 辉光", ["ssr", "ssao", "glow"]],
-	["关 SSR + SSAO + 辉光 + 全局光照", ["ssr", "ssao", "glow", "gi"]],
-	["再关 雾", ["ssr", "ssao", "glow", "gi", "fog"]],
-	["再关 阴影", ["ssr", "ssao", "glow", "gi", "fog", "shadow"]],
+	["全部按设置", {}],
+	["关 屏幕反射SSR", {"ssr": false}],
+	["关 SSR + 环境光遮蔽SSAO", {"ssr": false, "ssao": false}],
+	["关 SSR + SSAO + 辉光", {"ssr": false, "ssao": false, "glow": false}],
+	["关 SSR + SSAO + 辉光 + 全局光照", {"ssr": false, "ssao": false, "glow": false, "gi": false}],
+	["再关 雾", {"ssr": false, "ssao": false, "glow": false, "gi": false, "fog": false}],
+	["再关 阴影", {"ssr": false, "ssao": false, "glow": false, "gi": false, "fog": false, "shadow": false}],
+	["实验A: 开 VoxelGI，抗锯齿MSAA照旧", {"gi": true}],
+	["实验B: 开 VoxelGI，关 MSAA", {"gi": true, "msaa": false}],
+	["实验C: 换成 SDFGI（另一种GI）", {"sdfgi": true}],
 ]
 
 
 func _fx_cycle() -> void:
+	var vp := get_viewport()
 	if fx_base.is_empty():
 		fx_base = {"ssr": env.ssr_enabled, "ssao": env.ssao_enabled, "glow": env.glow_enabled, "fog": env.fog_enabled,
-			"gi": vgi.visible if vgi else env.sdfgi_enabled, "shadow": sun.shadow_enabled}
+			"gi": vgi.visible if vgi else false, "sdfgi": env.sdfgi_enabled, "shadow": sun.shadow_enabled,
+			"msaa": vp.msaa_3d != Viewport.MSAA_DISABLED}
+		fx_base["msaa_mode"] = vp.msaa_3d
 	fx_step = (fx_step + 1) % FX_STEPS.size()
-	var off: Array = FX_STEPS[fx_step][1]
-	env.ssr_enabled = fx_base.ssr and not off.has("ssr")
-	env.ssao_enabled = fx_base.ssao and not off.has("ssao")
-	env.glow_enabled = fx_base.glow and not off.has("glow")
-	env.fog_enabled = fx_base.fog and not off.has("fog")
+	var o: Dictionary = FX_STEPS[fx_step][1]
+	var v := func(k: String) -> bool: return o.get(k, fx_base[k])
+	env.ssr_enabled = v.call("ssr")
+	env.ssao_enabled = v.call("ssao")
+	env.glow_enabled = v.call("glow")
+	env.fog_enabled = v.call("fog")
+	var sdf: bool = v.call("sdfgi")
+	if o.has("gi") and not o.gi:
+		sdf = false
 	if vgi:
-		vgi.visible = fx_base.gi and not off.has("gi")
-	else:
-		env.sdfgi_enabled = fx_base.gi and not off.has("gi")
-	sun.shadow_enabled = fx_base.shadow and not off.has("shadow")
+		vgi.visible = v.call("gi") and not sdf
+	env.sdfgi_enabled = sdf
+	sun.shadow_enabled = v.call("shadow")
 	moon.shadow_enabled = sun.shadow_enabled
-	var state := "SSR%s SSAO%s 辉光%s GI%s 雾%s 阴影%s" % [
-		"开" if env.ssr_enabled else "关", "开" if env.ssao_enabled else "关", "开" if env.glow_enabled else "关",
-		("开" if vgi.visible else "关") if vgi else ("开" if env.sdfgi_enabled else "关"),
-		"开" if env.fog_enabled else "关", "开" if sun.shadow_enabled else "关"]
-	player.notice("特效 %d/%d: %s\n%s" % [fx_step + 1, FX_STEPS.size(), FX_STEPS[fx_step][0], state])
+	vp.msaa_3d = fx_base.msaa_mode if v.call("msaa") else Viewport.MSAA_DISABLED
+	_apply_ambient()
+	var on_off := func(b: bool) -> String: return "开" if b else "关"
+	var state := "SSR%s SSAO%s 辉光%s VoxelGI%s SDFGI%s 雾%s 阴影%s MSAA%s" % [
+		on_off.call(env.ssr_enabled), on_off.call(env.ssao_enabled), on_off.call(env.glow_enabled),
+		on_off.call(vgi != null and vgi.visible), on_off.call(env.sdfgi_enabled), on_off.call(env.fog_enabled),
+		on_off.call(sun.shadow_enabled), on_off.call(vp.msaa_3d != Viewport.MSAA_DISABLED)]
+	player.notice("特效 %d/%d: %s\n%s" % [fx_step + 1, FX_STEPS.size(), FX_STEPS[fx_step][0], state], 6.0)
