@@ -177,7 +177,7 @@ func _shot(name: String, pos: Vector3, yaw: float, pitch: float, time_i: int, wa
 	m.set_time(time_i, true)
 	m.player.teleport_to(pos, yaw)
 	m.player.desk_cam.rotation.x = deg_to_rad(pitch)
-	await get_tree().create_timer(wait).timeout
+	await get_tree().create_timer(wait * float(OS.get_environment("SHOT_WAIT_MUL") if OS.has_environment("SHOT_WAIT_MUL") else "1")).timeout
 	m.get_viewport().get_texture().get_image().save_png("%s/shot_%s.png" % [OS.get_user_data_dir(), name])
 	print("[shot] ", name)
 

@@ -828,6 +828,10 @@ func _set_lights(group: String, on: bool) -> void:
 # ================================================================== 全局光照（光在屋里反弹）
 func _setup_gi() -> void:
 	var mode: String = cfg.get_value("graphics", "gi", "voxel")
+	if xr_mode:
+		# VR 实测（☰ 排查键）: VoxelGI 右眼出白影，关 MSAA 也没用；SDFGI 双眼都正常 → VR 里默认换 SDFGI
+		var xg = cfg.get_value("graphics", "xr_gi", "sdfgi")
+		mode = xg if xg is String else ("voxel" if xg else "off")
 	if mode == "voxel":
 		# VoxelGI: 把房子切成 256 格的体素，记住"哪里有墙、什么颜色"；光照本身每帧实时算 →
 		# 换时间段、开关灯，反弹光都会跟着变（这就是能保留昼夜切换的原因）
@@ -844,14 +848,13 @@ func _setup_gi() -> void:
 			vgi.data.use_two_bounces = true
 		print("[villa] VoxelGI baked in %d ms" % (Time.get_ticks_msec() - t0))
 	elif mode == "sdfgi":
+		# SDFGI: 以相机为中心、一圈圈变粗的"距离场"网格（cascade），每帧实时追光 → 也能跟着昼夜/开关灯变
+		# 比 VoxelGI 粗一些、更耗显卡，但不用预先烘焙，范围也大（室外也有反弹光）
 		env.sdfgi_enabled = true
-		env.sdfgi_use_occlusion = true
-	if xr_mode and not cfg.get_value("graphics", "xr_gi", false):
-		# VR 实测: VoxelGI 在双眼渲染下右眼出白影 → VR 里默认先不显示（仍然烘焙好，☰ 排查键可以临时打开对比）
-		if vgi:
-			vgi.visible = false
-		env.sdfgi_enabled = false
-		mode += "（VR 里默认关，settings.cfg 的 xr_gi 可打开）"
+		env.sdfgi_use_occlusion = true                 # 减少光从墙缝漏进屋
+		env.sdfgi_cascades = 4
+		env.sdfgi_min_cell_size = cfg.get_value("graphics", "sdfgi_cell", 0.2)   # 越小屋里越细、越耗
+		env.sdfgi_energy = cfg.get_value("graphics", "sdfgi_energy", 1.0)   # 屋里偏暗就调大
 	print("[villa] GI = ", mode)
 	_apply_ambient()
 
@@ -994,7 +997,7 @@ func _setup_reflections() -> void:
 
 # ================================================================== 画面特效排查（左手柄 ☰ / 桌面 F 键）
 ## 每按一次换一种组合，眼前显示当前状态。前 7 步逐个关特效（第一次排查用，结论: 关 GI 后右眼白影消失）；
-## 后 3 步只打开 GI 再变一个条件，用来查 GI 为什么在右眼出错（假设: MSAA 抗锯齿 / VoxelGI 本身 / 两者都）。
+## 后续实验结论: VoxelGI 本身在 VR 右眼出错（与 MSAA 无关），SDFGI 正常 → VR 默认用 SDFGI。
 const FX_STEPS := [
 	["全部按设置", {}],
 	["关 屏幕反射SSR", {"ssr": false}],
@@ -1003,9 +1006,6 @@ const FX_STEPS := [
 	["关 SSR + SSAO + 辉光 + 全局光照", {"ssr": false, "ssao": false, "glow": false, "gi": false}],
 	["再关 雾", {"ssr": false, "ssao": false, "glow": false, "gi": false, "fog": false}],
 	["再关 阴影", {"ssr": false, "ssao": false, "glow": false, "gi": false, "fog": false, "shadow": false}],
-	["实验A: 开 VoxelGI，抗锯齿MSAA照旧", {"gi": true}],
-	["实验B: 开 VoxelGI，关 MSAA", {"gi": true, "msaa": false}],
-	["实验C: 换成 SDFGI（另一种GI）", {"sdfgi": true}],
 ]
 
 
