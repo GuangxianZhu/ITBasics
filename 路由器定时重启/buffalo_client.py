@@ -10,7 +10,11 @@ Reverse-engineered from the router's own pages (2026-10):
                                        nosave_Password=        (empty hidden field)
                                        MobileDevice=0
                                        nosave_session_num=     (empty on login page)
-           -> server sets cookie SessionID
+           -> server sets cookie SessionID, page JS goes to index.html
+  PCtime : GET  /login_time.html       -> <form name="internet_detect" action="redirect.html">
+           POST /redirect.html         PageName=login_time.html & nosave_PCTIME=<JS Date string>
+                                       & nosave_session_num=<from the form>
+           (until this is posted, every admin page just redirects to login_time.html)
   Guard  : GET  /Ajax_get_value.html&action=GetMovingRestore  -> {"MovingRestoreFlag": 0|1}
            (the UI refuses to reboot while "smart moving" is restoring settings)
   Reboot : GET  /init.html             -> <form name="rebootForm"> with a one-time nosave_session_num
@@ -88,6 +92,23 @@ def rsa_encrypt_like_jsencrypt(pem_text, password):
     return base64.b64encode(ct).decode("ascii")
 
 
+def js_date_string(now=None):
+    """Same shape as JavaScript `new Date().toString()`:
+    'Sat Oct 17 2026 15:31:11 GMT+0900 (Japan Standard Time)'"""
+    import datetime as _dt
+    now = now or _dt.datetime.now().astimezone()
+    off = now.utcoffset() or _dt.timedelta(0)
+    mins = int(off.total_seconds() // 60)
+    sign = "+" if mins >= 0 else "-"
+    mins = abs(mins)
+    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    name = "Japan Standard Time" if (sign, mins) == ("+", 540) else (now.tzname() or "")
+    return "%s %s %02d %d %s GMT%s%02d%02d (%s)" % (
+        days[now.weekday()], months[now.month - 1], now.day, now.year,
+        now.strftime("%H:%M:%S"), sign, mins // 60, mins % 60, name)
+
+
 class BuffaloRouter:
     def __init__(self, host, username, password, timeout=10, debug_dir=None, log=print):
         self.base = "http://" + host.strip().rstrip("/")
@@ -147,14 +168,38 @@ class BuffaloRouter:
         if m and "SessionID" not in self.s.cookies:
             self.s.cookies.set("SessionID", m.group(1))
 
+        # Step 2 of login: the router sends the browser to login_time.html, which auto-posts
+        # the PC's clock to redirect.html. Until that is done every admin page bounces back
+        # to login_time.html, so we do it ourselves.
+        self.post_pc_time()
+
         # Verify by opening a page that needs authentication.
         init = self._get("/init.html", referer=self.base + "/index_adv.html")
+        if "login_time.html" in init.text and "rebootForm" not in init.text:
+            self.post_pc_time()          # one more try, in case the first one was too early
+            init = self._get("/init.html", referer=self.base + "/index_adv.html")
         self._dump("3_init_page.html", init.text)
         if "rebootForm" in init.text:
             return init.text
         if "privkey" in init.text or "id_nosave_Password" in init.text:
             raise RouterError("登录失败：用户名或密码不对（连续失败多次路由器可能暂时锁定登录）")
         raise RouterError("登录后打不开 init.html，返回内容不认识，见 debug/3_init_page.html")
+
+    def post_pc_time(self):
+        """login_time.html: <form name="internet_detect" action="redirect.html"> with
+        PageName / nosave_PCTIME (= JavaScript `new Date().toString()`) / nosave_session_num."""
+        r = self._get("/login_time.html", referer=self.base + "/index.html")
+        self._dump("2b_login_time.html", r.text)
+        form = next((f for f in _parse(r.text).forms if f["name"] == "internet_detect"), None)
+        if form is None:
+            return False   # firmware without this step - nothing to do
+        action = re.search(r'name="internet_detect"[^>]*action="([^"]+)"', r.text)
+        path = "/" + (action.group(1) if action else "redirect.html").lstrip("/")
+        data = dict(form["fields"])
+        data["nosave_PCTIME"] = js_date_string()
+        r2 = self._post(path, data, referer=self.base + "/login_time.html")
+        self._dump("2c_after_time.html", r2.text)
+        return True
 
     def moving_restore_busy(self):
         try:
