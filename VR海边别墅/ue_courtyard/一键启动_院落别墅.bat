@@ -26,6 +26,9 @@ if not exist "%TOOLS%" mkdir "%TOOLS%"
 copy /Y "%~dp0*.py" "%TOOLS%\" >nul
 copy /Y "%~dp0*.json" "%TOOLS%\" >nul
 copy /Y "%~dp0*.wav" "%TOOLS%\" >nul
+copy /Y "%~dp0*.glb" "%TOOLS%\" >nul
+if not exist "%TOOLS%\tex" mkdir "%TOOLS%\tex"
+copy /Y "%~dp0tex\*.png" "%TOOLS%\tex\" >nul
 echo Scripts synced to %TOOLS%
 
 rem ---- rendering mode ----
@@ -34,7 +37,7 @@ set "GI=%~dp0..\ue\gi_mode.ps1"
 if exist "%GI%" (
     powershell -NoProfile -ExecutionPolicy Bypass -File "%GI%" status
     echo.
-    echo   1 = forward  ^(VR template default: forward shading + MSAA, no Lumen^)
+    echo   1 = forward  ^(VR: forward + MSAA + baked lightmaps, ~90 fps^)
     echo   2 = lumen    ^(deferred + Lumen real-time GI + TSR, heavier^)
     echo   Enter = keep current
     set "M="

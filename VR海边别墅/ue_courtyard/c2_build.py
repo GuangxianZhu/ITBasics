@@ -28,6 +28,20 @@ SPH = unreal.load_asset("/Engine/BasicShapes/Sphere.Sphere")
 LOG = []
 COUNT = {"n": 0}
 
+# 几何模式:
+#   RECORD 是 list 时 (云端 c2x_export_geom.py 用假的 unreal 模块导入本文件) -> box/cyl/sph 只记录不生成;
+#   UE 里如果有 court_geom.glb (云端导出的带倒角合并网格) -> 不再生成 1000 多个立方体, 改为导入合并网格。
+RECORD = None
+MERGED = os.path.exists(os.path.join(D, "court_geom.glb"))
+SPAWN_ALWAYS = {"Plants"}   # 这些组仍是单独 Actor (盆、土; 植物本身由 c8_trees.py 生成)
+PLANTS = []                  # [种类, x, y, z, 缩放] (平面图米制), 给 c8_trees.py 用
+TREES = os.path.exists(os.path.join(D, "court_plants.glb"))
+
+
+def _skip(group):
+    return MERGED and group not in SPAWN_ALWAYS
+
+
 FL = 0.15      # 室内 / 平台地面
 GR = 0.05      # 院子碎石面
 WT = 3.85      # 外墙顶 (含女儿墙)
@@ -137,6 +151,9 @@ def build_materials():
         rough = v[3] if len(v) > 3 else 1.0
         metal = v[4] if len(v) > 4 else 0.0
         M[k] = mi(k, texset, tile, tint, rough, metal)
+        pbr = "/Game/Courtyard/PBR/MI_P_" + k           # c7_pbr.py 生成的 PBR 材质优先
+        if EAL.does_asset_exist(pbr):
+            M[k] = unreal.load_asset(pbr)
     M["water"] = unreal.load_asset("/Game/Villa/Materials/M_VillaPoolWater")
     M["sea"] = unreal.load_asset("/Game/Villa/Materials/M_VillaSea")
     M["glass"] = unreal.load_asset("/Game/Villa/Materials/M_VillaGlass")
@@ -170,18 +187,33 @@ def box(x0, x1, y0, y1, z0, z1, mat, group="Misc", collide=True, label=None, yaw
     # 否则它的侧面和外墙外表面重合在同一个平面上, 两个材质抢同一批像素, VR 里一动就闪
     if -0.01 <= z1 <= FL + 0.001 and z0 < -0.05 and (x1 - x0) > 0.2 and (y1 - y0) > 0.2:
         x0, x1, y0, y1 = x0 + 0.015, x1 - 0.015, y0 + 0.015, y1 - 0.015
+    if RECORD is not None:
+        RECORD.append(("box", (x0, x1, y0, y1, z0, z1, yaw), mat, group, collide))
+        return None
+    if _skip(group):
+        return None
     a = EAS.spawn_actor_from_object(CUBE, V((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), unreal.Rotator(0, 0, yaw))
     a.set_actor_scale3d(unreal.Vector(x1 - x0, y1 - y0, z1 - z0))
     return finish(a, M.get(mat) if isinstance(mat, str) else mat, group, collide, label)
 
 
 def cyl(x, y, z0, z1, d, mat, group="Misc", collide=True, dy=None, pitch=0.0, roll=0.0):
+    if RECORD is not None:
+        RECORD.append(("cyl", (x, y, z0, z1, d, dy or d, pitch, roll), mat, group, collide))
+        return None
+    if _skip(group):
+        return None
     a = EAS.spawn_actor_from_object(CYL, V(x, y, (z0 + z1) / 2), unreal.Rotator(roll, pitch, 0))
     a.set_actor_scale3d(unreal.Vector(d, dy or d, z1 - z0))
     return finish(a, M[mat], group, collide, None)
 
 
 def sph(x, y, z, sx, sy, sz, mat, group="Plants", collide=False):
+    if RECORD is not None:
+        RECORD.append(("sph", (x, y, z, sx, sy, sz), mat, group, collide))
+        return None
+    if _skip(group):
+        return None
     a = EAS.spawn_actor_from_object(SPH, V(x, y, z), unreal.Rotator(0, 0, 0))
     a.set_actor_scale3d(unreal.Vector(sx, sy, sz))
     return finish(a, M[mat], group, collide, None)
@@ -238,6 +270,9 @@ def plight(x, y, z, cd=6.0, radius=800, color=(1.0, 0.86, 0.7), lamp=True):
 
 # ------------------------------------------------------------------ 植物 (中等: 程序化低模)
 def olive(x, y, s=1.0, z0=GR):
+    PLANTS.append(["Olive", x, y, z0, s])
+    if TREES:
+        return
     cyl(x, y, z0, z0 + 1.5 * s, 0.32 * s, "bark", "Plants", True, pitch=6)
     cyl(x + 0.25 * s, y, z0 + 1.1 * s, z0 + 2.2 * s, 0.18 * s, "bark", "Plants", False, pitch=-18)
     sph(x, y, z0 + 2.5 * s, 3.0 * s, 2.7 * s, 1.5 * s, "olive")
@@ -246,6 +281,9 @@ def olive(x, y, s=1.0, z0=GR):
 
 
 def fig(x, y, s=1.0, z0=GR):
+    PLANTS.append(["Fig", x, y, z0, s])
+    if TREES:
+        return
     cyl(x, y, z0, z0 + 1.3 * s, 0.22 * s, "bark", "Plants", True)
     sph(x, y, z0 + 1.9 * s, 2.2 * s, 2.2 * s, 1.4 * s, "leaf")
     sph(x + 0.5 * s, y - 0.3 * s, z0 + 2.3 * s, 1.3 * s, 1.3 * s, 0.9 * s, "leaf")
@@ -254,13 +292,23 @@ def fig(x, y, s=1.0, z0=GR):
 def lemon_pot(x, y, z0=GR):
     cyl(x, y, z0, z0 + 0.55, 0.6, "terracotta", "Plants", True)
     box(x - 0.26, x + 0.26, y - 0.26, y + 0.26, z0 + 0.5, z0 + 0.53, "soil", "Plants", False)
+    PLANTS.append(["Lemon", x, y, z0 + 0.53, 1.0])
+    if TREES:
+        return
     cyl(x, y, z0 + 0.5, z0 + 1.2, 0.06, "bark", "Plants", False)
     sph(x, y, z0 + 1.45, 0.95, 0.95, 0.85, "leaf")
     for dx, dy, dz in ((0.3, 0.2, 1.4), (-0.25, 0.3, 1.55), (0.1, -0.35, 1.3), (-0.3, -0.15, 1.6)):
         sph(x + dx, y + dy, z0 + dz, 0.09, 0.09, 0.1, "yellow")
 
 
-def bush(x, y, z, d, mat, h=None):
+BUSH_KIND = {"olive": ("OliveShrub", 0.6), "lavender": ("Lavender", 0.36), "leaf": ("Rosemary", 0.36)}
+
+
+def bush(x, y, z, d, mat, h=None, kind=None):
+    k, ref = (kind, 0.5) if kind else BUSH_KIND.get(mat, ("OliveShrub", 0.6))
+    PLANTS.append([k, x, y, z, round(d / ref, 3)])
+    if TREES:
+        return
     sph(x, y, z + (h or d * 0.6) / 2, d, d, h or d * 0.6, mat)
 
 
@@ -479,8 +527,9 @@ def build_wing():
     box(4.25, 8.9, 6.6, 10.25, -0.2, FL, "teak", g)
     box(5.4, 7.6, 7.9, 9.5, FL, FL + 0.55, "white", g, label="Tub")
     box(5.5, 7.5, 8.0, 9.4, FL + 0.45, FL + 0.5, "water", g, False)
-    # 九重葛: 贴墙的一层扁椭球 (中等精度; 以后换叶片卡)
-    for i in range(24):
+    # 九重葛: 有程序化植物时是一整片贴墙的叶片卡 (c8x_trees.py 的 BougaWall), 没有时退回一层扁椭球
+    PLANTS.append(["BougaWall", 4.4, 10.17, 0.0, 1.0])
+    for i in range(0 if TREES else 24):
         for j in range(11):
             k = i * 11 + j
             jx = ((k * 37) % 11) / 11.0 - 0.5
@@ -515,7 +564,7 @@ def build_entry():
     box(21.0, 30.0, 6.8, 7.1, 0, 2.6, "stone", g, label="LaneWallS")
     for x in (23.0, 25.5, 28.0):
         cyl(x, 9.95, GR, GR + 0.7, 0.45, "terracotta", g, True)
-        bush(x, 9.95, GR + 0.7, 0.45, "leaf", 0.5)
+        bush(x, 9.95, GR + 0.7, 0.45, "leaf", 0.5, kind="PotShrub")
     g = "C7_GateCourt"
     box(30.0, 33.0, 7.0, 10.5, -0.1, GR, "gravel", g)
     cyl(31.5, 8.5, GR, GR + 0.04, 1.2, "terrace", g, True)
@@ -557,9 +606,7 @@ def build_garage():
         box(x0 + 0.15, x0 + w - 0.15, y0 + 1.3, y0 + 3.3, 1.32, 1.4, paint, g)
         for dx in (0.1, w - 0.1):
             for dy in (0.9, L - 0.9):
-                a = EAS.spawn_actor_from_object(CYL, V(x0 + dx, y0 + dy, 0.33), unreal.Rotator(0, 90, 0))
-                a.set_actor_scale3d(unreal.Vector(0.66, 0.66, 0.22))
-                finish(a, M["black"], g, True, None)
+                cyl(x0 + dx, y0 + dy, 0.22, 0.44, 0.66, "black", g, True, pitch=90)
     plight(24.5, 4.2, CEIL - 0.3, 5.0)
     # 工作间
     g = "I_Workshop"
@@ -768,6 +815,46 @@ def player_and_nav():
             LOG.append("NavMeshBounds -> %s" % center)
 
 
+def import_merged():
+    """导入云端生成的 court_geom.glb: 每个 (区域, 材质) 一个静态网格, 顶点已经是世界坐标, 所以 Actor 放在原点。"""
+    if not MERGED:
+        return
+    dst = "/Game/Courtyard/Geom"
+    t = unreal.AssetImportTask()
+    t.filename = os.path.join(D, "court_geom.glb")
+    t.destination_path = dst
+    t.automated = True
+    t.save = True
+    t.replace_existing = True
+    TOOLS.import_asset_tasks([t])
+    n = 0
+    for path in EAL.list_assets(dst, recursive=True, include_folder=False):
+        a0 = EAL.load_asset(path)
+        if not isinstance(a0, unreal.StaticMesh):
+            continue
+        name = a0.get_name()
+        key = name[3:] if name.startswith("SM_") else name
+        parts = key.split("__")               # <区域>__<材质>[__nc]
+        if len(parts) < 2:
+            continue
+        group, mat = parts[0], parts[1]
+        collide = not (len(parts) > 2 and parts[2] == "nc")
+        # 导入时会自动生成凸包碰撞; 导航按简单碰撞算, 墙+天花板的凸包会把整间屋子填实 -> 屋里没有 NavMesh
+        unreal.get_editor_subsystem(unreal.StaticMeshEditorSubsystem).remove_collisions(a0)
+        bs = a0.get_editor_property("body_setup")
+        if bs:
+            bs.set_editor_property("collision_trace_flag", unreal.CollisionTraceFlag.CTF_USE_COMPLEX_AS_SIMPLE)
+        EAL.save_loaded_asset(a0)
+        a = EAS.spawn_actor_from_object(a0, unreal.Vector(0, 0, 0), unreal.Rotator(0, 0, 0))
+        mm = M.get(mat)
+        if mm:
+            for i in range(a.static_mesh_component.get_num_materials()):
+                a.static_mesh_component.set_material(i, mm)
+        finish(a, None, "Geom/" + group, collide, "G_" + name)
+        n += 1
+    LOG.append("merged geometry actors: %d" % n)
+
+
 def main():
     clean()
     build_materials()
@@ -780,7 +867,15 @@ def main():
     build_entry()
     build_garage()
     build_studio()
+    import_merged()
     place_ai()
+    if TREES:                                   # 程序化植物 (叶片卡) 由 c8_trees.py 摆放
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("c8_trees", os.path.join(D, "c8_trees.py"))
+        c8 = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(c8)
+        c8.main(PLANTS)
+        LOG.extend(c8.LOG)
     player_and_nav()
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     LOG.append("spawned %d meshes; saved %s" % (COUNT["n"], les.save_current_level()))
@@ -788,4 +883,5 @@ def main():
     print(" | ".join(LOG))
 
 
-main()
+if __name__ == "__main__":
+    main()
