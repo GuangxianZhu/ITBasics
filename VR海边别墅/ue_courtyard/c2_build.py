@@ -166,6 +166,10 @@ def box(x0, x1, y0, y1, z0, z1, mat, group="Misc", collide=True, label=None, yaw
     z0, z1 = sorted((z0, z1))
     if x1 - x0 < 1e-3 or y1 - y0 < 1e-3 or z1 - z0 < 1e-3:
         return None
+    # 防 Z-fighting (闪烁): 地面层的板子 (顶面在室内地面标高附近、底面在地下) 四边各缩 1.5 cm,
+    # 否则它的侧面和外墙外表面重合在同一个平面上, 两个材质抢同一批像素, VR 里一动就闪
+    if -0.01 <= z1 <= FL + 0.001 and z0 < -0.05 and (x1 - x0) > 0.2 and (y1 - y0) > 0.2:
+        x0, x1, y0, y1 = x0 + 0.015, x1 - 0.015, y0 + 0.015, y1 - 0.015
     a = EAS.spawn_actor_from_object(CUBE, V((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), unreal.Rotator(0, 0, yaw))
     a.set_actor_scale3d(unreal.Vector(x1 - x0, y1 - y0, z1 - z0))
     return finish(a, M.get(mat) if isinstance(mat, str) else mat, group, collide, label)
@@ -214,7 +218,8 @@ def wall(axis, a0, a1, c0, c1, z0, z1, mat, holes=(), group="Walls"):
 
 
 def roof(x0, x1, y0, y1):
-    box(x0, x1, y0, y1, CEIL, CEIL + 0.25, "white", "Roof")
+    # 屋面板比外轮廓每边缩 2 cm, 侧面藏进墙里, 不和外墙外表面共面 (同样是防闪烁)
+    box(x0 + 0.02, x1 - 0.02, y0 + 0.02, y1 - 0.02, CEIL, CEIL + 0.25, "white", "Roof")
 
 
 def plight(x, y, z, cd=6.0, radius=800, color=(1.0, 0.86, 0.7), lamp=True):
