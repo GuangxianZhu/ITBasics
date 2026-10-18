@@ -14,7 +14,7 @@ import c8x_trees as T  # noqa: E402
 
 TEX = os.path.join(HERE, "..", "tex")
 LEAF_TEX = {"Olive": "T_olive_leaves", "Fig": "T_fig_leaves", "Lemon": "T_lemon_leaves", "OliveShrub": "T_olive_leaves",
-            "PotShrub": "T_rosemary", "Lavender": "T_lavender", "Rosemary": "T_rosemary", "BougaWall": "T_bougainvillea"}
+            "PotShrub": "T_rosemary", "Lavender": "T_lavender", "Rosemary": "T_rosemary", "BougaWall": "T_bouga_spray"}
 
 
 def load(name, size=256):
@@ -89,7 +89,10 @@ def main():
     tiles = []
     for name in ("Olive", "Fig", "Lemon", "OliveShrub", "Lavender", "Rosemary", "BougaWall"):
         b, l, _ = plants[name]
-        im, ext = render([(b, figbark if name == "Fig" else bark), (l, load(LEAF_TEX[name]))],
+        parts = [(b, figbark if name == "Fig" else bark), (l, load(LEAF_TEX[name], 512))]
+        if name == "BougaWall":
+            parts.insert(1, (T.BOUGA_GREEN[0], load("T_bouga_leaf", 512)))
+        im, ext = render(parts,
                          yaw=0 if name == "BougaWall" else 30)
         from PIL import ImageDraw
         ImageDraw.Draw(im).text((8, 8), "%s  %.1f m" % (name, ext), fill=(0, 0, 0))

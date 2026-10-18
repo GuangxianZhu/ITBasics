@@ -156,9 +156,37 @@ def build_materials():
             M[k] = unreal.load_asset(pbr)
     M["water"] = unreal.load_asset("/Game/Villa/Materials/M_VillaPoolWater")
     M["sea"] = unreal.load_asset("/Game/Villa/Materials/M_VillaSea")
-    M["glass"] = unreal.load_asset("/Game/Villa/Materials/M_VillaGlass")
+    M["glass"] = court_glass()      # 旧的 M_VillaGlass 带贴图, 合并网格是米制 UV -> 每米一格, 像一面瓷砖墙
     M["screen"] = unreal.load_asset("/Game/Villa/Materials/M_VillaDarkGlass")
     M["lamp"] = unreal.load_asset("/Game/Villa/Materials/M_VillaLamp")
+
+
+def court_glass():
+    """不用 UV 的透明玻璃: 半透明 + 低粗糙度, 前向渲染下用 Surface ForwardShading 才有高光反射。"""
+    path = "/Game/Courtyard/Materials/M_CourtGlass"
+    if EAL.does_asset_exist(path):
+        return unreal.load_asset(path)
+    m = TOOLS.create_asset("M_CourtGlass", "/Game/Courtyard/Materials", unreal.Material, unreal.MaterialFactoryNew())
+    m.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    try:
+        m.set_editor_property("translucency_lighting_mode", unreal.TranslucencyLightingMode.TLM_SURFACE_FORWARD_SHADING)
+    except Exception as e:
+        LOG.append("glass lighting mode: %s" % e)
+    m.set_editor_property("two_sided", True)
+
+    def const(v, x, y):
+        e = MEL.create_material_expression(m, unreal.MaterialExpressionConstant, x, y)
+        e.set_editor_property("r", v)
+        return e
+    col = MEL.create_material_expression(m, unreal.MaterialExpressionConstant3Vector, -400, -200)
+    col.set_editor_property("constant", unreal.LinearColor(0.85, 0.93, 0.95, 1))
+    MEL.connect_material_property(col, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    MEL.connect_material_property(const(0.05, -400, 0), "", unreal.MaterialProperty.MP_ROUGHNESS)
+    MEL.connect_material_property(const(0.8, -400, 80), "", unreal.MaterialProperty.MP_SPECULAR)
+    MEL.connect_material_property(const(0.12, -400, 160), "", unreal.MaterialProperty.MP_OPACITY)
+    MEL.recompile_material(m)
+    EAL.save_loaded_asset(m)
+    return m
 
 
 # ------------------------------------------------------------------ 生成工具
@@ -433,19 +461,26 @@ def build_living():
     box(23.7, 27.3, 14.6, 16.4, FL, FL + 0.01, "rug", g, False)
     for x, y in ((19.5, 11.9), (24.5, 12.5), (27.5, 15.0), (21.0, 15.5)):
         plight(x, y, CEIL - 0.3, 6.0)
-    # 门厅 D: x17..21, y2.5..10.5; 楼梯洞 x19.5..20.6, y2.8..7.3 (往南下到地下室)
+    # 门厅 D: x17..21, y2.5..10.5; 楼梯洞 x19.5..20.6, y4.0..8.0
+    # 楼梯从门厅南头的平台 (y2.75..4.0) 往北下, 下到底正对地下室通道 (旧版往南下, 走到底是一面墙)
     g = "D_Hall"
-    box(17.0, 19.5, 2.5, 10.5, -0.25, FL, "porcelain", g, label="HallFloor")
-    box(20.6, 21.0, 2.5, 10.5, -0.25, FL, "porcelain", g)
-    box(19.5, 20.6, 7.3, 10.5, -0.25, FL, "porcelain", g)
-    box(19.5, 20.6, 2.5, 2.8, -0.25, FL, "porcelain", g)
+    # 楼梯井 x19.3..20.75 (宽 1.45 m, 东边直接贴门厅东墙), 两侧有墙一直到地下室地面:
+    # 开敞的窄楼梯两边都是"悬崖", NavMesh 从两边各腐蚀 0.35 m 后中间断开, VR 瞬移下不去
+    box(17.0, 19.3, 2.5, 10.5, -0.25, FL, "porcelain", g, label="HallFloor")
+    box(20.75, 21.0, 2.5, 10.5, -0.25, FL, "porcelain", g)
+    box(19.3, 20.75, 8.0, 10.5, -0.25, FL, "porcelain", g)
+    # 平台入口净宽 1.25 m: VR 导航代理半径 0.35 m, 两边各腐蚀 0.35, 0.85 m 的口子会被切断
+    box(19.3, 20.75, 2.5, 4.0, -0.25, FL, "porcelain", g, label="StairLanding")
     wall("y", 2.5, 10.5, 17.0, 17.25, 0, WT, "white", [(5.2, 6.3, FL, 2.3, "open"), (9.0, 10.0, FL, 2.3, "open")], g)
     wall("y", 2.5, 10.5, 20.75, 21.0, 0, WT, "white", [(8.0, 9.2, FL, 2.4, "open")], g)
     wall("x", 17.0, 21.0, 2.5, 2.75, 0, WT, "white", (), g)
     roof(17, 21, 2.5, 10.5)
     # 楼梯边玻璃栏杆
-    box(19.45, 19.5, 2.8, 7.3, FL, FL + 1.0, "glass", g)
-    box(19.44, 19.51, 2.8, 7.3, FL + 1.0, FL + 1.05, "black", g)
+    # 西侧 (y4.0..8.0) + 北头横一段; 南头 y2.75..4.0 留口从门厅走上平台
+    box(19.25, 19.3, 4.0, 8.0, FL, FL + 1.0, "glass", g)
+    box(19.24, 19.31, 4.0, 8.0, FL + 1.0, FL + 1.05, "black", g)
+    box(19.3, 20.75, 7.95, 8.0, FL, FL + 1.0, "glass", g)
+    box(19.3, 20.75, 7.94, 8.01, FL + 1.0, FL + 1.05, "black", g)
     plight(19.0, 8.5, CEIL - 0.3, 5.0)
     plight(18.2, 4.0, CEIL - 0.3, 5.0)
 
@@ -458,20 +493,23 @@ def build_basement():
     wall("y", 2.75, 9.75, 17.0, 17.25, BF, -0.25, "concrete", (), g)
     wall("y", 2.75, 9.75, 27.25, 27.5, BF, -0.25, "concrete", (), g)
     # 天花 (留楼梯洞)
-    box(20.6, 27.5, 2.5, 10.0, -0.4, -0.25, "concrete", g)
-    box(17.0, 19.5, 2.5, 10.0, -0.4, -0.25, "concrete", g)
-    box(19.5, 20.6, 7.3, 10.0, -0.4, -0.25, "concrete", g)
-    box(19.5, 20.6, 2.5, 2.8, -0.4, -0.25, "concrete", g)
-    # 楼梯 16 级 (每级高 0.1875, 深 0.28), 顶在 y=7.3 往南下
+    box(20.75, 27.5, 2.5, 10.0, -0.4, -0.25, "concrete", g)
+    box(17.0, 19.3, 2.5, 10.0, -0.4, -0.25, "concrete", g)
+    box(19.3, 20.75, 8.0, 10.0, -0.4, -0.25, "concrete", g)
+    box(19.3, 20.75, 2.5, 4.0, -0.4, -0.25, "concrete", g)
+    # 楼梯井两侧墙 (地下室地面 -> 顶板)
+    box(19.15, 19.3, 4.0, 8.0, BF, -0.4, "concrete", g)
+    box(20.75, 20.9, 4.0, 8.0, BF, -0.25, "concrete", g)
+    # 楼梯 16 级 (每级高 0.1875, 深 0.25), 顶在南头平台 y=4.0, 往北下, 底在 y=8.0 (前面是 1.75 m 空地)
     for i in range(16):
         top = FL - (i + 1) * 0.1875
-        y1 = 7.3 - i * 0.28
-        box(19.5, 20.6, y1 - 0.28, y1, BF, top, "concrete", g)
+        y0 = 4.0 + i * 0.25
+        box(19.3, 20.75, y0, y0 + 0.25, BF, top, "concrete", g)
     # 三排钢货架 + 纸箱
     k = 0
     for yc in (4.0, 5.8, 7.6):
-        for x0 in (21.3, 24.0):
-            x1 = x0 + 2.4
+        for x0 in (22.3, 24.6):                  # 楼梯井东墙 (20.9) 和货架之间留 1.4 m 通道 (VR 导航代理要 > 0.7 m 才不被腐蚀断)
+            x1 = x0 + 2.0
             for xx in (x0, x1 - 0.05):
                 for yy in (yc - 0.25, yc + 0.2):
                     box(xx, xx + 0.05, yy, yy + 0.05, BF, BF + 2.1, "metal", g)

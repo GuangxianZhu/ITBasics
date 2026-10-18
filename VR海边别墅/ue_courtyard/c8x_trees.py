@@ -268,39 +268,70 @@ def make_clump(seed=9, h=0.5, w=0.42, n=7):
 
 def make_bouga_wall(seed=21, L=4.55, z0=0.4, z1=3.5):
     """九重葛贴墙: 原点 = 墙面左下 (平面图 x=4.4, y=10.17), 沿 +X 4.55 m, 卡片朝 +Y (UE) = 平面图的南。
-    几根贴墙的藤 + 一层叶片卡, 上沿起伏、下沿稀疏。"""
+    第一版用的是"一整团花"的贴图, 铺满整面墙 -> 一堆重复的花球 (密集恐惧)。现在:
+      - 底层: 绿叶小枝 (T_bouga_leaf, 2x2 图集随机取一格), 沿着藤蔓分布, 边缘参差
+      - 花: 带几簇苞片的垂枝 (T_bouga_spray, 2x2 图集), 主要挂在上半部和藤的末端, 一部分探出墙顶往下垂"""
     rng = np.random.default_rng(seed)
     bark, leaf = Part(), Part()
-    for k in range(5):                                  # 藤: 从下往上斜着爬
-        x = 0.3 + k * 1.0 + rng.normal(0, 0.1)
-        pts, rr = [], []
-        for i in range(10):
-            t = i / 9
-            pts.append(np.array([x + math.sin(t * 5 + k) * 0.35 + t * 0.4, 0.06, 0.05 + t * (z1 - 0.3)]))
-            rr.append(0.035 - 0.025 * t)
-        tube(bark, pts, rr, 5, 1, 0.5)
-    c_line = lambda x, z: np.array([x, -0.9, z])        # 法线往墙外偏 (假装是一个贴墙的厚冠)
-    for i in range(140):
-        x = rng.uniform(0.05, L - 0.05)
-        top = z1 - 0.35 + 0.35 * math.sin(x * 1.9) + rng.normal(0, 0.1)
-        z = z0 + 0.6 + (top - z0 - 0.6) * (rng.random() ** 0.5)     # 花多在上半部
-        p = np.array([x, 0.08 + rng.uniform(0, 0.18), z])
+    green = Part()
+    vines = []
+    for root_x in (1.1, 3.3):                           # 藤: 两个根, 每个根扇形分出 3 根弯曲的茎, 到顶后沿墙顶横走
+        for k, spread in enumerate((-0.9, 0.0, 0.9)):
+            ph = rng.uniform(0, 6)
+            pts, rr = [], []
+            for i in range(14):
+                t = i / 13
+                if t < 0.8:
+                    tt = t / 0.8
+                    x = root_x + spread * tt ** 0.8 + math.sin(tt * 5 + ph) * 0.15
+                    p = np.array([x, 0.05, 0.05 + tt * (z1 - 0.2)])
+                else:
+                    p = np.array([float(np.clip(pts[-1][0] + 0.28 * (1 if spread >= 0 else -1), 0.05, L - 0.05)), 0.05, z1 - 0.15 + rng.normal(0, 0.05)])
+                pts.append(p)
+                rr.append((0.045 if k == 1 else 0.035) * (1 - 0.65 * t))
+            tube(bark, pts, rr, 5, 1, 0.5)
+            vines.append(np.array(pts))
+
+    def cell_uv(i):
+        return (0.5 * (i % 2), 0.5 * (i // 2), 0.5 * (i % 2) + 0.5, 0.5 * (i // 2) + 0.5)
+
+    def near_vine():
+        v = vines[rng.integers(len(vines))]
+        i = rng.integers(2, len(v))
+        t = rng.random()
+        return v[i - 1] * (1 - t) + v[i] * t
+
+    c_line = lambda x, z: np.array([x, -1.2, z])        # 法线往墙外偏 (假装是一个贴墙的厚冠)
+    # 绿叶小枝 (底层)
+    for i in range(190):
+        p = near_vine() + np.array([rng.normal(0, 0.45), 0, rng.normal(0, 0.35)])
+        p[0] = np.clip(p[0], 0.05, L - 0.05)
+        p[2] = np.clip(p[2], 0.15, z1 + 0.15)
+        p[1] = 0.07 + rng.uniform(0, 0.12)
+        ang = rng.normal(0, 1.0)                          # 小枝方向: 大致朝外上方
+        up = norm(np.array([math.sin(ang), 0.15, math.cos(ang)]))
+        face = norm(np.array([rng.normal(0, 0.3), 1.0, rng.normal(0, 0.3)]))
+        s = rng.uniform(0.45, 0.65)
+        card(green, rng, p, up, face, s, s, c_line(p[0], p[2]), 0.6, pivot=0.1, uv_rect=cell_uv(rng.integers(4)))
+    # 花枝: 上半部为主, 苞片朝下垂; 约 1/4 挂在墙顶探出去
+    for i in range(115):
+        over_top = i < 25
+        if over_top:
+            p = np.array([rng.uniform(0.1, L - 0.1), 0.12 + rng.uniform(0, 0.12), z1 + rng.uniform(0.0, 0.2)])
+        else:
+            p = near_vine() + np.array([rng.normal(0, 0.4), 0, rng.normal(0, 0.3)])
+            if p[2] < z0 + 1.0 and rng.random() < 0.7:  # 下部少花
+                p[2] += rng.uniform(1.0, 1.8)
+            p[0] = np.clip(p[0], 0.05, L - 0.05)
+            p[2] = np.clip(p[2], z0 + 0.4, z1 + 0.1)
+            p[1] = 0.12 + rng.uniform(0, 0.12)
+        ang = rng.normal(0, 0.5)
+        up = norm(np.array([math.sin(ang), 0.1, math.cos(ang)]))   # 贴图上端是枝条根部 -> 卡片挂在 p, 往下垂
         face = norm(np.array([rng.normal(0, 0.35), 1.0, rng.normal(0, 0.35)]))
-        up = norm(np.array([rng.normal(0, 0.6), rng.normal(0, 0.2), 1.0]))
-        s = rng.uniform(0.32, 0.5)
-        card(leaf, rng, p, up, face, s, s, c_line(x, z), 0.6, pivot=0.5)
-    green = Part()                                       # 九重葛的绿叶 (用无花果叶贴图缩小, 读起来就是一般的绿叶)
-    for i in range(300):
-        x = rng.uniform(0.05, L - 0.05)
-        top = z1 - 0.2 + 0.35 * math.sin(x * 1.9 + 0.5) + rng.normal(0, 0.1)
-        z = z0 - 0.2 + (top - z0) * rng.random()
-        p = np.array([x, 0.05 + rng.uniform(0, 0.12), z])
-        face = norm(np.array([rng.normal(0, 0.4), 1.0, rng.normal(0, 0.4)]))
-        up = norm(np.array([rng.normal(0, 0.8), 0, 1.0]))
-        s = rng.uniform(0.28, 0.4)
-        card(green, rng, p, up, face, s, s, c_line(x, z), 0.6, pivot=0.5)
+        s = rng.uniform(0.5, 0.75)
+        card(leaf, rng, p, up, face, s, s, c_line(p[0], p[2]), 0.6, pivot=0.95, uv_rect=cell_uv(rng.integers(4)))
     BOUGA_GREEN[0] = green
-    return bark, leaf, np.array([L / 2, -0.9, 1.8])
+    return bark, leaf, np.array([L / 2, -1.2, 1.8])
 
 
 BOUGA_GREEN = [None]
@@ -386,7 +417,7 @@ def main():
     for name, (bark, leaf, _) in plants.items():
         prims = [(bark_mat.get(name, "bark"), bark), (leaf_mat[name], leaf)]
         if name == "BougaWall":
-            prims.append(("leaf_fig", BOUGA_GREEN[0]))
+            prims.append(("leaf_bougaleaf", BOUGA_GREEN[0]))
             leaf.F = leaf.F + []                       # (统计里只算花)
         meshes.append(("PL_" + name, prims))
         V = np.asarray(bark.V + leaf.V) if (bark.V or leaf.V) else np.zeros((1, 3))

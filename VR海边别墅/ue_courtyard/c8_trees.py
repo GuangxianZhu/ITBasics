@@ -30,7 +30,8 @@ LEAVES = {  # 槽名 -> (贴图, 颜色倍乘, 透光颜色倍乘)
     "leaf_lemon": ("T_lemon_leaves", (1.0, 1.0, 1.0), 0.6),
     "leaf_lavender": ("T_lavender", (1.0, 1.0, 1.0), 0.4),
     "leaf_rosemary": ("T_rosemary", (0.95, 1.0, 0.95), 0.4),
-    "leaf_bouga": ("T_bougainvillea", (1.0, 1.0, 1.0), 0.7),
+    "leaf_bouga": ("T_bouga_spray", (0.95, 0.9, 0.92), 0.6),        # 2x2 图集: 带几簇苞片的垂枝
+    "leaf_bougaleaf": ("T_bouga_leaf", (0.8, 0.9, 0.75), 0.5),     # 2x2 图集: 绿叶小枝
 }
 BARKS = {"bark": (1.0, 1.0, 1.0), "bark_fig": (1.35, 1.35, 1.4)}
 
