@@ -25,6 +25,7 @@ set "TOOLS=%USERPROFILE%\Documents\UE-MCP-Tools\court"
 if not exist "%TOOLS%" mkdir "%TOOLS%"
 copy /Y "%~dp0*.py" "%TOOLS%\" >nul
 copy /Y "%~dp0*.json" "%TOOLS%\" >nul
+copy /Y "%~dp0*.wav" "%TOOLS%\" >nul
 echo Scripts synced to %TOOLS%
 
 rem ---- rendering mode ----
