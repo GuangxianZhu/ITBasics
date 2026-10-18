@@ -232,10 +232,12 @@
 | 球阀龙头 | `VillaFaucet.*` + `c12_faucet.py` | 香草院石水槽上方（原金属板当底座）；红色握把横=关、顺水管=全开；水柱直径 ∝ √开度（流量∝开度∝截面积）；流水声音量/音调随开度；`GetFlowRate()`（全开 0.2 L/s）/ `GetOutletLocation()` 留给水壶 |
 | 删除 | — | 模板的旁观者摄像机 `BP_VRSpectator`；次卧私院吊床（`c2_build.py` 里也删了） |
 | 玻璃栏杆 | `M_RailGlass`（UE 内） | 只给 `G_D_Hall__glass`：淡绿色 + 菲涅尔不透明度（正视 0.15、掠射 0.65）+ 表面逐像素光照 |
+| 厨房靠墙台面 | `c2_build.py` / `c2x_export_geom.py` | 原来 x18–23 但后墙只有 x21–30，左边 3 m 悬空像隔断 → 挪到 x21–26；客厅和门厅之间通透了。只重新生成 `C_Living__concrete` / `C_Living__marble` 两个网格（`python c2x_export_geom.py C_Living__concrete C_Living__marble` → `court_geom_part.glb`，在 UE 里改名 `court_geom.glb` 放进 `court/part/` 导入，覆盖同名资产），厨房收音机声源跟着挪；NavMesh 重建 12/12 |
 | 顶灯黑圈 | `c14_ceiling_normal.py` | 真正原因是材质法线朝向（见坑 25）；另外灯板改 Movable、屋顶光照贴图 512→2048，`build high` 约 1.5 分钟 |
 
 ![水龙头](screenshots/40_水龙头_开70%.jpg)
 ![玻璃栏杆](screenshots/41_玻璃栏杆_新材质.jpg)
+![厨房台面挪到真墙前](screenshots/45_厨房靠墙台面挪到真墙前.jpg)
 
 | 修之前 | 修之后 |
 |---|---|
@@ -255,6 +257,7 @@
 27. **从 UE 里 Popen 出去的"等 UE 退出再编译"脚本不可靠**：从项目浏览器打开的编辑器，退出后会回到项目浏览器（同一个进程）；子进程还可能随 UE 退出被一起结束（推测是作业对象）。`remote/rebuild_restart.py` 保留但不推荐，用坑 26 的方法。
 28. **device_commit_files 同一个暂存文件名第二次提交不生效**（写回的是旧内容）：每次用新的暂存文件名（`xxx_v2.py`），提交后在 device_bash 里 grep 确认。
 29. **computer use 的"打开应用 Unrealeditor"会新开一个 UE 进程**（项目浏览器），不是切到已有窗口。
+31. **局部改合并网格不用整套重跑**：`c2x_export_geom.py <网格名…>` 只导出这几个；glTF（Interchange）导入的资产目录名 = 文件名，所以文件要叫 `court_geom.glb` 才会落到 `Geom/court_geom/StaticMeshes/` 覆盖原资产（Actor、材质覆盖都保留）。导入后要重做：删凸包碰撞 + 复杂碰撞当简单碰撞、`c9_bake.py prep`（光照贴图设置会被重置）、`RebuildNavigation`、重烘。
 30. **编辑器在后台时 HighResShot / take_high_res_screenshot 不出图**：视口不刷新，要等编辑器回到前台。
 
 ## 这一版还没做

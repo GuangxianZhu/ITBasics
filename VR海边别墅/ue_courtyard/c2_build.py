@@ -454,8 +454,9 @@ def build_living():
     wall("x", 21.0, 30.0, 10.5, 10.75, 0, WT, "white", (), g)
     roof(17, 30, 10.5, 18)
     # 厨房: 靠墙台面 + 岛台
-    box(18.0, 23.0, 10.75, 11.4, FL, FL + 0.9, "concrete", g, label="BackCounter")
-    box(18.0, 23.0, 10.75, 11.45, FL + 0.9, FL + 0.95, "marble", g)
+    # 2026-10-18: 靠墙台面原来在 x18..23, 但后墙只有 x21..30 -> 左边 3 m 背后是门厅, 看着像隔断。挪到真墙前 x21..26
+    box(21.0, 26.0, 10.75, 11.4, FL, FL + 0.9, "concrete", g, label="BackCounter")
+    box(21.0, 26.0, 10.75, 11.45, FL + 0.9, FL + 0.95, "marble", g)
     box(19.0, 22.6, 12.3, 13.2, FL, FL + 0.9, "wood", g, label="Island")
     box(18.95, 22.65, 12.25, 13.25, FL + 0.9, FL + 0.96, "marble", g)
     box(23.7, 27.3, 14.6, 16.4, FL, FL + 0.01, "rug", g, False)
