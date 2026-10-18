@@ -914,6 +914,13 @@ def main():
         spec.loader.exec_module(c8)
         c8.main(PLANTS)
         LOG.extend(c8.LOG)
+    if os.path.exists(os.path.join(D, "c10_plants.py")):   # Fab 植物 (c10_plants.py 自己会先删掉上次放的)
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("c10_plants", os.path.join(D, "c10_plants.py"))
+        c10 = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(c10)
+        c10.main()
+        LOG.extend(c10.LOG)
     player_and_nav()
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     LOG.append("spawned %d meshes; saved %s" % (COUNT["n"], les.save_current_level()))

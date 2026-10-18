@@ -266,6 +266,7 @@ def spawn(placements, meshes, mats):
         smc = a.static_mesh_component
         smc.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
         smc.set_editor_property("can_ever_affect_navigation", False)
+        smc.set_mobility(unreal.ComponentMobility.MOVABLE)     # 烘焙光照时植物不进光照图 (风会动)
         for j, sm in enumerate(mesh.get_editor_property("static_materials")):
             mm = slot_material(sm.get_editor_property("material_slot_name"), mats)
             if mm:
