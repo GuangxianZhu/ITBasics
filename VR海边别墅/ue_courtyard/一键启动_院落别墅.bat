@@ -1,7 +1,7 @@
 @echo off
 rem One-click: courtyard villa (Cycladic layout v2) in Unreal Engine 5.8 - project VillaVR, level L_Courtyard
 rem   1) git pull main   2) sync UE python scripts to Documents\UE-MCP-Tools\court
-rem   3) choose rendering mode (forward / lumen, shared with ..\ue\gi_mode.ps1)   4) open VillaVR
+rem   3) sync C++ source (cpp\Source) and build VillaVREditor   4) choose rendering mode   5) open VillaVR
 setlocal
 cd /d "%~dp0"
 
@@ -31,8 +31,29 @@ if not exist "%TOOLS%\tex" mkdir "%TOOLS%\tex"
 copy /Y "%~dp0tex\*.png" "%TOOLS%\tex\" >nul
 echo Scripts synced to %TOOLS%
 
-rem ---- rendering mode ----
 set "PROJ=%USERPROFILE%\Documents\Unreal Projects\VillaVR"
+
+rem ---- C++ module: sync cpp\Source into the project, then build the editor target ----
+rem      (VillaVR is a C++ project since 2026-10-18; undo = restore VillaVR.uproject.before_cpp)
+if exist "%~dp0cpp\Source" (
+    robocopy "%~dp0cpp\Source" "%PROJ%\Source" /E /NFL /NDL /NJH /NJS /NP >nul
+    if not exist "%TOOLS%\remote" mkdir "%TOOLS%\remote"
+    copy /Y "%~dp0remote\*.py" "%TOOLS%\remote\" >nul 2>nul
+    tasklist /FI "IMAGENAME eq UnrealEditor.exe" | find /I "UnrealEditor.exe" >nul
+    if errorlevel 1 (
+        echo Building VillaVR C++ module...
+        call "%ProgramFiles%\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" VillaVREditor Win64 Development -Project="%PROJ%\VillaVR.uproject" -WaitMutex -NoHotReloadFromIDE
+        if errorlevel 1 (
+            echo [ERROR] C++ build failed. See the messages above and send them to Claude.
+            pause
+            exit /b 1
+        )
+    ) else (
+        echo [INFO] Unreal Editor is running - C++ build skipped. Close UE and run again to rebuild.
+    )
+)
+
+rem ---- rendering mode ----
 set "GI=%~dp0..\ue\gi_mode.ps1"
 if exist "%GI%" (
     powershell -NoProfile -ExecutionPolicy Bypass -File "%GI%" status
