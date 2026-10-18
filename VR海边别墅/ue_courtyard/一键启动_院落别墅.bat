@@ -86,6 +86,7 @@ if errorlevel 1 (
 ) else (
     echo [WARN] Unreal Editor is already running. Close it and run this again for a mode change to apply.
 )
-echo Then: toolbar Play dropdown ^> VR Preview, with Quest 3 on Virtual Desktop / Link.
+echo Then: toolbar Play = desktop mode (WASD, E interact, Tab menu, H help, Esc stop).
+echo       Play dropdown ^> VR Preview = headset, with Quest 3 on Virtual Desktop / Link.
 echo Rebuild the scene: UE console ^> py "%TOOLS:\=/%/c2_build.py"
 pause
