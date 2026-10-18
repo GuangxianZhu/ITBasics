@@ -128,7 +128,8 @@ def prep():
         mesh = smc.static_mesh
         movable = (lab.startswith("PL_") or lab.startswith("CF_") or lab.startswith("AI_")
                    or lab.startswith(EMISSIVE_PREFIXES)
-                   or "CourtyardGrab" in tags or "CourtyardPlant" in tags)
+                   or "CourtyardGrab" in tags or "CourtyardPlant" in tags
+                   or "CourtyardMovable" in tags)            # c16 的小件家具 (显示器、工具箱…)
         if movable:
             set_mob(a, M.MOVABLE)
             n["movable"] += 1

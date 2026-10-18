@@ -39,3 +39,21 @@
 | 车库 | Workbench、Vise、Pegboard、DrillPress、ToolCabinet、Shelf | Construction Site VOL.2 / Warehouse 样品 / Garage |
 | 电子工作室 | ESDBench、BenchPegboard、CodeDesk、Monitor、ComponentDrawers、Printer3D、BenchMonitor、Keyboard、Breadboard、BenchLamp、OfficeChair、Whiteboard | Apartment Tech / ElectronicProps / Office Pack |
 | 不换 | 户外厨房、石凳、水渠、石水槽、车身等建筑/景观体块 | — |
+
+## 实际选用（2026-10-19，`c16_furniture.py`）
+
+入库后实测：Modern Luxury Bed 约 54 万顶点（被子一件就 27 万），VR 里不用；ArchViz Interior 导入时要覆盖工程配置，取消了没用。
+其余 6 个包 + 50+ Kit 全部按"四面近拍"（`c15_lineup.py`）确认了正面方向再摆。
+
+| 区域 | 原来的方块 | 换成（包 / 网格） | 备注 |
+|---|---|---|---|
+| 厨房靠墙一排（南墙 x21–26.2） | BackCounter + 台面 | 50+：Fridge、OldUnit1 ×3、OldSinkUnit、Cooker；Modern House：Extractor__Hood | 地柜自带木台面；水槽柜自带龙头 |
+| 岛台 | Island（木箱） | 50+：Cupboard1 ×3（门朝南，高度拉到 0.9 m） | 大理石台面**保留**（杯子酒瓶还在上面）；北半边空着给吧凳放腿 |
+| 次卧 | GuestBed（3 个方块） | Modern House：SM_Bed（整张床，带被子枕头，3.1 万顶点），缩到 0.9 | 原尺寸床尾/东侧只剩 0.9 m，NavMesh 腐蚀后瞬移不过去 |
+| 卫生间 | Vanity、WC | Modern House：Cabinet_11（带台盆的浴室柜）；50+：Toilet1 | |
+| 地下室 | WineRack、Dehumidifier | 50+：Shelving1 ×5（东墙一排）；Construction：PaintBucket ×2、Canister | 除湿机没有免费模型，换成杂物 |
+| 工作间 | Workbench、Vise、Pegboard + 工具、DrillPress、ToolCabinet、Shelf + 罐子 | Construction：PlywoodTable ×2、Ladder、Canister、TallGasCanister、Spool、ElectricDrill；Office：Cabinet_2（金属层架）；Modern House：Cabinet_5；50+：Shelving1；Dekogon：Toolbox | 台钳、台钻没有免费模型，省掉 |
+| 电子工作室 | ESDBench、CodeDesk、显示器、凳子、抽屉柜、打印机、仪器、零件架、办公椅… | Modern House：Table_1 ×2（东墙长桌，进深压到 0.75 m）、Table_3（窗下写代码桌）；Office：Monitor_1 ×3、Chair_1、Cabinet_2；Dekogon：DeskChair、Desk_B01、Keyboard、DeskLamp、Toolbox、ComputerPrinter | 示波器等仪器暂时没有（ElectronicProps 包里是墙上的小电器，不合适）；白板保留 |
+
+**50+ Kit 有 18 个网格材质槽是空的**（导出时丢了引用，显示灰白格子：Cooker、OldSinkUnit、Wardrobe、Shower1、PCChair、Table1…）。
+`c16_furniture.py` 的 `SLOT_FIX` 按槽名补上包里自带的材质实例（Worktop→MI_PolishedOak 等），只改 Actor 上的覆盖材质，不动资产。
