@@ -22,6 +22,13 @@ LES = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 EAL = unreal.EditorAssetLibrary
 LOG = []
 LOW_RES_GROUPS = ("Site", "Far")          # 场地/远景: 面积大但不重要
+# 2026-10-18: 天花板 = 屋顶网格底面, 28.5 x 16.4 m 只给 512 时一个光照像素 ~15 cm, 40 cm 的灯板只占 2-3 个像素,
+# 灯板下"被遮住"的黑像素经过滤波晕开 -> 每盏灯外一圈脏黑边。屋顶单独给 2048。
+RES_OVERRIDE = {"Roof": 2048}
+# 灯板 (2 cm 厚方块, 顶面和天花板底面重合) 只要参与烘焙, 天花板上灯周围就是一圈黑:
+# Lightmass 从天花板像素往外打采样光线, 打到灯板背面 -> 判成"在物体里面" -> 置黑再柔化。关投影没用 (实测)。
+# 做法: 发光小灯具一律 Movable, 不进光照烘焙 (实测: 隐藏灯板后黑圈消失)。
+EMISSIVE_PREFIXES = ("G_Lights__", "G_J_Basement__lamp", "G_Far__lamp")
 M = unreal.ComponentMobility
 
 
@@ -46,7 +53,9 @@ def mesh_lightmap(mesh, group):
     b = mesh.get_bounding_box()
     dx, dy, dz = [(getattr(b.max, c) - getattr(b.min, c)) / 100.0 for c in "xyz"]
     area = 2 * (dx * dy + dy * dz + dx * dz)
-    if group in LOW_RES_GROUPS:
+    if group in RES_OVERRIDE:
+        res = RES_OVERRIDE[group]
+    elif group in LOW_RES_GROUPS:
         res = 128
     else:
         res = min(1024, max(64, pow2(math.sqrt(area) * 16)))
@@ -118,6 +127,7 @@ def prep():
         smc = a.static_mesh_component
         mesh = smc.static_mesh
         movable = (lab.startswith("PL_") or lab.startswith("CF_") or lab.startswith("AI_")
+                   or lab.startswith(EMISSIVE_PREFIXES)
                    or "CourtyardGrab" in tags or "CourtyardPlant" in tags)
         if movable:
             set_mob(a, M.MOVABLE)
