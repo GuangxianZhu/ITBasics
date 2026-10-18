@@ -12,6 +12,8 @@
 
 > 计划中：语音指挥的机器人助理，见 [机器人助理方案.md](机器人助理方案.md)
 >
+> 新：**院落别墅（基克拉泽斯式）UE 第一版**，见 [ue_courtyard/README.md](ue_courtyard/README.md)
+>
 > 新：**Unreal Engine 5.8 看房版**（只看不交互，用来对比 forward 和 Lumen 画质），见 [ue/README.md](ue/README.md)，迁移思路见 [UE迁移方案.md](UE迁移方案.md)
 
 ---

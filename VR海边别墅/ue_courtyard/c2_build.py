@@ -1,0 +1,724 @@
+# -*- coding: utf-8 -*-
+"""
+第 2 步: 在 L_Courtyard 里按 "院落布局 v2" 搭整栋别墅 (可重复运行: 先删掉上次生成的, 再重建)。
+
+坐标: 平面图米制 (x 向东, y 向北 = 大海方向) -> UE 厘米 (100x, -100y, 100z)。
+      和 L_Villa 一样 "大海 = UE 的 -Y", 所以沿用的太阳/天空角度不用改。
+标高: 室内地面 / 泳池平台 FL = 0.15 m, 院子碎石 0.05 m, 场地 0; 地下室地面 -2.85 m (下 3 m, 16 级台阶)。
+做法: 建筑、院墙、地面全部用引擎自带的 1m 立方体/圆柱/球缩放拼出来 (自带碰撞, VR 瞬移能落地);
+      材质用 L_Villa 的三向投影母材质 (世界坐标贴图, 立方体怎么缩放纹理密度都不变);
+      家具复用 L_Villa 里 AI 生成的那批 (AI_*), 只挪位置, 其余全删。
+精度分档 (见画布 "VR 玩家在哪 · 建模精度分区"): 这一版先把精细区摆满, 中等区成型, 配景用大体块。
+"""
+import json
+import math
+import os
+
+import unreal
+
+D = os.path.join(os.path.expanduser("~"), "Documents", "UE-MCP-Tools", "court")
+TAG = "Courtyard"
+EAS = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+EAL = unreal.EditorAssetLibrary
+MEL = unreal.MaterialEditingLibrary
+TOOLS = unreal.AssetToolsHelpers.get_asset_tools()
+CUBE = unreal.load_asset("/Engine/BasicShapes/Cube.Cube")
+CYL = unreal.load_asset("/Engine/BasicShapes/Cylinder.Cylinder")
+SPH = unreal.load_asset("/Engine/BasicShapes/Sphere.Sphere")
+LOG = []
+COUNT = {"n": 0}
+
+FL = 0.15      # 室内 / 平台地面
+GR = 0.05      # 院子碎石面
+WT = 3.85      # 外墙顶 (含女儿墙)
+CEIL = 3.35    # 室内天花
+BF = -2.85     # 地下室地面
+SW = 2.2       # 院墙高
+
+
+def V(x, y, z):
+    return unreal.Vector(x * 100.0, -y * 100.0, z * 100.0)
+
+
+# ------------------------------------------------------------------ 清场
+def clean():
+    keep_ai = []
+    actors = EAS.get_all_level_actors()
+    for a in actors:
+        lab = a.get_actor_label()
+        if lab.startswith("AI_"):
+            try:
+                a.detach_from_actor(unreal.DetachmentRule.KEEP_WORLD, unreal.DetachmentRule.KEEP_WORLD, unreal.DetachmentRule.KEEP_WORLD)
+            except Exception:
+                pass
+            keep_ai.append(a)
+    n = 0
+    for a in EAS.get_all_level_actors():
+        lab = a.get_actor_label()
+        if lab.startswith("AI_"):
+            continue
+        tags = [str(t) for t in a.tags]
+        cls = a.get_class().get_name()
+        if TAG in tags or "Villa" in tags or cls in ("PointLight", "SpotLight", "RectLight") or cls == "Actor":
+            EAS.destroy_actor(a)
+            n += 1
+    LOG.append("cleaned %d actors, kept %d AI furniture" % (n, len(keep_ai)))
+
+
+# ------------------------------------------------------------------ 材质
+TRI = unreal.load_asset("/Game/Villa/Materials/M_VillaTriplanar")
+MATDIR = "/Game/Courtyard/Materials"
+
+
+def tex(n):
+    return unreal.load_asset("/Game/Villa/Textures/" + n)
+
+
+def mi(name, texset, tile_m, tint=(1, 1, 1), rough=1.0, metal=0.0):
+    path = MATDIR + "/MI_C_" + name
+    if EAL.does_asset_exist(path):
+        m = unreal.load_asset(path)
+    else:
+        m = TOOLS.create_asset("MI_C_" + name, MATDIR, unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew())
+    MEL.set_material_instance_parent(m, TRI)
+    MEL.set_material_instance_scalar_parameter_value(m, "TileCM", tile_m * 100.0)
+    MEL.set_material_instance_scalar_parameter_value(m, "RoughMul", rough)
+    MEL.set_material_instance_scalar_parameter_value(m, "Metallic", metal)
+    MEL.set_material_instance_vector_parameter_value(m, "Tint", unreal.LinearColor(tint[0], tint[1], tint[2], 1))
+    MEL.set_material_instance_texture_parameter_value(m, "Albedo", tex(texset + "_albedo"))
+    MEL.set_material_instance_texture_parameter_value(m, "Rough", tex(texset + "_rough"))
+    EAL.save_loaded_asset(m)
+    return m
+
+
+M = {}
+
+
+def build_materials():
+    spec = {
+        "white": ("plaster", 2.0, (1.0, 1.0, 1.0)),
+        "white_in": ("plaster", 2.0, (0.97, 0.95, 0.91)),
+        "stone": ("seawall", 1.1, (0.96, 0.92, 0.84)),
+        "terrace": ("stone_tile", 1.2, (0.98, 0.96, 0.92)),
+        "coping": ("pool_stone", 1.2, (1.0, 1.0, 1.0)),
+        "pooltile": ("porcelain", 0.6, (0.55, 0.82, 0.92)),
+        "wood": ("wood_floor", 2.4, (1.0, 1.0, 1.0)),
+        "teak": ("wood_floor", 1.6, (0.78, 0.58, 0.4)),
+        "gravel": ("concrete", 0.8, (0.98, 0.93, 0.84), 1.2),
+        "earth": ("grass", 5.0, (1.0, 0.8, 0.45)),
+        "grass": ("grass", 3.0, (0.85, 0.85, 0.62)),
+        "concrete": ("concrete", 2.0, (1.0, 1.0, 1.0)),
+        "asphalt": ("concrete", 2.0, (0.32, 0.32, 0.33)),
+        "marble": ("marble", 1.2, (1.0, 1.0, 1.0)),
+        "porcelain": ("porcelain", 1.6, (1.0, 1.0, 1.0)),
+        "rock": ("rock", 3.0, (1.0, 1.0, 1.0)),
+        "hill": ("forest", 40.0, (1.0, 1.0, 1.0)),
+        "bark": ("bark", 1.0, (0.72, 0.66, 0.6)),
+        "olive": ("forest", 2.5, (0.78, 0.88, 0.62)),
+        "leaf": ("forest", 2.5, (0.85, 1.15, 0.6)),
+        "lavender": ("fabric", 0.3, (0.6, 0.48, 0.82)),
+        "bouga": ("fabric", 0.3, (0.9, 0.22, 0.55)),
+        "soil": ("sand", 1.0, (0.36, 0.26, 0.18)),
+        "esd": ("plaster", 1.0, (0.22, 0.5, 0.34)),
+        "metal": ("concrete", 1.0, (0.62, 0.64, 0.67), 0.5, 0.8),
+        "black": ("concrete", 1.0, (0.06, 0.06, 0.07), 0.6),
+        "cardboard": ("fabric", 0.6, (0.78, 0.62, 0.42)),
+        "red": ("plaster", 1.0, (0.62, 0.1, 0.08), 0.6),
+        "car_blue": ("plaster", 1.0, (0.12, 0.22, 0.38), 0.35, 0.6),
+        "car_white": ("plaster", 1.0, (0.85, 0.85, 0.83), 0.35, 0.4),
+        "terracotta": ("sand", 1.0, (0.8, 0.42, 0.26)),
+        "linen": ("fabric", 0.4, (0.95, 0.93, 0.88)),
+        "rug": ("fabric", 0.25, (0.9, 0.82, 0.7)),
+        "yellow": ("plaster", 1.0, (0.95, 0.8, 0.15)),
+        "pcb": ("plaster", 0.5, (0.05, 0.35, 0.12)),
+    }
+    for k, v in spec.items():
+        texset, tile, tint = v[0], v[1], v[2]
+        rough = v[3] if len(v) > 3 else 1.0
+        metal = v[4] if len(v) > 4 else 0.0
+        M[k] = mi(k, texset, tile, tint, rough, metal)
+    M["water"] = unreal.load_asset("/Game/Villa/Materials/M_VillaPoolWater")
+    M["sea"] = unreal.load_asset("/Game/Villa/Materials/M_VillaSea")
+    M["glass"] = unreal.load_asset("/Game/Villa/Materials/M_VillaGlass")
+    M["screen"] = unreal.load_asset("/Game/Villa/Materials/M_VillaDarkGlass")
+    M["lamp"] = unreal.load_asset("/Game/Villa/Materials/M_VillaLamp")
+
+
+# ------------------------------------------------------------------ 生成工具
+def finish(a, mat, group, collide, label):
+    COUNT["n"] += 1
+    a.set_editor_property("tags", [unreal.Name(TAG)])
+    a.set_folder_path("Courtyard/" + group)
+    if label:
+        a.set_actor_label(label)
+    smc = a.static_mesh_component
+    if mat is not None:
+        smc.set_material(0, mat)
+    if not collide:
+        smc.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+        smc.set_editor_property("can_ever_affect_navigation", False)
+    return a
+
+
+def box(x0, x1, y0, y1, z0, z1, mat, group="Misc", collide=True, label=None, yaw=0.0):
+    x0, x1 = sorted((x0, x1))
+    y0, y1 = sorted((y0, y1))
+    z0, z1 = sorted((z0, z1))
+    if x1 - x0 < 1e-3 or y1 - y0 < 1e-3 or z1 - z0 < 1e-3:
+        return None
+    a = EAS.spawn_actor_from_object(CUBE, V((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), unreal.Rotator(0, 0, yaw))
+    a.set_actor_scale3d(unreal.Vector(x1 - x0, y1 - y0, z1 - z0))
+    return finish(a, M.get(mat) if isinstance(mat, str) else mat, group, collide, label)
+
+
+def cyl(x, y, z0, z1, d, mat, group="Misc", collide=True, dy=None, pitch=0.0, roll=0.0):
+    a = EAS.spawn_actor_from_object(CYL, V(x, y, (z0 + z1) / 2), unreal.Rotator(roll, pitch, 0))
+    a.set_actor_scale3d(unreal.Vector(d, dy or d, z1 - z0))
+    return finish(a, M[mat], group, collide, None)
+
+
+def sph(x, y, z, sx, sy, sz, mat, group="Plants", collide=False):
+    a = EAS.spawn_actor_from_object(SPH, V(x, y, z), unreal.Rotator(0, 0, 0))
+    a.set_actor_scale3d(unreal.Vector(sx, sy, sz))
+    return finish(a, M[mat], group, collide, None)
+
+
+def wall(axis, a0, a1, c0, c1, z0, z1, mat, holes=(), group="Walls"):
+    """axis='x': 墙沿 x 从 a0 到 a1, 厚度占 y 的 c0..c1; axis='y' 反过来。
+    holes: (h0, h1, hz0, hz1, kind) kind = 'open' 空洞 / 'glass' 玻璃 / 'win' 带框玻璃窗"""
+    def seg(p0, p1, q0, q1, m=mat, collide=True):
+        if axis == "x":
+            return box(p0, p1, c0, c1, q0, q1, m, group, collide)
+        return box(c0, c1, p0, p1, q0, q1, m, group, collide)
+
+    cur = a0
+    for h0, h1, hz0, hz1, kind in sorted(holes):
+        seg(cur, h0, z0, z1)
+        seg(h0, h1, z0, hz0)
+        seg(h0, h1, hz1, z1)
+        if kind in ("glass", "win"):
+            mid0, mid1 = (c0 + c1) / 2 - 0.015, (c0 + c1) / 2 + 0.015
+            if axis == "x":
+                box(h0, h1, mid0, mid1, hz0, hz1, "glass", group)
+            else:
+                box(mid0, mid1, h0, h1, hz0, hz1, "glass", group)
+            # 竖梃 (每 ~1.6 m 一根) + 上下框
+            n = max(1, int(round((h1 - h0) / 1.6)))
+            for i in range(n + 1):
+                p = h0 + (h1 - h0) * i / n
+                seg(max(h0, p - 0.03), min(h1, p + 0.03), hz0, hz1, "black")
+            seg(h0, h1, hz0, hz0 + 0.04, "black")
+            seg(h0, h1, hz1 - 0.04, hz1, "black")
+        cur = h1
+    seg(cur, a1, z0, z1)
+
+
+def roof(x0, x1, y0, y1):
+    box(x0, x1, y0, y1, CEIL, CEIL + 0.25, "white", "Roof")
+
+
+def plight(x, y, z, cd=6.0, radius=800, color=(1.0, 0.86, 0.7), lamp=True):
+    a = EAS.spawn_actor_from_class(unreal.PointLight, V(x, y, z))
+    c = a.point_light_component
+    c.set_editor_property("intensity_units", unreal.LightUnits.CANDELAS)
+    c.set_intensity(cd)
+    c.set_attenuation_radius(radius)
+    c.set_cast_shadows(False)
+    c.set_light_color(unreal.LinearColor(color[0], color[1], color[2], 1))
+    a.set_editor_property("tags", [unreal.Name(TAG)])
+    a.set_folder_path("Courtyard/Lights")
+    if lamp:
+        box(x - 0.2, x + 0.2, y - 0.2, y + 0.2, CEIL - 0.02, CEIL, "lamp", "Lights", False) if z > 2.0 else None
+
+
+# ------------------------------------------------------------------ 植物 (中等: 程序化低模)
+def olive(x, y, s=1.0, z0=GR):
+    cyl(x, y, z0, z0 + 1.5 * s, 0.32 * s, "bark", "Plants", True, pitch=6)
+    cyl(x + 0.25 * s, y, z0 + 1.1 * s, z0 + 2.2 * s, 0.18 * s, "bark", "Plants", False, pitch=-18)
+    sph(x, y, z0 + 2.5 * s, 3.0 * s, 2.7 * s, 1.5 * s, "olive")
+    for dx, dy, dz, r in ((0.9, 0.5, 2.2, 1.6), (-0.9, -0.4, 2.3, 1.7), (0.3, -0.9, 2.8, 1.4), (-0.4, 0.9, 2.9, 1.3)):
+        sph(x + dx * s, y + dy * s, z0 + dz * s, r * s, r * s, r * 0.6 * s, "olive")
+
+
+def fig(x, y, s=1.0, z0=GR):
+    cyl(x, y, z0, z0 + 1.3 * s, 0.22 * s, "bark", "Plants", True)
+    sph(x, y, z0 + 1.9 * s, 2.2 * s, 2.2 * s, 1.4 * s, "leaf")
+    sph(x + 0.5 * s, y - 0.3 * s, z0 + 2.3 * s, 1.3 * s, 1.3 * s, 0.9 * s, "leaf")
+
+
+def lemon_pot(x, y, z0=GR):
+    cyl(x, y, z0, z0 + 0.55, 0.6, "terracotta", "Plants", True)
+    box(x - 0.26, x + 0.26, y - 0.26, y + 0.26, z0 + 0.5, z0 + 0.53, "soil", "Plants", False)
+    cyl(x, y, z0 + 0.5, z0 + 1.2, 0.06, "bark", "Plants", False)
+    sph(x, y, z0 + 1.45, 0.95, 0.95, 0.85, "leaf")
+    for dx, dy, dz in ((0.3, 0.2, 1.4), (-0.25, 0.3, 1.55), (0.1, -0.35, 1.3), (-0.3, -0.15, 1.6)):
+        sph(x + dx, y + dy, z0 + dz, 0.09, 0.09, 0.1, "yellow")
+
+
+def bush(x, y, z, d, mat, h=None):
+    sph(x, y, z + (h or d * 0.6) / 2, d, d, h or d * 0.6, mat)
+
+
+# ------------------------------------------------------------------ 场地与配景 (粗)
+def build_site():
+    g = "Site"
+    # 地面 (地下室上方挖空, 否则会把楼梯井堵住)
+    box(-150, 200, -150, 2.5, -0.3, 0.0, "earth", g, label="Ground")
+    box(-150, 200, 10.0, 23, -0.3, 0.0, "earth", g)
+    box(-150, 17.0, 2.5, 10.0, -0.3, 0.0, "earth", g)
+    box(27.5, 200, 2.5, 10.0, -0.3, 0.0, "earth", g)
+    box(-150, 200, 23, 28.5, -0.3, 0.02, "grass", g, label="SeaLawn")
+    box(-150, 200, -0.3, 1.4, 0.0, 0.03, "asphalt", g, label="Road")
+    box(22.5, 26.5, 1.4, 1.62, 0.0, GR, "concrete", g, label="Driveway")
+    # 海岸: 草坡边缘下去是岩石, 再下去是海
+    box(-150, 200, 28.5, 31, -3.2, 0.0, "rock", g, label="Cliff")
+    for i in range(-14, 26):
+        x = i * 6.5 + ((i * 7) % 5) * 1.3
+        sx = 7 + ((i * 13) % 5) * 1.6
+        sph(x, 30.6 + ((i * 3) % 4) * 0.6, -2.3 + ((i * 11) % 3) * 0.4, sx, 4 + (i % 3), 2.2 + ((i * 5) % 3) * 0.8, "rock", g, True)
+    box(-2500, 2500, 30, 3000, -2.7, -2.62, "sea", g, collide=False, label="Sea")
+    # 远景 (只看轮廓): 两个海岬 + 灯塔 + 远岛; 南边的山; 邻居房子
+    sph(-120, 210, -8, 160, 70, 45, "rock", "Far", False)
+    sph(-130, 205, 5, 120, 50, 25, "grass", "Far", False)
+    sph(170, 240, -10, 180, 80, 50, "rock", "Far", False)
+    sph(160, 236, 6, 140, 60, 28, "grass", "Far", False)
+    cyl(150, 225, 18, 33, 3.2, "white", "Far", False)
+    cyl(150, 225, 33, 35, 2.4, "lamp", "Far", False)
+    sph(30, 700, -20, 500, 120, 60, "hill", "Far", False)
+    for x, y, sx, sy, sz in ((-60, -110, 160, 90, 60), (40, -140, 200, 100, 80), (130, -100, 160, 90, 55), (-150, -40, 120, 140, 40)):
+        sph(x, y, -6, sx, sy, sz, "hill", "Far", False)
+    for x, y, w, d, h in ((-55, -38, 9, 7, 4), (-38, -55, 7, 6, 3.5), (75, -45, 10, 7, 4), (92, -62, 8, 6, 3.5)):
+        box(x, x + w, y, y + d, 0, h, "white", "Far", False)
+
+
+# ------------------------------------------------------------------ 泳池平台 A + 凉棚餐台 B
+def build_terrace():
+    g = "A_Terrace"
+    box(4, 28, 18, 23, -0.2, FL, "terrace", g, label="Terrace")
+    # 两个种植池 + 橄榄
+    for x0 in (7.5, 14.1):
+        box(x0, x0 + 3.2, 18.5, 20.2, -0.2, FL + 0.02, "soil", g)
+        olive(x0 + 1.6, 19.35, 0.55, FL)
+    # 泳池: 池壁 (瓷砖) + 压顶石 + 池底 + 水
+    gp = "A_Pool"
+    box(14.4, 22.6, 23.4, 26.1, -1.6, -1.45, "pooltile", gp, label="PoolFloor")
+    for (x0, x1, y0, y1) in ((14, 23, 23, 23.4), (14, 23, 26.1, 26.5), (14, 14.4, 23.4, 26.1), (22.6, 23, 23.4, 26.1)):
+        box(x0, x1, y0, y1, -1.6, FL - 0.05, "pooltile", gp)
+        box(x0, x1, y0, y1, FL - 0.05, FL, "coping", gp)
+    box(14.4, 22.6, 23.4, 26.1, -0.02, 0.03, "water", gp, collide=False, label="PoolWater")
+    # 低墙 (平台和院子之间), 两处开口下台阶进院子
+    wall("x", 3.7, 17.0, 17.5, 17.8, 0, 0.6, "stone", [(6.0, 7.5, 0, 0.6, "open"), (13.5, 15.0, 0, 0.6, "open")], g)
+    # 凉棚餐台 B
+    gb = "B_Deck"
+    box(28, 34, 18, 26.5, -0.2, FL, "teak", gb, label="Deck")
+    for x in (28.2, 33.8):
+        for y in (18.2, 22.3, 26.3):
+            box(x - 0.08, x + 0.08, y - 0.08, y + 0.08, FL, 2.9, "teak", gb)
+        box(x - 0.1, x + 0.1, 18.1, 26.4, 2.9, 3.1, "teak", gb)
+    y = 18.25
+    while y < 26.4:
+        box(28.0, 34.0, y - 0.03, y + 0.03, 3.1, 3.25, "teak", gb, collide=False)
+        y += 0.5
+    box(33.35, 33.95, 21.0, 25.0, FL, FL + 0.9, "stone", gb, label="OutdoorKitchen")
+    box(33.3, 34.0, 21.0, 25.0, FL + 0.9, FL + 0.95, "marble", gb)
+    plight(31.0, 22.3, 2.8, 5, 700, lamp=False)
+
+
+# ------------------------------------------------------------------ 院子 ①②③
+def build_courts():
+    # 院墙
+    wall("y", 10.5, 17.5, 3.7, 4.0, 0, SW, "stone", (), "Courts")
+    wall("y", 10.5, 17.5, 9.35, 9.65, 0, SW, "stone", (), "Courts")
+    wall("y", 10.5, 17.5, 11.35, 11.65, 0, SW, "stone", (), "Courts")
+    # ① 橄榄树院
+    g = "C1_Olive"
+    box(4.0, 9.35, 10.5, 17.5, -0.1, GR, "gravel", g)
+    olive(6.7, 14.2, 1.15)
+    box(4.6, 7.6, 10.75, 11.25, GR, 0.47, "stone", g, label="StoneBench")
+    for i, (x, y) in enumerate(((6.7, 17.0), (6.4, 16.1), (6.9, 15.3))):
+        box(x - 0.35, x + 0.35, y - 0.3, y + 0.3, GR, GR + 0.04, "terrace", g)
+    for x in (4.3, 9.0):
+        for y in (11.5, 13.0, 14.5, 16.0):
+            bush(x, y, GR, 0.6, "olive")
+    # ② 水渠窄院
+    g = "C2_Rill"
+    box(9.65, 11.35, 10.5, 17.5, -0.1, GR + 0.03, "terrace", g)
+    box(10.05, 10.95, 11.0, 17.2, GR + 0.03, GR + 0.05, "water", g, collide=False, label="Rill")
+    box(10.4, 10.6, 10.75, 10.95, 1.25, 1.35, "metal", g, label="WallSpout")
+    fig(10.5, 17.0, 0.7, GR + 0.03)
+    # ③ 香草厨园
+    g = "C3_Herb"
+    box(11.65, 17.0, 10.5, 17.5, -0.1, GR, "gravel", g)
+    # 种植池之间留 1.1 m 走道 (VR 瞬移的导航网格需要 >= 2 x 0.35 m 的宽度, 0.7 m 太窄)
+    beds = [(11.95, 13.75, 11.4, 13.35, "olive"), (14.85, 16.65, 11.4, 13.35, "lavender"),
+            (11.95, 13.75, 14.45, 16.6, "leaf"), (14.85, 16.65, 14.45, 16.6, "leaf")]
+    for x0, x1, y0, y1, pm in beds:
+        box(x0, x1, y0, y1, GR, 0.5, "stone", g)
+        box(x0 + 0.1, x1 - 0.1, y0 + 0.1, y1 - 0.1, 0.5, 0.52, "soil", g, False)
+        for i in range(3):
+            for j in range(3):
+                bush(x0 + 0.35 + i * (x1 - x0 - 0.7) / 2, y0 + 0.35 + j * (y1 - y0 - 0.7) / 2, 0.5, 0.42, pm)
+    box(12.0, 13.2, 10.75, 11.05, GR, 0.85, "stone", g, label="StoneSink")
+    box(12.4, 12.8, 10.78, 10.85, 0.85, 1.15, "metal", g, label="Tap")
+
+
+# ------------------------------------------------------------------ 客厅 C + 门厅 D (+ 地下室入口)
+def build_living():
+    g = "C_Living"
+    box(17, 30, 10.5, 18, -0.2, FL, "wood", g, label="LivingFloor")
+    # 北面整面玻璃 (中间 3 m 开着通平台), 西面玻璃 (对香草院, 中间一扇门)
+    wall("x", 17, 30, 17.75, 18.0, 0, WT, "white", [(17.3, 24.0, FL, 3.1, "glass"), (24.0, 27.0, FL, 3.1, "open"), (27.0, 29.7, FL, 3.1, "glass")], g)
+    wall("y", 10.75, 17.75, 17.0, 17.25, 0, WT, "white", [(10.9, 13.5, FL, 3.1, "glass"), (13.5, 14.6, FL, 2.5, "open"), (14.6, 17.6, FL, 3.1, "glass")], g)
+    wall("y", 10.5, 17.75, 29.75, 30.0, 0, WT, "white", [(16.0, 17.0, FL, 2.4, "open")], g)
+    wall("x", 21.0, 30.0, 10.5, 10.75, 0, WT, "white", (), g)
+    roof(17, 30, 10.5, 18)
+    # 厨房: 靠墙台面 + 岛台
+    box(18.0, 23.0, 10.75, 11.4, FL, FL + 0.9, "concrete", g, label="BackCounter")
+    box(18.0, 23.0, 10.75, 11.45, FL + 0.9, FL + 0.95, "marble", g)
+    box(19.0, 22.6, 12.3, 13.2, FL, FL + 0.9, "wood", g, label="Island")
+    box(18.95, 22.65, 12.25, 13.25, FL + 0.9, FL + 0.96, "marble", g)
+    box(23.7, 27.3, 14.6, 16.4, FL, FL + 0.01, "rug", g, False)
+    for x, y in ((19.5, 11.9), (24.5, 12.5), (27.5, 15.0), (21.0, 15.5)):
+        plight(x, y, CEIL - 0.3, 6.0)
+    # 门厅 D: x17..21, y2.5..10.5; 楼梯洞 x19.5..20.6, y2.8..7.3 (往南下到地下室)
+    g = "D_Hall"
+    box(17.0, 19.5, 2.5, 10.5, -0.25, FL, "porcelain", g, label="HallFloor")
+    box(20.6, 21.0, 2.5, 10.5, -0.25, FL, "porcelain", g)
+    box(19.5, 20.6, 7.3, 10.5, -0.25, FL, "porcelain", g)
+    box(19.5, 20.6, 2.5, 2.8, -0.25, FL, "porcelain", g)
+    wall("y", 2.5, 10.5, 17.0, 17.25, 0, WT, "white", [(5.2, 6.3, FL, 2.3, "open"), (9.0, 10.0, FL, 2.3, "open")], g)
+    wall("y", 2.5, 10.5, 20.75, 21.0, 0, WT, "white", [(8.0, 9.2, FL, 2.4, "open")], g)
+    wall("x", 17.0, 21.0, 2.5, 2.75, 0, WT, "white", (), g)
+    roof(17, 21, 2.5, 10.5)
+    # 楼梯边玻璃栏杆
+    box(19.45, 19.5, 2.8, 7.3, FL, FL + 1.0, "glass", g)
+    box(19.44, 19.51, 2.8, 7.3, FL + 1.0, FL + 1.05, "black", g)
+    plight(19.0, 8.5, CEIL - 0.3, 5.0)
+    plight(18.2, 4.0, CEIL - 0.3, 5.0)
+
+
+def build_basement():
+    g = "J_Basement"
+    box(17.0, 27.5, 2.5, 10.0, BF - 0.15, BF, "concrete", g, label="BasementFloor")
+    wall("x", 17.0, 27.5, 2.5, 2.75, BF, -0.25, "concrete", (), g)
+    wall("x", 17.0, 27.5, 9.75, 10.0, BF, -0.25, "concrete", (), g)
+    wall("y", 2.75, 9.75, 17.0, 17.25, BF, -0.25, "concrete", (), g)
+    wall("y", 2.75, 9.75, 27.25, 27.5, BF, -0.25, "concrete", (), g)
+    # 天花 (留楼梯洞)
+    box(20.6, 27.5, 2.5, 10.0, -0.4, -0.25, "concrete", g)
+    box(17.0, 19.5, 2.5, 10.0, -0.4, -0.25, "concrete", g)
+    box(19.5, 20.6, 7.3, 10.0, -0.4, -0.25, "concrete", g)
+    box(19.5, 20.6, 2.5, 2.8, -0.4, -0.25, "concrete", g)
+    # 楼梯 16 级 (每级高 0.1875, 深 0.28), 顶在 y=7.3 往南下
+    for i in range(16):
+        top = FL - (i + 1) * 0.1875
+        y1 = 7.3 - i * 0.28
+        box(19.5, 20.6, y1 - 0.28, y1, BF, top, "concrete", g)
+    # 三排钢货架 + 纸箱
+    k = 0
+    for yc in (4.0, 5.8, 7.6):
+        for x0 in (21.3, 24.0):
+            x1 = x0 + 2.4
+            for xx in (x0, x1 - 0.05):
+                for yy in (yc - 0.25, yc + 0.2):
+                    box(xx, xx + 0.05, yy, yy + 0.05, BF, BF + 2.1, "metal", g)
+            for lv in range(4):
+                z = BF + 0.15 + lv * 0.6
+                box(x0, x1, yc - 0.25, yc + 0.25, z, z + 0.03, "metal", g)
+                xb = x0 + 0.1
+                while xb < x1 - 0.5:
+                    w = 0.35 + ((k * 37) % 5) * 0.06
+                    h = 0.25 + ((k * 13) % 4) * 0.06
+                    box(xb, xb + w, yc - 0.2, yc + 0.18, z + 0.03, z + 0.03 + h, "cardboard", g, False)
+                    xb += w + 0.08
+                    k += 1
+    box(26.75, 27.25, 3.0, 9.4, BF, BF + 2.0, "teak", g, label="WineRack")
+    box(17.4, 17.9, 3.0, 3.5, BF, BF + 0.7, "white", g, label="Dehumidifier")
+    for x, y in ((18.5, 8.5), (22.5, 4.9), (22.5, 6.7), (25.5, 8.5)):
+        plight(x, y, -0.6, 6.0, 700, lamp=False)
+        box(x - 0.6, x + 0.6, y - 0.06, y + 0.06, -0.42, -0.4, "lamp", g, False)
+
+
+# ------------------------------------------------------------------ 卧室翼 E/F + 私院 ④⑤
+def build_wing():
+    g = "E_F_Wing"
+    box(9.1, 17.0, 2.5, 10.5, -0.2, FL, "wood", g, label="WingFloor")
+    box(14.05, 16.9, 2.75, 4.95, FL, FL + 0.01, "porcelain", g, False)
+    wall("x", 4.0, 17.0, 10.25, 10.5, 0, WT, "white", [(12.0, 16.0, 0.9, 2.6, "win")], g)
+    wall("x", 4.0, 17.0, 2.5, 2.75, 0, WT, "white", [(10.0, 13.0, 0.9, 2.4, "win"), (15.0, 16.5, 1.6, 2.2, "win")], g)
+    wall("y", 2.75, 10.25, 4.0, 4.25, 0, WT, "white", (), g)
+    wall("y", 6.6, 10.25, 8.9, 9.1, 0, WT, "white", [(6.8, 8.0, FL, 2.7, "open"), (8.0, 10.1, FL, 2.7, "glass")], g)
+    wall("y", 2.75, 6.4, 8.9, 9.1, 0, WT, "white", [(2.9, 4.0, FL, 2.7, "glass"), (4.0, 5.2, FL, 2.7, "open"), (5.2, 6.3, FL, 2.7, "glass")], g)
+    box(8.9, 9.1, 6.4, 6.6, 0, WT, "white", g)
+    box(4.25, 8.9, 6.4, 6.6, 0, 2.6, "white", g, label="PatioDivider")
+    wall("x", 9.1, 17.0, 6.45, 6.55, FL, CEIL, "white_in", (), g)
+    wall("y", 2.75, 6.45, 13.95, 14.05, FL, CEIL, "white_in", [(5.2, 6.2, FL, 2.2, "open")], g)
+    wall("x", 14.05, 17.0, 4.95, 5.05, FL, CEIL, "white_in", [(15.0, 15.9, FL, 2.2, "open")], g)
+    roof(9.0, 17.0, 2.5, 10.5)
+    # 主卧
+    box(10.0, 11.6, 6.6, 7.0, FL, FL + 0.55, "teak", g, label="Bench")
+    plight(13.0, 8.5, CEIL - 0.3, 5.0)
+    # 次卧: 床 (程序化) 床头靠南墙
+    box(10.2, 11.8, 2.8, 4.8, FL, FL + 0.35, "teak", g, label="GuestBed")
+    box(10.25, 11.75, 2.85, 4.75, FL + 0.35, FL + 0.55, "linen", g)
+    box(10.4, 11.6, 2.9, 3.3, FL + 0.55, FL + 0.68, "linen", g, False)
+    box(10.2, 11.8, 2.75, 2.85, FL, FL + 1.1, "teak", g)
+    plight(11.5, 4.5, CEIL - 0.3, 5.0)
+    # 卫浴
+    box(14.3, 15.8, 2.8, 3.3, FL, FL + 0.85, "marble", g, label="Vanity")
+    box(16.2, 16.7, 2.8, 3.5, FL, FL + 0.42, "white", g, label="WC")
+    plight(15.5, 3.9, CEIL - 0.3, 4.0)
+    plight(15.5, 5.7, CEIL - 0.3, 3.0)
+    # ④ 主卧私院: 柚木平台 + 泡池 + 九重葛墙
+    g = "C4_MasterPatio"
+    box(4.25, 8.9, 6.6, 10.25, -0.2, FL, "teak", g)
+    box(5.4, 7.6, 7.9, 9.5, FL, FL + 0.55, "white", g, label="Tub")
+    box(5.5, 7.5, 8.0, 9.4, FL + 0.45, FL + 0.5, "water", g, False)
+    # 九重葛: 贴墙的一层扁椭球 (中等精度; 以后换叶片卡)
+    for i in range(24):
+        for j in range(11):
+            k = i * 11 + j
+            jx = ((k * 37) % 11) / 11.0 - 0.5
+            jz = ((k * 53) % 13) / 13.0 - 0.5
+            x = 4.4 + i * 0.19 + jx * 0.12
+            z = 0.8 + j * 0.25 + jz * 0.15 + 0.4 * math.sin(i * 0.7)
+            if z > 3.55 or z < 0.5:
+                continue
+            m = "leaf" if (k * 7) % 10 < 5 else "bouga"
+            d = 0.24 + ((k * 17) % 5) * 0.03
+            sph(x, 10.17 - ((k * 3) % 4) * 0.03, z, d, 0.12, d * 0.85, m)
+    plight(6.5, 8.5, 2.0, 2.5, 500, lamp=False)
+    # ⑤ 次卧私院: 碎石 + 柠檬树 + 吊床
+    g = "C5_GuestPatio"
+    box(4.25, 8.9, 2.75, 6.4, -0.2, GR + 0.07, "gravel", g)
+    olive_like = fig
+    olive_like(5.2, 5.4, 0.8, GR + 0.07)
+    box(6.0, 8.6, 3.3, 3.9, 0.55, 0.62, "linen", g, label="Hammock")
+    box(5.7, 6.0, 3.55, 3.65, 0.6, 1.4, "black", g, False)
+    box(8.6, 8.88, 3.55, 3.65, 0.6, 1.4, "black", g, False)
+
+
+# ------------------------------------------------------------------ 入口长巷 ⑥ + 门院 ⑦ + 柠檬巷 ⑧ + 访客停车 G
+def build_entry():
+    g = "C6_EntryLane"
+    box(21.0, 30.0, 7.1, 10.1, -0.1, GR, "gravel", g)
+    box(21.0, 30.0, 9.75, 10.05, GR, GR + 0.02, "water", g, False, label="LaneRill")
+    for i in range(10):
+        x = 21.5 + i * 0.85
+        box(x - 0.3, x + 0.3, 8.3, 9.0, GR, GR + 0.05, "terrace", g)
+    box(21.0, 30.0, 10.1, 10.5, 0, 2.6, "stone", g, label="LaneWallN")
+    box(21.0, 30.0, 6.8, 7.1, 0, 2.6, "stone", g, label="LaneWallS")
+    for x in (23.0, 25.5, 28.0):
+        cyl(x, 9.95, GR, GR + 0.7, 0.45, "terracotta", g, True)
+        bush(x, 9.95, GR + 0.7, 0.45, "leaf", 0.5)
+    g = "C7_GateCourt"
+    box(30.0, 33.0, 7.0, 10.5, -0.1, GR, "gravel", g)
+    cyl(31.5, 8.5, GR, GR + 0.04, 1.2, "terrace", g, True)
+    wall("y", 6.8, 10.5, 33.0, 33.3, 0, SW, "stone", [(8.0, 9.0, 0, 2.1, "open")], g)
+    fig(30.8, 9.6, 0.9)
+    cyl(32.4, 7.6, GR, GR + 0.6, 0.6, "stone", g, True)
+    cyl(32.4, 7.6, GR + 0.55, GR + 0.62, 0.48, "water", g, False)
+    g = "C8_LemonLane"
+    box(30.0, 33.0, 10.5, 18.0, -0.2, FL - 0.05, "terrace", g)
+    for y in (11.5, 13.0, 14.5):
+        lemon_pot(30.5, y, FL - 0.05)
+    box(32.0, 32.95, 16.8, 17.9, FL - 0.05, FL - 0.02, "porcelain", g, label="ShowerFloor")
+    cyl(32.85, 17.6, FL, 2.4, 0.05, "metal", g, True)
+    box(32.4, 32.85, 17.5, 17.7, 2.3, 2.36, "metal", g, label="ShowerHead")
+    plight(32.4, 17.3, 2.6, 3.0, 400, lamp=False)
+    g = "G_GuestParking"
+    box(33.5, 37.5, 1.6, 10.0, -0.1, GR, "gravel", g)
+    olive(36.2, 8.4, 0.8)
+    for y in (3.0, 4.2, 5.4, 6.6, 7.8):
+        box(34.0, 34.6, y, y + 0.6, GR, GR + 0.04, "terrace", g)
+
+
+# ------------------------------------------------------------------ 车库 H + 工作间 I
+def build_garage():
+    g = "H_Garage"
+    box(21.5, 33.0, 1.6, 6.8, -0.2, GR, "concrete", g, label="GarageFloor")
+    wall("x", 21.5, 33.0, 1.6, 1.85, 0, WT, "white", [(22.5, 26.5, GR, 2.5, "open"), (29.0, 31.0, 1.1, 2.2, "win")], g)
+    wall("x", 21.5, 33.0, 6.55, 6.8, 0, WT, "white", [(31.0, 32.0, GR, 2.3, "open")], g)
+    wall("y", 1.85, 6.55, 21.5, 21.75, 0, WT, "white", (), g)
+    wall("y", 1.85, 6.55, 32.75, 33.0, 0, WT, "white", (), g)
+    wall("y", 1.85, 6.55, 27.45, 27.55, GR, CEIL, "white_in", [(3.0, 4.0, GR, 2.2, "open")], g)
+    box(21.0, 21.5, 2.5, 6.8, 0, WT, "white", g)
+    roof(21.5, 33.0, 1.6, 6.8)
+    box(22.5, 26.5, 1.62, 1.84, 2.5, 2.75, "metal", g, label="RollerDoorBox")
+    for x0, paint in ((22.3, "car_blue"), (24.95, "car_white")):
+        w, L, y0 = 1.85, 4.4, 2.0
+        box(x0, x0 + w, y0, y0 + L, 0.32, 0.85, paint, g, label="CarBody")
+        box(x0 + 0.12, x0 + w - 0.12, y0 + 1.2, y0 + 3.4, 0.85, 1.32, "screen", g)
+        box(x0 + 0.15, x0 + w - 0.15, y0 + 1.3, y0 + 3.3, 1.32, 1.4, paint, g)
+        for dx in (0.1, w - 0.1):
+            for dy in (0.9, L - 0.9):
+                a = EAS.spawn_actor_from_object(CYL, V(x0 + dx, y0 + dy, 0.33), unreal.Rotator(0, 90, 0))
+                a.set_actor_scale3d(unreal.Vector(0.66, 0.66, 0.22))
+                finish(a, M["black"], g, True, None)
+    plight(24.5, 4.2, CEIL - 0.3, 5.0)
+    # 工作间
+    g = "I_Workshop"
+    box(27.8, 30.8, 5.9, 6.5, GR, GR + 0.88, "teak", g, label="Workbench")
+    box(27.75, 30.85, 5.85, 6.55, GR + 0.88, GR + 0.94, "teak", g)
+    box(28.1, 28.5, 5.95, 6.25, GR + 0.94, GR + 1.12, "metal", g, label="Vise")
+    box(32.6, 32.72, 2.3, 5.7, 1.0, 2.3, "concrete", g, label="Pegboard")
+    tools = [(2.6, 1.6, 2.0, "red"), (3.1, 1.5, 2.1, "metal"), (3.6, 1.7, 2.15, "metal"), (4.1, 1.4, 2.0, "red"),
+             (4.6, 1.6, 2.1, "black"), (5.1, 1.5, 2.15, "metal"), (2.8, 1.15, 1.35, "yellow"), (3.8, 1.1, 1.4, "metal"), (4.8, 1.2, 1.4, "red")]
+    for y, z0, z1, m in tools:
+        box(32.5, 32.6, y - 0.06, y + 0.06, z0, z1, m, g, False)
+    cyl(28.3, 2.4, GR, GR + 0.08, 0.45, "metal", g, True)
+    cyl(28.3, 2.25, GR, GR + 1.6, 0.08, "metal", g, True)
+    box(28.1, 28.5, 2.15, 2.6, GR + 1.3, GR + 1.6, "red", g, label="DrillPress")
+    box(29.3, 30.6, 1.9, 2.5, GR, GR + 1.0, "red", g, label="ToolCabinet")
+    plight(30.2, 4.2, CEIL - 0.3, 7.0)
+
+
+# ------------------------------------------------------------------ 电子工作室 K
+def build_studio():
+    g = "K_Studio"
+    box(33.0, 37.5, 10.5, 18.0, -0.2, FL, "wood", g, label="StudioFloor")
+    wall("y", 10.5, 18.0, 33.0, 33.25, 0, WT, "white", [(12.0, 13.0, FL, 2.3, "open")], g)
+    wall("y", 10.5, 18.0, 37.25, 37.5, 0, WT, "white", [(11.5, 13.5, 1.5, 2.6, "win")], g)
+    wall("x", 33.25, 37.25, 17.75, 18.0, 0, WT, "white", [(34.0, 36.8, 0.9, 2.6, "win")], g)
+    wall("x", 33.25, 37.25, 10.5, 10.75, 0, WT, "white", (), g)
+    roof(33.0, 37.5, 10.5, 18.0)
+    T = FL + 0.92
+    # 东墙 6 m 防静电工作台
+    box(36.45, 37.2, 11.2, 17.2, FL, T - 0.03, "metal", g, label="ESDBench")
+    box(36.45, 37.2, 11.2, 17.2, T - 0.03, T, "esd", g)
+    box(37.12, 37.25, 11.2, 17.2, T, T + 0.9, "concrete", g, label="BenchPegboard")
+    # 仪器 (精细区: 先做成比例准确的体块, 屏幕用深色玻璃)
+    inst = [  # y0, y1, h, depth, name, mat
+        (11.6, 12.05, 0.25, 0.45, "Oscilloscope", "metal"),
+        (12.25, 12.6, 0.16, 0.35, "PowerSupply", "black"),
+        (12.8, 13.0, 0.12, 0.25, "Multimeter", "yellow"),
+        (13.3, 13.6, 0.12, 0.3, "SolderStation", "red"),
+        (15.6, 16.0, 0.3, 0.4, "FumeExtractor", "black"),
+        (16.3, 16.75, 0.18, 0.35, "LogicAnalyzer", "black")]
+    for y0, y1, h, dep, nm, m in inst:
+        box(37.15 - dep, 37.15, y0, y1, T, T + h, m, g, label=nm)
+        if nm in ("Oscilloscope", "PowerSupply", "LogicAnalyzer"):
+            box(37.15 - dep - 0.01, 37.15 - dep, y0 + 0.04, y1 - 0.04, T + 0.04, T + h - 0.03, "screen", g, False)
+    cyl(36.85, 14.4, T, T + 0.05, 0.3, "black", g, True)
+    cyl(36.95, 14.4, T + 0.05, T + 0.45, 0.05, "metal", g, True)
+    cyl(36.8, 14.4, T + 0.3, T + 0.42, 0.12, "black", g, True)
+    for i, y in enumerate((13.9, 14.9, 15.2)):
+        box(36.55, 36.75, y, y + 0.15, T, T + 0.015, "pcb", g, False)
+    box(36.6, 36.7, 15.0, 15.1, T, T + 0.04, "black", g, False, label="Servo")
+    # 北窗下写代码的桌子 + 两台显示器
+    box(33.6, 36.2, 17.1, 17.7, FL, FL + 0.72, "teak", g, label="CodeDesk")
+    for x0 in (34.0, 35.0):
+        box(x0, x0 + 0.6, 17.5, 17.53, FL + 0.95, FL + 1.32, "screen", g, label="Monitor")
+        box(x0 + 0.27, x0 + 0.33, 17.53, 17.6, FL + 0.72, FL + 0.95, "black", g, False)
+    cyl(35.0, 16.4, FL, FL + 0.45, 0.45, "black", g, True)
+    cyl(36.0, 13.0, FL, FL + 0.6, 0.42, "black", g, True)
+    # 南墙: 元件抽屉柜 + 3D 打印机
+    box(33.5, 35.5, 10.8, 11.25, FL, FL + 1.2, "metal", g, label="ComponentDrawers")
+    for r in range(6):
+        for c in range(5):
+            box(33.55 + c * 0.39, 33.55 + c * 0.39 + 0.33, 11.25, 11.27, FL + 0.08 + r * 0.19, FL + 0.08 + r * 0.19 + 0.14, "white", g, False)
+    box(35.8, 36.4, 10.85, 11.45, FL, FL + 0.7, "teak", g)
+    box(35.85, 36.35, 10.9, 11.4, FL + 0.7, FL + 1.2, "black", g, label="Printer3D")
+    plight(35.0, 12.5, CEIL - 0.3, 8.0)
+    plight(35.0, 15.8, CEIL - 0.3, 8.0)
+
+
+# ------------------------------------------------------------------ AI 家具 (复用 L_Villa 的, 只挪位置)
+# 朝向: 大多数 AI 家具 yaw 0 = 正面朝大海 (-Y); 但沙发的网格正面相反 (俯视截图实测), 所以沙发给 180
+PLACE = {
+    "sofa": [(25.5, 14.2, FL, 180)],
+    "coffee_table": [(25.5, 15.5, FL, 0)],
+    "armchair": [(23.9, 15.4, FL, 90), (27.1, 15.4, FL, -90)],
+    "bar_stool": [(19.9, 13.75, FL, 180), (20.8, 13.75, FL, 180), (21.7, 13.75, FL, 180)],
+    "plant": [(29.3, 17.3, FL, 0), (17.7, 17.2, FL, 0), (17.6, 9.8, FL, 0), (16.4, 9.9, FL, 0)],
+    "round_bed": [(14.0, 8.4, FL, 0)],
+    "sun_lounger": [(15.6, 22.0, FL, 0), (16.7, 22.0, FL, 0), (20.3, 22.0, FL, 0), (21.4, 22.0, FL, 0), (8.25, 8.6, FL, -90)],
+    "umbrella": [(13.0, 21.9, FL, 0), (24.6, 21.6, FL, 0)],
+    "dining_table": [(31.0, 22.3, FL, 0)],
+    "dining_chair": [(30.35, 21.6, FL, 0), (31.0, 21.6, FL, 0), (31.65, 21.6, FL, 0),
+                     (30.35, 23.0, FL, 180), (31.0, 23.0, FL, 180), (31.65, 23.0, FL, 180)],
+    "bbq_grill": [(33.0, 19.2, FL, -90)],
+    "egg_chair": [(5.4, 21.2, FL, 0)],
+    "flamingo_float": [(17.2, 24.6, 0.0, -30)],
+}
+
+
+def place_ai():
+    """导入的 AI_* Actor 改旋转不生效 (实测), 所以按它的网格和材质重新生成一个普通 StaticMeshActor, 再删掉原来的。
+    重新生成的标签叫 CF_<种类>_<序号>, 带 Courtyard 标签, 下次重跑会被清掉, 所以第一次运行时记下网格和材质。"""
+    import re
+    cache_p = os.path.join(D, "ai_furniture_cache.json")
+    cache = json.load(open(cache_p, encoding="utf-8")) if os.path.exists(cache_p) else {}
+    for a in EAS.get_all_level_actors():
+        lab = a.get_actor_label()
+        m = re.match(r"AI_([a-z_]+?)_(\d+)", lab)
+        if not m:
+            continue
+        kind = m.group(1)
+        if kind not in cache and isinstance(a, unreal.StaticMeshActor):
+            smc = a.static_mesh_component
+            cache[kind] = {"mesh": smc.static_mesh.get_path_name(),
+                           "mats": [smc.get_material(i).get_path_name() if smc.get_material(i) else "" for i in range(smc.get_num_materials())]}
+        EAS.destroy_actor(a)
+    json.dump(cache, open(cache_p, "w", encoding="utf-8"), indent=1)
+    used = {}
+    for kind, spots in PLACE.items():
+        if kind not in cache:
+            LOG.append("no mesh for " + kind)
+            continue
+        mesh = unreal.load_asset(cache[kind]["mesh"])
+        mats = [unreal.load_asset(p) if p else None for p in cache[kind]["mats"]]
+        for i, (x, y, z, yaw) in enumerate(spots):
+            a = EAS.spawn_actor_from_object(mesh, V(x, y, z), unreal.Rotator(0, 0, yaw))
+            for k, mt in enumerate(mats):
+                if mt:
+                    a.static_mesh_component.set_material(k, mt)
+            o, e = a.get_actor_bounds(False)
+            a.set_actor_location(unreal.Vector(x * 100 - (o.x - x * 100), -y * 100 - (o.y + y * 100), z * 100 + (z * 100 - (o.z - e.z))), False, False)
+            a.set_editor_property("tags", [unreal.Name(TAG)])
+            a.set_folder_path("Courtyard/Furniture")
+            a.set_actor_label("CF_%s_%d" % (kind, i))
+            used[kind] = i + 1
+    LOG.append("AI furniture placed: %s" % used)
+
+
+# ------------------------------------------------------------------ 出生点 + 导航
+def player_and_nav():
+    for a in EAS.get_all_level_actors():
+        cls = a.get_class().get_name()
+        if cls == "PlayerStart":
+            a.set_actor_location(V(29.3, 8.6, 1.0), False, False)
+            a.set_actor_rotation(unreal.Rotator(0, 0, 180), False)
+            LOG.append("PlayerStart -> entry lane")
+        if cls == "NavMeshBoundsVolume":
+            center = V(19.0, 13.0, 0.4)
+            half = unreal.Vector(2100, 1650, 380)
+            o, e = a.get_actor_bounds(False)
+            s = a.get_actor_scale3d()
+            rc = a.root_component
+            rc.set_editor_property("relative_location", center)
+            rc.set_editor_property("relative_scale3d", unreal.Vector(s.x * half.x / max(e.x, 1), s.y * half.y / max(e.y, 1), s.z * half.z / max(e.z, 1)))
+            LOG.append("NavMeshBounds -> %s" % center)
+
+
+def main():
+    clean()
+    build_materials()
+    build_site()
+    build_terrace()
+    build_courts()
+    build_living()
+    build_basement()
+    build_wing()
+    build_entry()
+    build_garage()
+    build_studio()
+    place_ai()
+    player_and_nav()
+    les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
+    LOG.append("spawned %d meshes; saved %s" % (COUNT["n"], les.save_current_level()))
+    open(os.path.join(D, "c2_report.txt"), "w", encoding="utf-8").write("\n".join(LOG))
+    print(" | ".join(LOG))
+
+
+main()
