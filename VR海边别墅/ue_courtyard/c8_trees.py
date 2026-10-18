@@ -22,6 +22,8 @@ TOOLS = unreal.AssetToolsHelpers.get_asset_tools()
 EAS = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 SMES = unreal.get_editor_subsystem(unreal.StaticMeshEditorSubsystem)
 TAG = "Courtyard"
+# 只摆这些种类。2026-10-18: 程序化的树/灌木/香草不好看, 先全部撤掉, 只留九重葛墙; 以后换成现成素材
+ENABLED = {"BougaWall"}
 LOG = []
 
 LEAVES = {  # 槽名 -> (贴图, 颜色倍乘, 透光颜色倍乘)
@@ -249,6 +251,7 @@ def remove_old():
 
 def spawn(placements, meshes, mats):
     n = 0
+    placements = [p for p in placements if p[0] in ENABLED]
     for i, (kind, x, y, z, s) in enumerate(placements):
         mesh = meshes.get(kind)
         if not mesh:
