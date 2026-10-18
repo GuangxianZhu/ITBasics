@@ -189,7 +189,9 @@ def build_master():
     MEL.connect_material_expressions(rpow, "", rmul, "A")
     MEL.connect_material_expressions(scalar(m, "RoughMul", 1.0, -500, 320), "", rmul, "B")
     MEL.connect_material_property(rmul, "", unreal.MaterialProperty.MP_ROUGHNESS)
-    MEL.connect_material_property(c_nrm, "XYZ Texture", unreal.MaterialProperty.MP_NORMAL)
+    # 2026-10-18: WorldAlignedNormal 在朝下的面 (天花板) 给出朝上的法线 -> 顶灯周围黑圈; 镜像回几何法线同侧 (见 c14_ceiling_normal.py)
+    from c14_ceiling_normal import add_hemisphere_fix
+    MEL.connect_material_property(add_hemisphere_fix(m, c_nrm, "XYZ Texture"), "", unreal.MaterialProperty.MP_NORMAL)
     MEL.connect_material_property(scalar(m, "Metallic", 0.0, -300, 400), "", unreal.MaterialProperty.MP_METALLIC)
     MEL.recompile_material(m)
     EAL.save_loaded_asset(m)
