@@ -48,6 +48,9 @@ WT = 3.85      # 外墙顶 (含女儿墙)
 CEIL = 3.35    # 室内天花
 BF = -2.85     # 地下室地面
 SW = 2.2       # 院墙高
+# 2026-10-19: 硬装 (厨房柜、床、卫浴、酒架、工作台、工作室家具) 改用免费 Fab 网格, 由 c16_furniture.py 摆放;
+# True = 这里不再生成那些方块 (想回到方块版就改成 False, 重新导出合并网格)
+FAB_FURN = True
 
 
 def V(x, y, z):
@@ -455,9 +458,11 @@ def build_living():
     roof(17, 30, 10.5, 18)
     # 厨房: 靠墙台面 + 岛台
     # 2026-10-18: 靠墙台面原来在 x18..23, 但后墙只有 x21..30 -> 左边 3 m 背后是门厅, 看着像隔断。挪到真墙前 x21..26
-    box(21.0, 26.0, 10.75, 11.4, FL, FL + 0.9, "concrete", g, label="BackCounter")
-    box(21.0, 26.0, 10.75, 11.45, FL + 0.9, FL + 0.95, "marble", g)
-    box(19.0, 22.6, 12.3, 13.2, FL, FL + 0.9, "wood", g, label="Island")
+    if not FAB_FURN:
+        box(21.0, 26.0, 10.75, 11.4, FL, FL + 0.9, "concrete", g, label="BackCounter")
+        box(21.0, 26.0, 10.75, 11.45, FL + 0.9, FL + 0.95, "marble", g)
+        box(19.0, 22.6, 12.3, 13.2, FL, FL + 0.9, "wood", g, label="Island")
+    # 岛台大理石台面保留 (Fab 柜子 c16 摆在下面, 高度拉到 0.9 m 顶住台面; 杯子酒瓶还放在台面上)
     box(18.95, 22.65, 12.25, 13.25, FL + 0.9, FL + 0.96, "marble", g)
     box(23.7, 27.3, 14.6, 16.4, FL, FL + 0.01, "rug", g, False)
     for x, y in ((19.5, 11.9), (24.5, 12.5), (27.5, 15.0), (21.0, 15.5)):
@@ -524,8 +529,9 @@ def build_basement():
                     box(xb, xb + w, yc - 0.2, yc + 0.18, z + 0.03, z + 0.03 + h, "cardboard", g, False)
                     xb += w + 0.08
                     k += 1
-    box(26.75, 27.25, 3.0, 9.4, BF, BF + 2.0, "teak", g, label="WineRack")
-    box(17.4, 17.9, 3.0, 3.5, BF, BF + 0.7, "white", g, label="Dehumidifier")
+    if not FAB_FURN:
+        box(26.75, 27.25, 3.0, 9.4, BF, BF + 2.0, "teak", g, label="WineRack")
+        box(17.4, 17.9, 3.0, 3.5, BF, BF + 0.7, "white", g, label="Dehumidifier")
     for x, y in ((18.5, 8.5), (22.5, 4.9), (22.5, 6.7), (25.5, 8.5)):
         plight(x, y, -0.6, 6.0, 700, lamp=False)
         box(x - 0.6, x + 0.6, y - 0.06, y + 0.06, -0.42, -0.4, "lamp", g, False)
@@ -551,14 +557,16 @@ def build_wing():
     box(10.0, 11.6, 6.6, 7.0, FL, FL + 0.55, "teak", g, label="Bench")
     plight(13.0, 8.5, CEIL - 0.3, 5.0)
     # 次卧: 床 (程序化) 床头靠南墙
-    box(10.2, 11.8, 2.8, 4.8, FL, FL + 0.35, "teak", g, label="GuestBed")
-    box(10.25, 11.75, 2.85, 4.75, FL + 0.35, FL + 0.55, "linen", g)
-    box(10.4, 11.6, 2.9, 3.3, FL + 0.55, FL + 0.68, "linen", g, False)
-    box(10.2, 11.8, 2.75, 2.85, FL, FL + 1.1, "teak", g)
+    if not FAB_FURN:
+        box(10.2, 11.8, 2.8, 4.8, FL, FL + 0.35, "teak", g, label="GuestBed")
+        box(10.25, 11.75, 2.85, 4.75, FL + 0.35, FL + 0.55, "linen", g)
+        box(10.4, 11.6, 2.9, 3.3, FL + 0.55, FL + 0.68, "linen", g, False)
+        box(10.2, 11.8, 2.75, 2.85, FL, FL + 1.1, "teak", g)
     plight(11.5, 4.5, CEIL - 0.3, 5.0)
     # 卫浴
-    box(14.3, 15.8, 2.8, 3.3, FL, FL + 0.85, "marble", g, label="Vanity")
-    box(16.2, 16.7, 2.8, 3.5, FL, FL + 0.42, "white", g, label="WC")
+    if not FAB_FURN:
+        box(14.3, 15.8, 2.8, 3.3, FL, FL + 0.85, "marble", g, label="Vanity")
+        box(16.2, 16.7, 2.8, 3.5, FL, FL + 0.42, "white", g, label="WC")
     plight(15.5, 3.9, CEIL - 0.3, 4.0)
     plight(15.5, 5.7, CEIL - 0.3, 3.0)
     # ④ 主卧私院: 柚木平台 + 泡池 + 九重葛墙
@@ -647,33 +655,34 @@ def build_garage():
     plight(24.5, 4.2, CEIL - 0.3, 5.0)
     # 工作间
     g = "I_Workshop"
-    box(27.8, 30.8, 5.9, 6.5, GR, GR + 0.88, "teak", g, label="Workbench")
-    box(27.75, 30.85, 5.85, 6.55, GR + 0.88, GR + 0.94, "teak", g)
-    box(28.1, 28.5, 5.95, 6.25, GR + 0.94, GR + 1.12, "metal", g, label="Vise")
-    box(32.6, 32.72, 2.3, 5.7, 1.0, 2.3, "concrete", g, label="Pegboard")
-    tools = [(2.6, 1.6, 2.0, "red"), (3.1, 1.5, 2.1, "metal"), (3.6, 1.7, 2.15, "metal"), (4.1, 1.4, 2.0, "red"),
-             (4.6, 1.6, 2.1, "black"), (5.1, 1.5, 2.15, "metal"), (2.8, 1.15, 1.35, "yellow"), (3.8, 1.1, 1.4, "metal"), (4.8, 1.2, 1.4, "red")]
-    for y, z0, z1, m in tools:
-        box(32.5, 32.6, y - 0.06, y + 0.06, z0, z1, m, g, False)
-    cyl(28.3, 2.4, GR, GR + 0.08, 0.45, "metal", g, True)
-    cyl(28.3, 2.25, GR, GR + 1.6, 0.08, "metal", g, True)
-    box(28.1, 28.5, 2.15, 2.6, GR + 1.3, GR + 1.6, "red", g, label="DrillPress")
-    box(29.3, 30.6, 1.9, 2.5, GR, GR + 1.0, "red", g, label="ToolCabinet")
-    # 更多工具: 锤子、扳手、锯、螺丝刀 (洞洞板), 墙架上的油漆罐
-    for k in range(14):
-        y = 2.45 + k * 0.23
-        zc = 1.25 + (k % 3) * 0.32
-        m = ("red", "metal", "black", "yellow")[k % 4]
-        box(32.52, 32.6, y - 0.03, y + 0.03, zc, zc + 0.22 + (k % 2) * 0.1, m, g, False)
-        if k % 3 == 0:
-            box(32.52, 32.6, y - 0.07, y + 0.07, zc + 0.22, zc + 0.27, "metal", g, False)
-    box(27.7, 28.0, 2.2, 5.6, GR, GR + 2.0, "metal", g, label="Shelf")
-    for lv in range(4):
-        z = GR + 0.3 + lv * 0.5
-        box(27.6, 28.05, 2.2, 5.6, z, z + 0.03, "teak", g, False)
-        for k in range(5):
-            y = 2.5 + k * 0.62
-            cyl(27.82, y, z + 0.03, z + 0.25, 0.2, ("red", "white", "metal", "yellow", "esd")[(k + lv) % 5], g, True)
+    if not FAB_FURN:
+        box(27.8, 30.8, 5.9, 6.5, GR, GR + 0.88, "teak", g, label="Workbench")
+        box(27.75, 30.85, 5.85, 6.55, GR + 0.88, GR + 0.94, "teak", g)
+        box(28.1, 28.5, 5.95, 6.25, GR + 0.94, GR + 1.12, "metal", g, label="Vise")
+        box(32.6, 32.72, 2.3, 5.7, 1.0, 2.3, "concrete", g, label="Pegboard")
+        tools = [(2.6, 1.6, 2.0, "red"), (3.1, 1.5, 2.1, "metal"), (3.6, 1.7, 2.15, "metal"), (4.1, 1.4, 2.0, "red"),
+                 (4.6, 1.6, 2.1, "black"), (5.1, 1.5, 2.15, "metal"), (2.8, 1.15, 1.35, "yellow"), (3.8, 1.1, 1.4, "metal"), (4.8, 1.2, 1.4, "red")]
+        for y, z0, z1, m in tools:
+            box(32.5, 32.6, y - 0.06, y + 0.06, z0, z1, m, g, False)
+        cyl(28.3, 2.4, GR, GR + 0.08, 0.45, "metal", g, True)
+        cyl(28.3, 2.25, GR, GR + 1.6, 0.08, "metal", g, True)
+        box(28.1, 28.5, 2.15, 2.6, GR + 1.3, GR + 1.6, "red", g, label="DrillPress")
+        box(29.3, 30.6, 1.9, 2.5, GR, GR + 1.0, "red", g, label="ToolCabinet")
+        # 更多工具: 锤子、扳手、锯、螺丝刀 (洞洞板), 墙架上的油漆罐
+        for k in range(14):
+            y = 2.45 + k * 0.23
+            zc = 1.25 + (k % 3) * 0.32
+            m = ("red", "metal", "black", "yellow")[k % 4]
+            box(32.52, 32.6, y - 0.03, y + 0.03, zc, zc + 0.22 + (k % 2) * 0.1, m, g, False)
+            if k % 3 == 0:
+                box(32.52, 32.6, y - 0.07, y + 0.07, zc + 0.22, zc + 0.27, "metal", g, False)
+        box(27.7, 28.0, 2.2, 5.6, GR, GR + 2.0, "metal", g, label="Shelf")
+        for lv in range(4):
+            z = GR + 0.3 + lv * 0.5
+            box(27.6, 28.05, 2.2, 5.6, z, z + 0.03, "teak", g, False)
+            for k in range(5):
+                y = 2.5 + k * 0.62
+                cyl(27.82, y, z + 0.03, z + 0.25, 0.2, ("red", "white", "metal", "yellow", "esd")[(k + lv) % 5], g, True)
     plight(30.2, 4.2, CEIL - 0.3, 7.0)
 
 
@@ -686,86 +695,88 @@ def build_studio():
     wall("x", 33.25, 37.25, 17.75, 18.0, 0, WT, "white", [(34.0, 36.8, 0.9, 2.6, "win")], g)
     wall("x", 33.25, 37.25, 10.5, 10.75, 0, WT, "white", (), g)
     roof(33.0, 37.5, 10.5, 18.0)
-    T = FL + 0.92
-    # 东墙 6 m 防静电工作台
-    box(36.45, 37.2, 11.2, 17.2, FL, T - 0.03, "metal", g, label="ESDBench")
-    box(36.45, 37.2, 11.2, 17.2, T - 0.03, T, "esd", g)
-    box(37.12, 37.25, 11.2, 17.2, T, T + 0.9, "concrete", g, label="BenchPegboard")
-    # 仪器 (精细区: 先做成比例准确的体块, 屏幕用深色玻璃)
-    inst = [  # y0, y1, h, depth, name, mat
-        (11.6, 12.05, 0.25, 0.45, "Oscilloscope", "metal"),
-        (12.25, 12.6, 0.16, 0.35, "PowerSupply", "black"),
-        (12.8, 13.0, 0.12, 0.25, "Multimeter", "yellow"),
-        (13.3, 13.6, 0.12, 0.3, "SolderStation", "red"),
-        (15.6, 16.0, 0.3, 0.4, "FumeExtractor", "black"),
-        (16.3, 16.75, 0.18, 0.35, "LogicAnalyzer", "black")]
-    for y0, y1, h, dep, nm, m in inst:
-        box(37.15 - dep, 37.15, y0, y1, T, T + h, m, g, label=nm)
-        if nm in ("Oscilloscope", "PowerSupply", "LogicAnalyzer"):
-            box(37.15 - dep - 0.01, 37.15 - dep, y0 + 0.04, y1 - 0.04, T + 0.04, T + h - 0.03, "screen", g, False)
-    cyl(36.85, 14.4, T, T + 0.05, 0.3, "black", g, True)
-    cyl(36.95, 14.4, T + 0.05, T + 0.45, 0.05, "metal", g, True)
-    cyl(36.8, 14.4, T + 0.3, T + 0.42, 0.12, "black", g, True)
-    for i, y in enumerate((13.9, 14.9, 15.2)):
-        box(36.55, 36.75, y, y + 0.15, T, T + 0.015, "pcb", g, False)
-    box(36.6, 36.7, 15.0, 15.1, T, T + 0.04, "black", g, False, label="Servo")
-    # 北窗下写代码的桌子 + 两台显示器
-    box(33.6, 36.2, 17.1, 17.7, FL, FL + 0.72, "teak", g, label="CodeDesk")
-    for x0 in (34.0, 35.0):
-        box(x0, x0 + 0.6, 17.5, 17.53, FL + 0.95, FL + 1.32, "screen", g, label="Monitor")
-        box(x0 + 0.27, x0 + 0.33, 17.53, 17.6, FL + 0.72, FL + 0.95, "black", g, False)
-    cyl(35.0, 16.4, FL, FL + 0.45, 0.45, "black", g, True)
-    cyl(36.0, 13.0, FL, FL + 0.6, 0.42, "black", g, True)
-    # 南墙: 元件抽屉柜 + 3D 打印机
-    box(33.5, 35.5, 10.8, 11.25, FL, FL + 1.2, "metal", g, label="ComponentDrawers")
-    for r in range(6):
-        for c in range(5):
-            box(33.55 + c * 0.39, 33.55 + c * 0.39 + 0.33, 11.25, 11.27, FL + 0.08 + r * 0.19, FL + 0.08 + r * 0.19 + 0.14, "white", g, False)
-    box(35.8, 36.4, 10.85, 11.45, FL, FL + 0.7, "teak", g)
-    box(35.85, 36.35, 10.9, 11.4, FL + 0.7, FL + 1.2, "black", g, label="Printer3D")
-    # 示波器屏幕上的方波 (黄线), 显示器上的"代码行"
-    sx = 37.15 - 0.45 - 0.012
-    ys = [11.66 + i * 0.045 for i in range(8)]
-    for i in range(7):
-        zl = T + (0.08 if i % 2 == 0 else 0.17)
-        box(sx - 0.004, sx, ys[i], ys[i + 1], zl, zl + 0.008, "yellow", g, False)
-        box(sx - 0.004, sx, ys[i + 1] - 0.004, ys[i + 1], T + 0.08, T + 0.178, "yellow", g, False)
-    code = ["esd", "yellow", "white", "esd", "white", "red", "white", "esd", "yellow", "white"]
-    for x0 in (34.0, 35.0):
-        for r, cm in enumerate(code):
-            ind = 0.04 + (r % 3) * 0.05
-            ln = 0.18 + ((r * 7) % 5) * 0.06
-            z = FL + 1.28 - r * 0.033
-            box(x0 + ind, x0 + min(0.57, ind + ln), 17.494, 17.499, z, z + 0.012, cm, g, False)
-    # 工作台上: 第三台显示器 + 键盘, 面包板 + 跳线, 焊锡卷, 台灯
-    box(36.95, 36.98, 14.9, 15.5, T + 0.18, T + 0.52, "screen", g, label="BenchMonitor")
-    box(36.98, 37.05, 15.17, 15.23, T, T + 0.2, "black", g, False)
-    box(36.5, 36.68, 14.95, 15.45, T, T + 0.02, "black", g, False, label="Keyboard")
-    box(36.55, 36.8, 13.95, 14.12, T, T + 0.012, "white", g, False, label="Breadboard")
-    for i, cm in enumerate(("red", "black", "yellow", "esd", "red", "white")):
-        y = 13.97 + i * 0.025
-        box(36.58 + (i % 3) * 0.05, 36.7 + (i % 2) * 0.05, y, y + 0.006, T + 0.012, T + 0.02, cm, g, False)
-    for k, (y, cm) in enumerate(((13.92, "black"), (13.96, "black"), (14.0, "yellow"), (14.04, "red"))):
-        box(36.57 + k * 0.02, 36.59 + k * 0.02, y, y + 0.02, T + 0.015, T + 0.035, cm, g, False)
-    cyl(36.62, 13.75, T, T + 0.04, 0.09, "metal", g, True)
-    cyl(37.05, 16.9, T, T + 0.6, 0.03, "black", g, True)
-    box(36.8, 37.05, 16.8, 17.0, T + 0.56, T + 0.62, "white", g, False, label="BenchLamp")
-    # 工作台上方: 零件盒层架 (三层, 彩色小盒)
-    for lv in range(3):
-        z = T + 0.75 + lv * 0.28
-        box(36.95, 37.12, 11.2, 17.2, z, z + 0.02, "teak", g, False)
-        y = 11.25
-        k = 0
-        while y < 17.1:
-            cm = ("red", "white", "yellow", "esd", "metal")[(k + lv) % 5]
-            box(36.97, 37.11, y, y + 0.11, z + 0.02, z + 0.12, cm, g, False)
-            y += 0.14
-            k += 1
-    # 办公椅 + 西墙白板
-    cyl(36.0, 13.0, FL, FL + 0.06, 0.6, "black", g, True)
-    cyl(36.0, 13.0, FL + 0.06, FL + 0.45, 0.06, "metal", g, True)
-    box(35.75, 36.25, 12.75, 13.25, FL + 0.45, FL + 0.53, "black", g, label="OfficeChair")
-    box(35.75, 35.82, 12.75, 13.25, FL + 0.53, FL + 1.1, "black", g)
+    if not FAB_FURN:
+        T = FL + 0.92
+        # 东墙 6 m 防静电工作台
+        box(36.45, 37.2, 11.2, 17.2, FL, T - 0.03, "metal", g, label="ESDBench")
+        box(36.45, 37.2, 11.2, 17.2, T - 0.03, T, "esd", g)
+        box(37.12, 37.25, 11.2, 17.2, T, T + 0.9, "concrete", g, label="BenchPegboard")
+        # 仪器 (精细区: 先做成比例准确的体块, 屏幕用深色玻璃)
+        inst = [  # y0, y1, h, depth, name, mat
+            (11.6, 12.05, 0.25, 0.45, "Oscilloscope", "metal"),
+            (12.25, 12.6, 0.16, 0.35, "PowerSupply", "black"),
+            (12.8, 13.0, 0.12, 0.25, "Multimeter", "yellow"),
+            (13.3, 13.6, 0.12, 0.3, "SolderStation", "red"),
+            (15.6, 16.0, 0.3, 0.4, "FumeExtractor", "black"),
+            (16.3, 16.75, 0.18, 0.35, "LogicAnalyzer", "black")]
+        for y0, y1, h, dep, nm, m in inst:
+            box(37.15 - dep, 37.15, y0, y1, T, T + h, m, g, label=nm)
+            if nm in ("Oscilloscope", "PowerSupply", "LogicAnalyzer"):
+                box(37.15 - dep - 0.01, 37.15 - dep, y0 + 0.04, y1 - 0.04, T + 0.04, T + h - 0.03, "screen", g, False)
+        cyl(36.85, 14.4, T, T + 0.05, 0.3, "black", g, True)
+        cyl(36.95, 14.4, T + 0.05, T + 0.45, 0.05, "metal", g, True)
+        cyl(36.8, 14.4, T + 0.3, T + 0.42, 0.12, "black", g, True)
+        for i, y in enumerate((13.9, 14.9, 15.2)):
+            box(36.55, 36.75, y, y + 0.15, T, T + 0.015, "pcb", g, False)
+        box(36.6, 36.7, 15.0, 15.1, T, T + 0.04, "black", g, False, label="Servo")
+        # 北窗下写代码的桌子 + 两台显示器
+        box(33.6, 36.2, 17.1, 17.7, FL, FL + 0.72, "teak", g, label="CodeDesk")
+        for x0 in (34.0, 35.0):
+            box(x0, x0 + 0.6, 17.5, 17.53, FL + 0.95, FL + 1.32, "screen", g, label="Monitor")
+            box(x0 + 0.27, x0 + 0.33, 17.53, 17.6, FL + 0.72, FL + 0.95, "black", g, False)
+        cyl(35.0, 16.4, FL, FL + 0.45, 0.45, "black", g, True)
+        cyl(36.0, 13.0, FL, FL + 0.6, 0.42, "black", g, True)
+        # 南墙: 元件抽屉柜 + 3D 打印机
+        box(33.5, 35.5, 10.8, 11.25, FL, FL + 1.2, "metal", g, label="ComponentDrawers")
+        for r in range(6):
+            for c in range(5):
+                box(33.55 + c * 0.39, 33.55 + c * 0.39 + 0.33, 11.25, 11.27, FL + 0.08 + r * 0.19, FL + 0.08 + r * 0.19 + 0.14, "white", g, False)
+        box(35.8, 36.4, 10.85, 11.45, FL, FL + 0.7, "teak", g)
+        box(35.85, 36.35, 10.9, 11.4, FL + 0.7, FL + 1.2, "black", g, label="Printer3D")
+        # 示波器屏幕上的方波 (黄线), 显示器上的"代码行"
+        sx = 37.15 - 0.45 - 0.012
+        ys = [11.66 + i * 0.045 for i in range(8)]
+        for i in range(7):
+            zl = T + (0.08 if i % 2 == 0 else 0.17)
+            box(sx - 0.004, sx, ys[i], ys[i + 1], zl, zl + 0.008, "yellow", g, False)
+            box(sx - 0.004, sx, ys[i + 1] - 0.004, ys[i + 1], T + 0.08, T + 0.178, "yellow", g, False)
+        code = ["esd", "yellow", "white", "esd", "white", "red", "white", "esd", "yellow", "white"]
+        for x0 in (34.0, 35.0):
+            for r, cm in enumerate(code):
+                ind = 0.04 + (r % 3) * 0.05
+                ln = 0.18 + ((r * 7) % 5) * 0.06
+                z = FL + 1.28 - r * 0.033
+                box(x0 + ind, x0 + min(0.57, ind + ln), 17.494, 17.499, z, z + 0.012, cm, g, False)
+        # 工作台上: 第三台显示器 + 键盘, 面包板 + 跳线, 焊锡卷, 台灯
+        box(36.95, 36.98, 14.9, 15.5, T + 0.18, T + 0.52, "screen", g, label="BenchMonitor")
+        box(36.98, 37.05, 15.17, 15.23, T, T + 0.2, "black", g, False)
+        box(36.5, 36.68, 14.95, 15.45, T, T + 0.02, "black", g, False, label="Keyboard")
+        box(36.55, 36.8, 13.95, 14.12, T, T + 0.012, "white", g, False, label="Breadboard")
+        for i, cm in enumerate(("red", "black", "yellow", "esd", "red", "white")):
+            y = 13.97 + i * 0.025
+            box(36.58 + (i % 3) * 0.05, 36.7 + (i % 2) * 0.05, y, y + 0.006, T + 0.012, T + 0.02, cm, g, False)
+        for k, (y, cm) in enumerate(((13.92, "black"), (13.96, "black"), (14.0, "yellow"), (14.04, "red"))):
+            box(36.57 + k * 0.02, 36.59 + k * 0.02, y, y + 0.02, T + 0.015, T + 0.035, cm, g, False)
+        cyl(36.62, 13.75, T, T + 0.04, 0.09, "metal", g, True)
+        cyl(37.05, 16.9, T, T + 0.6, 0.03, "black", g, True)
+        box(36.8, 37.05, 16.8, 17.0, T + 0.56, T + 0.62, "white", g, False, label="BenchLamp")
+        # 工作台上方: 零件盒层架 (三层, 彩色小盒)
+        for lv in range(3):
+            z = T + 0.75 + lv * 0.28
+            box(36.95, 37.12, 11.2, 17.2, z, z + 0.02, "teak", g, False)
+            y = 11.25
+            k = 0
+            while y < 17.1:
+                cm = ("red", "white", "yellow", "esd", "metal")[(k + lv) % 5]
+                box(36.97, 37.11, y, y + 0.11, z + 0.02, z + 0.12, cm, g, False)
+                y += 0.14
+                k += 1
+        # 办公椅 + 西墙白板
+        cyl(36.0, 13.0, FL, FL + 0.06, 0.6, "black", g, True)
+        cyl(36.0, 13.0, FL + 0.06, FL + 0.45, 0.06, "metal", g, True)
+        box(35.75, 36.25, 12.75, 13.25, FL + 0.45, FL + 0.53, "black", g, label="OfficeChair")
+        box(35.75, 35.82, 12.75, 13.25, FL + 0.53, FL + 1.1, "black", g)
+    # 白板保留 (墙上的板, 不算家具)
     box(33.25, 33.28, 14.0, 16.6, 1.0, 2.1, "white", g, label="Whiteboard")
     box(33.25, 33.3, 13.97, 16.63, 0.97, 1.0, "black", g, False)
     for i in range(4):
@@ -920,6 +931,14 @@ def main():
         spec.loader.exec_module(c10)
         c10.main()
         LOG.extend(c10.LOG)
+    if os.path.exists(os.path.join(D, "c16_furniture.py")):   # 硬装 = Fab 网格 (FAB_FURN)
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("c16_furniture", os.path.join(D, "c16_furniture.py"))
+        c16 = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(c16)
+        if FAB_FURN:
+            c16.main()
+            LOG.extend(c16.LOG)
     player_and_nav()
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     LOG.append("spawned %d meshes; saved %s" % (COUNT["n"], les.save_current_level()))
