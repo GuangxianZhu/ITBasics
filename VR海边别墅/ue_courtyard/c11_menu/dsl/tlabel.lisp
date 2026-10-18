@@ -1,0 +1,7 @@
+(fn CourtTimeLabel ()
+  (switch 工具|流程控制|Switch|SwitchonInt (变量|Default|GetCourtTimeIndex)
+    (:0 (return "时间：黄昏"))
+    (:1 (return "时间：上午"))
+    (:2 (return "时间：正午"))
+    (:3 (return "时间：下午"))
+    (:Default (return "时间"))))

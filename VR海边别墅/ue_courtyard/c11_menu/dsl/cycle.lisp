@@ -1,0 +1,6 @@
+(fn CourtCycleTime ()
+  (switch 工具|流程控制|Switch|SwitchonInt (变量|Default|GetCourtTimeIndex)
+    (:0 (变量|Default|SetCourtTimeIndex 1) (CallFunction|CourtApplyTime :Index 1))
+    (:1 (变量|Default|SetCourtTimeIndex 2) (CallFunction|CourtApplyTime :Index 2))
+    (:2 (变量|Default|SetCourtTimeIndex 3) (CallFunction|CourtApplyTime :Index 3))
+    (:Default (变量|Default|SetCourtTimeIndex 0) (CallFunction|CourtApplyTime :Index 0))))

@@ -174,6 +174,54 @@
 18. **"Forest"系列的鹅耳枥是林子里长的**：树干细高、叶子少，单独种在院子里像一根杆子。孤植要用 "Field" 系列（空地上长的，冠形圆满），缩小到院子的尺度。
 19. **九重葛墙重新生成时变回了 Static**：烘焙后再跑 `c8_trees.py` 会出现"光照需要重建（1 个对象）"。现在 `c8_trees.py` 生成时就设成 Movable。
 
+## 第五轮：手部菜单"调整时间" + 瞬间转向
+
+**怎么用（VR 里）**
+- 按菜单键（左手 Y / ☰，右手 B）打开手上的菜单，最上面多了两个按钮：
+  - **时间：黄昏** → 每按一次切换：黄昏 → 上午 → 正午 → 下午 → 黄昏。按钮上的字会跟着变。
+  - **转向：45°** → 在 45° 和 30° 之间切换。
+- **瞬间转向**：左摇杆或右摇杆往左/右拨一下 = 转 45°（或 30°）。右摇杆往前推还是瞬移。
+- 菜单里的 **Restart** 以前会去打开模板的 `VRTemplateMap`（工程里没有这个关卡），现在改成重新加载当前关卡。
+
+![四个时段](screenshots/33_调整时间_四个时段.jpg)
+
+**改了哪些东西（都在 VillaVR 工程里，二进制资产，改前的原件在 `Saved/BeforeClaude_menu/`）**
+
+| 资产 | 改动 |
+|---|---|
+| `XRFramework/Blueprints/BP_XRPawn` | 新变量 `CourtTimeIndex`；新函数 `CourtSetSun`（太阳角度/亮度/颜色，运行时把太阳从 Stationary 改成 Movable 才能转动）、`CourtSky`（天空球、天光重新捕捉、曝光）、`CourtApplyTime`、`CourtCycleTime`、`CourtTimeLabel`、`CourtCycleTurn`、`CourtTurnLabel`；相机组件加了曝光覆盖（偏移 0，默认权重 0，白天权重 1） |
+| `XRFramework/Blueprints/WBP_Menu` | 加 `TimeButton`、`TurnButton` 两个按钮（样式照抄原按钮）；函数 `CourtRefresh`（菜单打开时刷新按钮文字）、`CourtTimeClicked`、`CourtTurnClicked`；Restart 改用 `GetCurrentLevelName` |
+| `XRFramework/Input/IMC_Default` | `IA_Turn` 加上右摇杆 X（Quest / PICO / Index）。模板原来只有左摇杆 |
+| `VillaVR.uproject` | 启用 `ModelContextProtocol` + `AllToolsets` 插件（为了用 MCP 改蓝图），原件 `VillaVR.uproject.before_mcp`；工程根目录加了 `.mcp.json` |
+
+四个时段的参数（`c11_menu/dsl/apply.lisp`）：
+
+| 时段 | 太阳俯角 / 朝向 | 亮度 (lux) | 颜色 | 曝光 |
+|---|---|---|---|---|
+| 黄昏（进场默认） | −7° / 55° | 4 | 橙 | 关卡原来的 +1.3 |
+| 上午 | −30° / 235° | 7 | 暖白 | 0 |
+| 正午 | −62° / 145° | 9 | 白 | 0 |
+| 下午 | −22° / 70° | 6 | 浅橙 | +0.5（混合 60%） |
+
+**换电脑 / 资产被覆盖了怎么办**：把 `c11_menu/assets/` 里三个 `.uasset` 复制到工程对应的 `Content/XRFramework/...` 位置（先关 UE）。`c11_menu/dsl/*.lisp` 是蓝图逻辑的源码（UE 5.8 MCP 的蓝图 DSL），`c11_menu/helpers/` 是当时用的辅助脚本，留作记录。
+
+**远程操作的两个小工具**（bat 会同步到 `court`）：
+- `ue_watch.py`：UE 控制台跑一次 `py ".../court/ue_watch.py"`，之后往 `court/pyq/` 丢 `.py` 就会在编辑器里执行，输出写同名 `.out`。比 `cq.py` 省事：不用每次在控制台按回车。
+- `mcp_thread.py`：在编辑器里开后台线程，把 `court/mcpq/*.json` 转发给本机 MCP 服务器（`ModelContextProtocol.StartServer` 之后）。
+
+结果（证据等级）：
+- ✅ 实测（桌面 PIE）：连续按四次"调整时间"，太阳角度、亮度、相机曝光权重都按表切换，标签依次是 黄昏→上午→正午→下午→黄昏；截图见上。
+- ✅ 实测（PIE 里直接调用）：`SnapTurn` 向右 45°，切到 30° 后向右 30°、向左两次各 30°，角度都对。
+- ✅ 实测：三个蓝图编译无错误、无警告，保存后没有其他脏资产。
+- ⚠️ 未验证：头显里**右摇杆**拨动是否触发（键位已加，但我没法戴头显）；菜单打开时右摇杆会不会既移动菜单光标又转身（模板给菜单的输入映射优先级更高，按理会吃掉，但没测）；新按钮在 VR 菜单里的大小和点击手感。
+- ⚠️ 已知局限：间接光（墙面反弹、室内暗部）是黄昏时烘焙的，切到白天后室内反弹光还是偏暖偏暗。想白天也准确，得再烘一套白天光照，用 UE 的 Lighting Scenario 在两套之间切换（下一轮可以做）。
+
+20. **UE 5.8 的蓝图 DSL 在中文编辑器下会接错引脚**：它按显示名识别执行引脚，中文界面下 `then`/`execute` 被当成数据引脚，报 "Could not connect pin then to Object"。临时 `InternationalizationLibrary.set_current_language("en")` 写完再切回 `zh-Hans`。切换后节点名是中英混合的（`变量|Default|GetSnapTurnDegrees`、`工具|流程控制|Switch|SwitchonInt`），要用 `BlueprintGraphEditor.list_available_nodes` 查当前真实名字；DSL 自带的 `switch int`、`select`、`%` 别名都找不到节点。
+21. **DSL 调用函数时，第一个位置参数会被塞进 `self` 引脚**：`(CourtSetSun -7 55 …)` 实际变成 Pitch=55。调用自定义函数一律用关键字参数 `:Pitch -7.0`。
+22. **Stationary 的太阳运行时转不动**：要先 `SetMobility(Movable)`。代价：太阳的阴影从烘焙的距离场阴影变成实时级联阴影（VR 帧数影响未测）。
+23. **`GetCurrentLevelName` 带执行引脚**：只连数据线会被编译器裁掉（"was pruned because its Exec pin is not connected"），要串进执行链。
+24. **VillaVR.uproject 没有关联到 UE**：双击 .uproject 或在启动器里双击工程会报"没有与之关联的应用"。用启动器的"启动 5.8.3"再选工程，或者用 bat（直接调用 UnrealEditor.exe）。
+
 ## 这一版还没做
 
 - 带逻辑的交互（开门、示波器开机、淋浴出水、灯绳、吊床）：需要蓝图或 C++，下一轮做
