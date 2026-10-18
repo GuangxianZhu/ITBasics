@@ -4,7 +4,8 @@
   - 倒角: 每个盒子 12 条边都切 1.2 cm 斜面 (VR 里近看, 直角边像刀切; 倒角会接住一条高光, 物体才显得结实)
   - 合并: 1200 多个立方体 -> 一百个左右网格, 绘制调用大幅减少
   - 坐标: 平面图 (x 东, y 北, z 上) -> UE (X=x, Y=-y, Z=z) -> glTF (gx=X, gy=Z, gz=Y)
-用法: python c2x_export_geom.py  (需要 pip install trimesh numpy)"""
+用法: python c2x_export_geom.py  (需要 pip install trimesh numpy)
+      python c2x_export_geom.py C_Living__concrete C_Living__marble   -> 只导出这几个网格到 court_geom_part.glb (局部替换用)"""
 import importlib.util
 import math
 import os
@@ -144,9 +145,12 @@ for kind, prm, mat, group, collide in rec:
     guv.extend(UV)
     gf.extend([(a + base, b + base, c + base) for a, b, c in F])
 
+ONLY = set(sys.argv[1:])
 scene = trimesh.Scene()
 tris = 0
 for (group, mat, collide), (V, F, UV) in sorted(groups.items()):
+    if ONLY and "%s__%s%s" % (group, mat, "" if collide else "__nc") not in ONLY:
+        continue
     V = np.asarray(V)
     gl = np.stack([V[:, 0], V[:, 2], V[:, 1]], 1)          # UE -> glTF
     F = np.asarray(F)[:, ::-1]                               # 换手性后保持外法线朝外
@@ -155,6 +159,6 @@ for (group, mat, collide), (V, F, UV) in sorted(groups.items()):
                            visual=trimesh.visual.TextureVisuals(uv=np.asarray(UV), material=trimesh.visual.material.PBRMaterial(name=mat)))
     scene.add_geometry(mesh, node_name=name, geom_name=name)
     tris += len(F)
-out = os.path.join(HERE, "court_geom.glb")
+out = os.path.join(HERE, "court_geom_part.glb" if ONLY else "court_geom.glb")
 scene.export(out, file_type="glb", include_normals=True)
 print("meshes:", len(groups), "triangles:", tris, "->", out, os.path.getsize(out) // 1024, "KB")
