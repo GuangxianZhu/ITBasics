@@ -570,6 +570,21 @@ def build_garage():
     cyl(28.3, 2.25, GR, GR + 1.6, 0.08, "metal", g, True)
     box(28.1, 28.5, 2.15, 2.6, GR + 1.3, GR + 1.6, "red", g, label="DrillPress")
     box(29.3, 30.6, 1.9, 2.5, GR, GR + 1.0, "red", g, label="ToolCabinet")
+    # 更多工具: 锤子、扳手、锯、螺丝刀 (洞洞板), 墙架上的油漆罐
+    for k in range(14):
+        y = 2.45 + k * 0.23
+        zc = 1.25 + (k % 3) * 0.32
+        m = ("red", "metal", "black", "yellow")[k % 4]
+        box(32.52, 32.6, y - 0.03, y + 0.03, zc, zc + 0.22 + (k % 2) * 0.1, m, g, False)
+        if k % 3 == 0:
+            box(32.52, 32.6, y - 0.07, y + 0.07, zc + 0.22, zc + 0.27, "metal", g, False)
+    box(27.7, 28.0, 2.2, 5.6, GR, GR + 2.0, "metal", g, label="Shelf")
+    for lv in range(4):
+        z = GR + 0.3 + lv * 0.5
+        box(27.6, 28.05, 2.2, 5.6, z, z + 0.03, "teak", g, False)
+        for k in range(5):
+            y = 2.5 + k * 0.62
+            cyl(27.82, y, z + 0.03, z + 0.25, 0.2, ("red", "white", "metal", "yellow", "esd")[(k + lv) % 5], g, True)
     plight(30.2, 4.2, CEIL - 0.3, 7.0)
 
 
@@ -578,7 +593,7 @@ def build_studio():
     g = "K_Studio"
     box(33.0, 37.5, 10.5, 18.0, -0.2, FL, "wood", g, label="StudioFloor")
     wall("y", 10.5, 18.0, 33.0, 33.25, 0, WT, "white", [(12.0, 13.0, FL, 2.3, "open")], g)
-    wall("y", 10.5, 18.0, 37.25, 37.5, 0, WT, "white", [(11.5, 13.5, 1.5, 2.6, "win")], g)
+    wall("y", 10.5, 18.0, 37.25, 37.5, 0, WT, "white", (), g)  # 东墙不开窗: 零件盒层架靠这面墙
     wall("x", 33.25, 37.25, 17.75, 18.0, 0, WT, "white", [(34.0, 36.8, 0.9, 2.6, "win")], g)
     wall("x", 33.25, 37.25, 10.5, 10.75, 0, WT, "white", (), g)
     roof(33.0, 37.5, 10.5, 18.0)
@@ -619,6 +634,53 @@ def build_studio():
             box(33.55 + c * 0.39, 33.55 + c * 0.39 + 0.33, 11.25, 11.27, FL + 0.08 + r * 0.19, FL + 0.08 + r * 0.19 + 0.14, "white", g, False)
     box(35.8, 36.4, 10.85, 11.45, FL, FL + 0.7, "teak", g)
     box(35.85, 36.35, 10.9, 11.4, FL + 0.7, FL + 1.2, "black", g, label="Printer3D")
+    # 示波器屏幕上的方波 (黄线), 显示器上的"代码行"
+    sx = 37.15 - 0.45 - 0.012
+    ys = [11.66 + i * 0.045 for i in range(8)]
+    for i in range(7):
+        zl = T + (0.08 if i % 2 == 0 else 0.17)
+        box(sx - 0.004, sx, ys[i], ys[i + 1], zl, zl + 0.008, "yellow", g, False)
+        box(sx - 0.004, sx, ys[i + 1] - 0.004, ys[i + 1], T + 0.08, T + 0.178, "yellow", g, False)
+    code = ["esd", "yellow", "white", "esd", "white", "red", "white", "esd", "yellow", "white"]
+    for x0 in (34.0, 35.0):
+        for r, cm in enumerate(code):
+            ind = 0.04 + (r % 3) * 0.05
+            ln = 0.18 + ((r * 7) % 5) * 0.06
+            z = FL + 1.28 - r * 0.033
+            box(x0 + ind, x0 + min(0.57, ind + ln), 17.494, 17.499, z, z + 0.012, cm, g, False)
+    # 工作台上: 第三台显示器 + 键盘, 面包板 + 跳线, 焊锡卷, 台灯
+    box(36.95, 36.98, 14.9, 15.5, T + 0.18, T + 0.52, "screen", g, label="BenchMonitor")
+    box(36.98, 37.05, 15.17, 15.23, T, T + 0.2, "black", g, False)
+    box(36.5, 36.68, 14.95, 15.45, T, T + 0.02, "black", g, False, label="Keyboard")
+    box(36.55, 36.8, 13.95, 14.12, T, T + 0.012, "white", g, False, label="Breadboard")
+    for i, cm in enumerate(("red", "black", "yellow", "esd", "red", "white")):
+        y = 13.97 + i * 0.025
+        box(36.58 + (i % 3) * 0.05, 36.7 + (i % 2) * 0.05, y, y + 0.006, T + 0.012, T + 0.02, cm, g, False)
+    for k, (y, cm) in enumerate(((13.92, "black"), (13.96, "black"), (14.0, "yellow"), (14.04, "red"))):
+        box(36.57 + k * 0.02, 36.59 + k * 0.02, y, y + 0.02, T + 0.015, T + 0.035, cm, g, False)
+    cyl(36.62, 13.75, T, T + 0.04, 0.09, "metal", g, True)
+    cyl(37.05, 16.9, T, T + 0.6, 0.03, "black", g, True)
+    box(36.8, 37.05, 16.8, 17.0, T + 0.56, T + 0.62, "white", g, False, label="BenchLamp")
+    # 工作台上方: 零件盒层架 (三层, 彩色小盒)
+    for lv in range(3):
+        z = T + 0.75 + lv * 0.28
+        box(36.95, 37.12, 11.2, 17.2, z, z + 0.02, "teak", g, False)
+        y = 11.25
+        k = 0
+        while y < 17.1:
+            cm = ("red", "white", "yellow", "esd", "metal")[(k + lv) % 5]
+            box(36.97, 37.11, y, y + 0.11, z + 0.02, z + 0.12, cm, g, False)
+            y += 0.14
+            k += 1
+    # 办公椅 + 西墙白板
+    cyl(36.0, 13.0, FL, FL + 0.06, 0.6, "black", g, True)
+    cyl(36.0, 13.0, FL + 0.06, FL + 0.45, 0.06, "metal", g, True)
+    box(35.75, 36.25, 12.75, 13.25, FL + 0.45, FL + 0.53, "black", g, label="OfficeChair")
+    box(35.75, 35.82, 12.75, 13.25, FL + 0.53, FL + 1.1, "black", g)
+    box(33.25, 33.28, 14.0, 16.6, 1.0, 2.1, "white", g, label="Whiteboard")
+    box(33.25, 33.3, 13.97, 16.63, 0.97, 1.0, "black", g, False)
+    for i in range(4):
+        box(33.28, 33.285, 14.3, 14.9 + i * 0.3, 1.8 - i * 0.18, 1.81 - i * 0.18, "black", g, False)
     plight(35.0, 12.5, CEIL - 0.3, 8.0)
     plight(35.0, 15.8, CEIL - 0.3, 8.0)
 
