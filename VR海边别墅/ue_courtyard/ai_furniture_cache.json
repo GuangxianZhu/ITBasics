@@ -1,0 +1,88 @@
+{
+ "armchair": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_000.SM_000",
+  "mats": [
+   "/Game/Villa/Materials/MI_M_AI_armchair.MI_M_AI_armchair",
+   "/Game/Villa/Import/villa_ue/Materials/M_AI_armchair_2.M_AI_armchair_2"
+  ]
+ },
+ "bar_stool": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_001.SM_001",
+  "mats": [
+   "/Game/Villa/Import/villa_ue/Materials/M_AI_bar_stool.M_AI_bar_stool",
+   "/Game/Villa/Materials/MI_M_AI_bar_stool_2.MI_M_AI_bar_stool_2"
+  ]
+ },
+ "bbq_grill": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_002.SM_002",
+  "mats": [
+   "/Game/Villa/Import/villa_ue/Materials/M_AI_bbq_grill.M_AI_bbq_grill"
+  ]
+ },
+ "coffee_table": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_004.SM_004",
+  "mats": [
+   "/Game/Villa/Materials/MI_M_AI_coffee_table.MI_M_AI_coffee_table",
+   "/Game/Villa/Import/villa_ue/Materials/M_AI_coffee_table_2.M_AI_coffee_table_2"
+  ]
+ },
+ "dining_chair": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_005.SM_005",
+  "mats": [
+   "/Game/Villa/Materials/MI_M_AI_dining_chair.MI_M_AI_dining_chair",
+   "/Game/Villa/Import/villa_ue/Materials/M_AI_dining_chair_2.M_AI_dining_chair_2"
+  ]
+ },
+ "dining_table": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_006.SM_006",
+  "mats": [
+   "/Game/Villa/Materials/MI_M_AI_dining_table.MI_M_AI_dining_table"
+  ]
+ },
+ "egg_chair": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_007.SM_007",
+  "mats": [
+   "/Game/Villa/Import/villa_ue/Materials/M_AI_egg_chair.M_AI_egg_chair"
+  ]
+ },
+ "flamingo_float": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_008.SM_008",
+  "mats": [
+   "/Game/Villa/Import/villa_ue/Materials/M_AI_flamingo_float.M_AI_flamingo_float"
+  ]
+ },
+ "plant": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_009.SM_009",
+  "mats": [
+   "/Game/Villa/Import/villa_ue/Materials/M_AI_plant.M_AI_plant",
+   "/Game/Villa/Import/villa_ue/Materials/M_AI_plant_2.M_AI_plant_2"
+  ]
+ },
+ "round_bed": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_010.SM_010",
+  "mats": [
+   "/Game/Villa/Materials/MI_M_AI_round_bed.MI_M_AI_round_bed",
+   "/Game/Villa/Materials/MI_M_AI_round_bed_2.MI_M_AI_round_bed_2"
+  ]
+ },
+ "sofa": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_011.SM_011",
+  "mats": [
+   "/Game/Villa/Materials/MI_M_AI_sofa.MI_M_AI_sofa",
+   "/Game/Villa/Import/villa_ue/Materials/M_AI_sofa_2.M_AI_sofa_2"
+  ]
+ },
+ "sun_lounger": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_012.SM_012",
+  "mats": [
+   "/Game/Villa/Materials/MI_M_AI_sun_lounger.MI_M_AI_sun_lounger"
+  ]
+ },
+ "umbrella": {
+  "mesh": "/Game/Villa/Import/villa_ue/StaticMeshes/SM_013.SM_013",
+  "mats": [
+   "/Game/Villa/Materials/MI_M_AI_umbrella.MI_M_AI_umbrella",
+   "/Game/Villa/Materials/MI_M_AI_umbrella_2.MI_M_AI_umbrella_2"
+  ]
+ }
+}
