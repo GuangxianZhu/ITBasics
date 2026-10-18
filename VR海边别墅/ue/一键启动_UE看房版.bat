@@ -56,7 +56,13 @@ if not exist "%PROJ%\VillaVR.uproject" (
 tasklist /FI "IMAGENAME eq UnrealEditor.exe" | find /I "UnrealEditor.exe" >nul
 if errorlevel 1 (
     echo Opening VillaVR in Unreal Editor ^(first start after switching mode compiles shaders, can take minutes^)...
-    start "" "%PROJ%\VillaVR.uproject"
+    rem .uproject may not be associated with UE on this PC -> call UnrealEditor.exe directly
+    set "UEXE=%ProgramFiles%\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe"
+    if exist "%UEXE%" (
+        start "" "%UEXE%" "%PROJ%\VillaVR.uproject"
+    ) else (
+        start "" "%PROJ%\VillaVR.uproject"
+    )
 ) else (
     echo [WARN] Unreal Editor is already running. Close it and run this again for a mode change to apply.
 )
