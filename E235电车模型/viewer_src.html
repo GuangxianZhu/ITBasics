@@ -1,0 +1,717 @@
+<title>E235系 山手線</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* 布局：全屏 3D 画面 + 叠在上面的“车内液晶屏”风格面板（左上标题、底部操作坞）。
+   这个界面刻意只做一种深色外观：它模仿 E235 门上方的藏青色信息屏，白天夜晚的 3D 场景都在它后面。 */
+:root {
+  --navy: #0b1734;
+  --panel: rgba(10, 20, 46, 0.88);
+  --panel-solid: #0d1a3a;
+  --line: #27396a;
+  --text: #eef2fb;
+  --mute: #9eabc8;
+  --green: #80c241;
+  --green-ink: #10240a;
+  --orange: #f39800;
+  --red: #ff4b3a;
+  --f-display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Zen Kaku Gothic New", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body { background: var(--navy); color: var(--text); font-family: var(--f-body); overflow: hidden;
+  -webkit-tap-highlight-color: transparent; }
+#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+
+/* ── 左上：车型牌 ── */
+.plate { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); left: max(16px, env(safe-area-inset-left, 0px));
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 8px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(6px); max-width: calc(100% - 32px - 72px); }
+.badge { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 6px; background: #fff;
+  border: 4px solid var(--green); color: #111; font-family: var(--f-display); line-height: 1; }
+.badge b { font-size: 11px; font-weight: 900; letter-spacing: 0.04em; }
+.badge span { font-size: 17px; font-weight: 900; margin-top: -6px; }
+.plate h1 { margin: 0; font-family: var(--f-display); font-weight: 900; font-size: 17px; letter-spacing: 0.02em; text-wrap: balance; }
+.plate p { margin: 2px 0 0; font-size: 12px; color: var(--mute); }
+.specbtn { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* ── 底部操作坞 ── */
+.dock { position: fixed; left: 0; right: 0; bottom: 0; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  pointer-events: none; }
+.dock-inner { pointer-events: auto; max-width: 860px; margin: 0 auto; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 14px; padding: 10px 12px 12px; display: grid; gap: 10px; backdrop-filter: blur(6px); }
+.hint { font-size: 12px; color: var(--mute); text-align: center; min-height: 1.2em; }
+
+/* 视角切换：画成一段线路图，四个视角是四个“车站” */
+.route { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); }
+.route::before { content: ""; position: absolute; left: 12.5%; right: 12.5%; top: 13px; height: 6px; border-radius: 3px; background: var(--green); }
+.stop { position: relative; display: grid; justify-items: center; gap: 4px; padding: 0 0 2px; border: 0; background: none;
+  color: var(--mute); font: 700 13px/1.2 var(--f-body); cursor: pointer; border-radius: 8px; }
+.stop i { width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 6px solid var(--green); box-sizing: border-box; transition: transform .2s; }
+.stop small { font: 600 10px/1 var(--f-mono); letter-spacing: 0.06em; color: var(--mute); opacity: .8; }
+.stop[aria-pressed="true"] { color: var(--text); }
+.stop[aria-pressed="true"] i { border-color: var(--orange); transform: scale(1.12); }
+.stop:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+
+.row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.btn { appearance: none; border: 1px solid var(--line); background: var(--panel-solid); color: var(--text);
+  font: 700 13px/1 var(--f-body); padding: 10px 12px; border-radius: 9px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+.btn:hover { border-color: #41589a; }
+.btn:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.btn .lamp { width: 8px; height: 8px; border-radius: 50%; background: #3a4566; box-shadow: none; }
+.btn[aria-pressed="true"] .lamp { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.btn.door { background: var(--green); color: var(--green-ink); border-color: var(--green); min-width: 92px; justify-content: center; font-size: 14px; }
+.btn.door[data-open="1"] { background: var(--orange); border-color: var(--orange); color: #2a1600; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { appearance: none; border: 0; background: var(--panel-solid); color: var(--mute); font: 700 12px/1 var(--f-body); padding: 10px 10px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: #1c2d5c; color: var(--text); }
+.seg button:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+
+/* ── 摇杆（车内视角）── */
+.joy { position: fixed; left: max(20px, calc(env(safe-area-inset-left, 0px) + 20px)); width: 112px; height: 112px; border-radius: 50%;
+  background: rgba(10, 20, 46, 0.55); border: 1px solid var(--line); touch-action: none; }
+.joy i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%;
+  background: var(--green); opacity: .9; }
+
+/* ── 规格抽屉 ── */
+.sheet { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 70px); right: max(16px, env(safe-area-inset-right, 0px));
+  width: min(380px, calc(100% - 32px)); max-height: calc(100% - 260px); overflow: auto; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; backdrop-filter: blur(6px); }
+.sheet h2 { margin: 0 0 8px; font: 900 15px/1.3 var(--f-display); }
+.sheet dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; line-height: 1.5; }
+.sheet dt { color: var(--mute); white-space: nowrap; }
+.sheet dd { margin: 0; min-width: 0; }
+.tag { display: inline-block; font: 600 10px/1 var(--f-mono); padding: 3px 5px; border-radius: 4px; margin-left: 4px; vertical-align: 1px; letter-spacing: .03em; }
+.tag.pub { background: #1e4a1a; color: #b6ef8f; }
+.tag.std { background: #1c3466; color: #a9c4ff; }
+.tag.est { background: #4d3008; color: #ffcd7a; }
+.sheet .legend { margin-top: 10px; font-size: 12px; color: var(--mute); line-height: 1.6; }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+/* ── 载入 ── */
+.loading { position: fixed; inset: 0; display: grid; place-items: center; background: var(--navy); z-index: 20; }
+.ld { width: min(320px, calc(100% - 48px)); display: grid; gap: 10px; text-align: center; }
+.ld-bar { height: 6px; border-radius: 3px; background: #1d2b52; overflow: hidden; }
+.ld-bar i { display: block; height: 100%; width: 0; background: var(--green); transition: width .2s; }
+.ld p { margin: 0; font-size: 13px; color: var(--mute); }
+.ld .err { color: var(--red); }
+
+@media (max-width: 560px) {
+  .plate h1 { font-size: 15px; }
+  .plate p { display: none; }
+  .badge { width: 38px; height: 38px; }
+  .btn { padding: 9px 10px; font-size: 12px; }
+  .seg button { padding: 9px 8px; }
+  .stop { font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .stop i, .ld-bar i { transition: none; } }
+</style>
+
+<canvas id="c" tabindex="0" aria-label="E235 系电车 3D 画面"></canvas>
+
+<header class="plate">
+  <div class="badge" aria-hidden="true"><b>JY</b><span>E235</span></div>
+  <div>
+    <h1>E235系 クハE235</h1>
+    <p>JR 東日本 · 山手線 · 先頭車（1/1 比例模型）</p>
+  </div>
+</header>
+<button class="btn specbtn" id="specBtn" aria-expanded="false" aria-controls="sheet">规格</button>
+
+<aside class="sheet" id="sheet" hidden>
+  <h2>这节车的数据从哪来</h2>
+  <dl>
+    <dt>车型</dt><dd>E235 系 0 番台，先头车 クハ（Tc，带驾驶室、无受电弓）</dd>
+    <dt>车宽</dt><dd><span class="num">2.95 m</span>，下部内收的宽车体<span class="tag std">常规值</span></dd>
+    <dt>车长</dt><dd>约 <span class="num">20.4 m</span>（先头车比中间车长）<span class="tag est">推测</span></dd>
+    <dt>车门</dt><dd>每侧 4 对，开口 <span class="num">1.30 m</span>，门距 <span class="num">4.82 m</span><span class="tag std">常规值</span></dd>
+    <dt>座椅</dt><dd>长条座椅，每人宽 <span class="num">46 cm</span>，比 E231 宽 1 cm<span class="tag pub">公开资料</span></dd>
+    <dt>花纹</dt><dd>靠背和吊环是山手线绿，座椅是格子花纹<span class="tag pub">公开资料</span></dd>
+    <dt>吊环/行李架</dt><dd>比以前的车低 5 cm<span class="tag pub">公开资料</span></dd>
+    <dt>液晶屏</dt><dd>门间行李架上方每段 3 块 21.5 英寸，门上方和车端也有<span class="tag pub">公开资料</span></dd>
+    <dt>自由空间</dt><dd>每节车都有，给轮椅和婴儿车<span class="tag pub">公开资料</span></dd>
+    <dt>优先座颜色</dt><dd>这里画成蓝色<span class="tag est">推测</span></dd>
+    <dt>灯具细节</dt><dd>前照灯每侧 3 颗 LED、尾灯条、门上开闭灯的位置<span class="tag est">推测</span></dd>
+    <dt>转向架</dt><dd>拖车转向架的大致形状（车轴盘式制动、空气弹簧）<span class="tag est">简化</span></dd>
+  </dl>
+  <p class="legend"><span class="tag pub">公开资料</span> 报道或 JR 东日本资料里写明的；<span class="tag std">常规值</span> JR 东日本通勤车通用尺寸，没有找到 E235 专门的数字；<span class="tag est">推测</span> 照着照片和玩具估的。</p>
+</aside>
+
+<div class="joy" id="joy" hidden><i id="joyKnob"></i></div>
+
+<nav class="dock" aria-label="控制">
+  <div class="dock-inner">
+    <div class="route" role="group" aria-label="视角">
+      <button class="stop" data-view="ext" aria-pressed="true"><i></i>外观<small>EXT</small></button>
+      <button class="stop" data-view="cut" aria-pressed="false"><i></i>剖视<small>CUT</small></button>
+      <button class="stop" data-view="in" aria-pressed="false"><i></i>车内<small>CAR</small></button>
+      <button class="stop" data-view="cab" aria-pressed="false"><i></i>驾驶室<small>CAB</small></button>
+    </div>
+    <div class="row">
+      <button class="btn door" id="doorBtn" data-open="0">开门</button>
+      <div class="seg" role="group" aria-label="开哪一侧">
+        <button data-side="R" aria-pressed="true">右侧·站台</button>
+        <button data-side="L" aria-pressed="false">左侧</button>
+        <button data-side="B" aria-pressed="false">两侧</button>
+      </div>
+      <button class="btn" id="lightBtn" aria-pressed="true"><span class="lamp"></span>车内灯</button>
+      <button class="btn" id="headBtn" aria-pressed="true"><span class="lamp"></span><span id="headLbl">前照灯</span></button>
+      <button class="btn" id="nightBtn" aria-pressed="false"><span class="lamp"></span>夜晚</button>
+      <button class="btn" id="soundBtn" aria-pressed="true"><span class="lamp"></span>门铃声</button>
+    </div>
+    <div class="hint" id="hint">拖动旋转，滚轮或双指缩放</div>
+  </div>
+</nav>
+
+<div class="loading" id="loading">
+  <div class="ld">
+    <p id="ld-t">正在载入模型…</p>
+    <div class="ld-bar"><i id="ld-b"></i></div>
+  </div>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const $ = id => document.getElementById(id);
+/* Blender 坐标 (x 车长, y 左右, z 高) → three.js (x, y 高, z) */
+const B = (x, y, z) => new THREE.Vector3(x, z, -y);
+const FLOOR = 1.13, PLAT = 1.10;
+const DOORS = [-7.245, -2.425, 2.395, 7.215];
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MOBILE = Math.min(innerWidth, innerHeight) < 600;
+
+const S = { view: 'ext', doorTarget: 0, doorP: 0, side: 'R', lights: true, head: true, night: false, sound: true };
+
+/* ───────── renderer / scene ───────── */
+const canvas = $('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? 1.5 : 1.75));
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 0.9;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 0.03, 400);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: MOBILE ? 2 : 4 });
+const composer = new EffectComposer(renderer, rt);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.3, 0.45, 0.9);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 2.5;
+controls.maxDistance = 48;
+controls.maxPolarAngle = 1.53;
+
+/* ───────── lights ───────── */
+const hemi = new THREE.HemisphereLight(0xd6e4ff, 0x6b6559, 1.1);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.6);
+sun.position.copy(B(10, -14, 22));
+sun.target.position.copy(B(0, 0, 0));
+sun.castShadow = true;
+sun.shadow.mapSize.set(MOBILE ? 1024 : 2048, MOBILE ? 1024 : 2048);
+Object.assign(sun.shadow.camera, { left: -15, right: 15, top: 15, bottom: -15, near: 1, far: 70 });
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.03;
+scene.add(sun, sun.target);
+
+const roomLights = [-7.6, -3.7, 0.0, 3.8, 7.6].map(x => {
+  const l = new THREE.PointLight(0xf2f6ff, 0, 5.2, 2);
+  l.position.copy(B(x, 0, 3.2));
+  scene.add(l);
+  return l;
+});
+const spill = DOORS.map(c => {   // 开门时从门口洒到站台上的光
+  const l = new THREE.SpotLight(0xf2f6ff, 0, 7, 0.8, 0.9, 2);
+  l.position.copy(B(c, -1.0, 2.9));
+  l.target.position.copy(B(c, -3.4, 1.1));
+  scene.add(l, l.target);
+  return l;
+});
+const heads = [1, -1].map(sy => {
+  const l = new THREE.SpotLight(0xfff2dc, 0, 90, 0.32, 0.55, 2);
+  l.position.copy(B(10.4, sy * 0.92, 1.44));
+  l.target.position.copy(B(40, sy * 0.4, 0));
+  scene.add(l, l.target);
+  return l;
+});
+
+/* ───────── 液晶屏 / 行先显示器（用画布画，带日文） ───────── */
+const STATIONS = [
+  ['品川', 'Shinagawa', 25], ['大崎', 'Ōsaki', 24], ['五反田', 'Gotanda', 23], ['目黒', 'Meguro', 22],
+  ['恵比寿', 'Ebisu', 21], ['渋谷', 'Shibuya', 20], ['原宿', 'Harajuku', 19], ['代々木', 'Yoyogi', 18], ['新宿', 'Shinjuku', 17],
+  ['新大久保', 'Shin-Ōkubo', 16], ['高田馬場', 'Takadanobaba', 15], ['目白', 'Mejiro', 14], ['池袋', 'Ikebukuro', 13]];
+let stIdx = 5;   // 下一站：渋谷
+const JPF = '"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic","Meiryo","Noto Sans CJK JP",sans-serif';
+const ENF = '"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace';
+
+function canvasTex(w, h) {
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const t = new THREE.CanvasTexture(cv);
+  t.flipY = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return { cv, ctx: cv.getContext('2d'), tex: t };
+}
+const TX = { info: canvasTex(1024, 576), dest: canvasTex(1024, 128), cab: canvasTex(512, 320),
+  ad: [canvasTex(1024, 576), canvasTex(1024, 576), canvasTex(1024, 576)] };
+
+function stationBox(g, x, y, s, num) {
+  g.fillStyle = '#fff'; g.fillRect(x, y, s, s);
+  g.lineWidth = s * 0.1; g.strokeStyle = '#80c241'; g.strokeRect(x + s * 0.05, y + s * 0.05, s * 0.9, s * 0.9);
+  g.fillStyle = '#111'; g.textAlign = 'center';
+  g.font = `900 ${s * 0.26}px ${JPF}`; g.fillText('JY', x + s / 2, y + s * 0.42);
+  g.font = `900 ${s * 0.36}px ${JPF}`; g.fillText(String(num).padStart(2, '0'), x + s / 2, y + s * 0.8);
+}
+
+function drawInfo() {
+  const { ctx: g, tex } = TX.info, W = 1024, H = 576;
+  const arrived = S.doorP > 0.5 && sideOpen(-1) + sideOpen(1) > 0;
+  const st = STATIONS[stIdx];
+  g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#0d2152'; g.fillRect(0, 0, W, 190);
+  stationBox(g, 26, 30, 130, st[2]);
+  g.textAlign = 'left'; g.fillStyle = '#cfe0ff'; g.font = `700 34px ${JPF}`;
+  g.fillText(arrived ? 'ただいま' : '次は', 182, 70);
+  g.fillStyle = '#fff'; g.font = `900 92px ${JPF}`; g.fillText(st[0], 182, 165);
+  g.font = `600 40px ${ENF}`; g.fillStyle = '#9fb6e8'; g.textAlign = 'right'; g.fillText(st[1], W - 30, 165);
+  g.fillStyle = '#80c241'; g.fillRect(0, 190, W, 12);
+  // 线路条
+  const n = 6, x0 = 90, dx = (W - 180) / (n - 1), y = 330;
+  g.fillStyle = '#80c241'; g.fillRect(x0 - 40, y - 10, W - 2 * x0 + 80, 20);
+  for (let k = 0; k < n; k++) {
+    const s = STATIONS[(stIdx - 1 + k + STATIONS.length) % STATIONS.length];
+    const x = x0 + k * dx, next = k === 1;
+    g.beginPath(); g.arc(x, y, next ? 30 : 22, 0, Math.PI * 2);
+    g.fillStyle = next ? '#f39800' : '#80c241'; g.fill();
+    g.beginPath(); g.arc(x, y, next ? 15 : 11, 0, Math.PI * 2); g.fillStyle = '#fff'; g.fill();
+    g.fillStyle = next ? '#111' : '#444'; g.textAlign = 'center';
+    g.font = `${next ? 900 : 700} ${next ? 38 : 32}px ${JPF}`; g.fillText(s[0], x, y + 82);
+    g.font = `500 20px ${ENF}`; g.fillStyle = '#777'; g.fillText('JY' + String(s[2]).padStart(2, '0'), x, y - 44);
+  }
+  if (!arrived) {   // 列车位置箭头
+    const ax = x0 + dx * 0.55;
+    g.fillStyle = '#0d2152'; g.beginPath(); g.moveTo(ax - 26, y - 92); g.lineTo(ax + 26, y - 92); g.lineTo(ax, y - 62); g.fill();
+  }
+  g.fillStyle = '#eef1f6'; g.fillRect(0, 486, W, 90);
+  g.fillStyle = '#334'; g.textAlign = 'left'; g.font = `700 34px ${JPF}`;
+  const sideTxt = S.side === 'L' ? '左側' : (S.side === 'R' ? '右側' : '両側');
+  g.fillText(arrived ? `${sideTxt}のドアが開いています` : `${sideTxt}のドアが開きます`, 30, 543);
+  g.textAlign = 'right'; g.font = `700 30px ${JPF}`; g.fillStyle = '#80a83a'; g.fillText('山手線 外回り', W - 30, 543);
+  tex.needsUpdate = true;
+}
+
+function drawDest() {
+  const { ctx: g, tex } = TX.dest, W = 1024, H = 128;
+  g.fillStyle = '#050505'; g.fillRect(0, 0, W, H);
+  g.textBaseline = 'middle';
+  g.fillStyle = '#7ddc3e'; g.textAlign = 'left'; g.font = `900 84px ${JPF}`; g.fillText('山手線', 40, 68);
+  g.fillStyle = '#ffa21f'; g.textAlign = 'right'; g.font = `900 66px ${JPF}`; g.fillText('渋谷・新宿方面', W - 40, 68);
+  g.textBaseline = 'alphabetic';
+  g.fillStyle = 'rgba(0,0,0,0.55)';   // LED 点阵的缝
+  for (let x = 0; x < W; x += 6) g.fillRect(x, 0, 2, H);
+  for (let y = 0; y < H; y += 6) g.fillRect(0, y, W, 2);
+  tex.needsUpdate = true;
+}
+
+function drawAds() {
+  const ads = [
+    ['#1452a8', '#4fb3e8', '電車のしくみ展', 'モーター・ブレーキ・ドアを見てみよう', '鉄道博物館（架空）'],
+    ['#c9341f', '#f5a73b', '駅ナカおにぎり', '朝7時から 120円〜', '各駅売店（架空）'],
+    ['#2b7a4b', '#9fd66a', '週末は山へ', '新宿から約50分', '登山キャンペーン（架空）']];
+  ads.forEach(([c1, c2, h, sub, foot], i) => {
+    const { ctx: g, tex } = TX.ad[i], W = 1024, H = 576;
+    const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, c1); gr.addColorStop(1, c2);
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    g.beginPath(); g.arc(800, 300, 190, 0, Math.PI * 2); g.fillStyle = 'rgba(255,255,255,0.18)'; g.fill();
+    g.beginPath(); g.arc(800, 300, 120, 0, Math.PI * 2); g.fillStyle = 'rgba(255,255,255,0.25)'; g.fill();
+    g.fillStyle = '#fff'; g.textAlign = 'left'; g.font = `900 92px ${JPF}`; g.fillText(h, 56, 220);
+    g.font = `700 40px ${JPF}`; g.fillText(sub, 60, 300);
+    g.font = `500 28px ${JPF}`; g.globalAlpha = 0.8; g.fillText(foot, 60, 510); g.globalAlpha = 1;
+    tex.needsUpdate = true;
+  });
+}
+
+function drawCab(speed = 0) {
+  const { ctx: g, tex } = TX.cab, W = 512, H = 320;
+  g.fillStyle = '#05080d'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#12284a'; g.fillRect(0, 0, W, 36);
+  g.fillStyle = '#cfe0ff'; g.font = `700 20px ${JPF}`; g.textAlign = 'left'; g.fillText('INTEROS  運転情報', 12, 25);
+  g.lineWidth = 14; g.strokeStyle = '#1d3a2a'; g.beginPath(); g.arc(150, 200, 100, Math.PI * 0.75, Math.PI * 2.25); g.stroke();
+  g.strokeStyle = '#80c241'; g.beginPath(); g.arc(150, 200, 100, Math.PI * 0.75, Math.PI * (0.75 + 1.5 * speed / 120)); g.stroke();
+  g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = `600 56px ${ENF}`; g.fillText(String(speed), 150, 215);
+  g.font = `500 18px ${ENF}`; g.fillStyle = '#9fb0d0'; g.fillText('km/h', 150, 245);
+  const open = S.doorP > 0.02;
+  g.textAlign = 'left'; g.font = `700 24px ${JPF}`;
+  g.fillStyle = open ? '#f39800' : '#80c241'; g.fillText(open ? 'ドア 開' : 'ドア 閉', 300, 120);
+  g.fillStyle = '#9fb0d0'; g.fillText('ATC  0', 300, 165);
+  g.fillText(S.head ? '前照灯 ON' : '尾灯 ON', 300, 210);
+  g.fillStyle = '#7ddc3e'; g.fillText('次 ' + STATIONS[stIdx][0], 300, 255);
+  tex.needsUpdate = true;
+}
+
+/* ───────── load model ───────── */
+async function loadModel() {
+  const loader = new GLTFLoader();
+  let b64 = window.__GLB_B64;
+  if (!b64 || b64.length < 100) {
+    const res = await fetch('train_glb.txt');
+    if (!res.ok) throw new Error('train_glb.txt ' + res.status);
+    const total = +res.headers.get('content-length') || 0, reader = res.body.getReader(), parts = [];
+    let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value); got += value.length;
+      $('ld-t').textContent = `正在下载模型… ${(got / 1e6).toFixed(1)}${total ? ' / ' + (total / 1e6).toFixed(1) : ''} MB`;
+      if (total) $('ld-b').style.width = (100 * got / total).toFixed(0) + '%';
+    }
+    b64 = new TextDecoder().decode(await new Blob(parts).arrayBuffer());
+  }
+  $('ld-t').textContent = '正在解码模型…';
+  await new Promise(r => setTimeout(r, 30));
+  const bin = atob(b64.trim()), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return loader.parseAsync(buf.buffer, '');
+}
+
+const MAT = {};
+const leaves = [];
+function setup(gltf) {
+  const root = gltf.scene;
+  scene.add(root);
+  root.traverse(o => {
+    if (o.userData && o.userData.travel !== undefined) leaves.push(o);
+    if (o.name.startsWith('DestText')) o.visible = false;   // 网页里行先显示用画布贴图，带日文
+    if (!o.isMesh) return;
+    const ms = Array.isArray(o.material) ? o.material : [o.material];
+    let allGlass = true, anyLamp = false;
+    for (const m of ms) {
+      MAT[m.name] = m;
+      if (m.name.startsWith('Glass')) { m.transparent = true; m.depthWrite = false; m.envMapIntensity = 1.2; }
+      else allGlass = false;
+      if (/^(LED_|Headlight|Taillight|MarkerLamp|DoorLamp|SideLamp|LCD_|Dest)/.test(m.name)) anyLamp = true;
+    }
+    const env = o.name.startsWith('Env_') || (o.parent && o.parent.name.startsWith('Env_'));
+    o.castShadow = !allGlass && !anyLamp && !env;
+    o.receiveShadow = true;
+  });
+  const useCanvas = (name, tx) => {
+    const m = MAT[name]; if (!m) return;
+    m.map = null; m.color.setRGB(0.02, 0.02, 0.02);
+    m.emissive.setRGB(1, 1, 1); m.emissiveMap = tx.tex; m.emissiveIntensity = 1.0; m.needsUpdate = true;
+  };
+  drawInfo(); drawDest(); drawAds(); drawCab();
+  useCanvas('LCD_Info', TX.info); useCanvas('DestPanel', TX.dest); useCanvas('LCD_Cab', TX.cab);
+  [0, 1, 2].forEach(i => useCanvas('LCD_Ad' + i, TX.ad[i]));
+  applyEnv(); applyLamps(0);
+}
+
+/* ───────── 状态 → 画面 ───────── */
+function sideOpen(sy) { return S.side === 'B' || (S.side === 'L' && sy > 0) || (S.side === 'R' && sy < 0) ? 1 : 0; }
+const ease = p => p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+
+function setEmi(name, v) { const m = MAT[name]; if (m) m.emissiveIntensity = v; }
+function applyLamps(t) {
+  const L = S.lights ? 1 : 0, h = S.head ? 1 : 0, d = ease(S.doorP);
+  setEmi('LED_Interior', 1.6 * L);
+  setEmi('Headlight', 14 * L * h); setEmi('MarkerLamp', 6 * L * h); setEmi('Taillight', 8 * L * (1 - h));
+  const moving = S.doorP > 0.001 && S.doorP < 0.999;
+  const blink = moving ? (Math.sin(t * 14) > 0 ? 1 : 0.15) : 1;
+  for (const [s, sy] of [['L', 1], ['R', -1]]) {
+    const on = S.doorP > 0.001 ? sideOpen(sy) : 0;
+    setEmi('DoorLamp_' + s, 6 * on * blink);
+    setEmi('SideLamp_' + s, 10 * on);
+  }
+  const room = S.night ? 2.0 : 1.1;
+  roomLights.forEach(l => { l.intensity = room * L; });
+  spill.forEach(l => { l.intensity = 22 * L * d * sideOpen(-1) * (S.night ? 1 : 0.4); });
+  heads.forEach(l => { l.intensity = 260 * L * h; });
+}
+
+function applyEnv() {
+  const n = S.night;
+  scene.background = new THREE.Color(n ? 0x070a12 : 0xb3c7df);
+  scene.fog = n ? new THREE.Fog(0x070a12, 40, 140) : new THREE.Fog(0xb3c7df, 70, 220);
+  hemi.intensity = n ? 0.06 : 1.1;
+  sun.intensity = n ? 0 : 2.6;
+  scene.environmentIntensity = n ? 0.08 : 0.9;
+  const inside = S.view === 'in' || S.view === 'cab';
+  bloom.strength = n ? (inside ? 0.3 : 0.7) : 0.18;
+  bloom.threshold = n ? (inside ? 0.9 : 0.7) : 0.95;
+  bloom.radius = n ? 0.5 : 0.35;
+}
+
+/* ───────── 门：动画 + 门铃声 ───────── */
+let actx = null;
+function chime(open) {
+  if (!S.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = actx.currentTime + 0.02;
+    const seq = open ? [1046, 784, 1046, 784, 1046, 784] : [784, 659, 784, 659, 784, 659];
+    seq.forEach((f, i) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      const t = t0 + i * 0.32;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.16, t + 0.01); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.32);
+    });
+  } catch (e) { /* 没有声音设备也不影响 */ }
+}
+function toggleDoor() {
+  S.doorTarget = S.doorTarget ? 0 : 1;
+  const b = $('doorBtn');
+  b.dataset.open = S.doorTarget;
+  b.textContent = S.doorTarget ? '关门' : '开门';
+  chime(!!S.doorTarget);
+}
+let lastDoorState = 0;
+function updateDoors(dt) {
+  const speed = 1 / 2.2;
+  const prev = S.doorP;
+  if (S.doorP < S.doorTarget) S.doorP = Math.min(S.doorTarget, S.doorP + dt * speed);
+  else if (S.doorP > S.doorTarget) S.doorP = Math.max(S.doorTarget, S.doorP - dt * speed);
+  const e = ease(S.doorP);
+  for (const lf of leaves) {
+    const u = lf.userData;
+    lf.position.x = u.base_x + u.open_dir * u.travel * e * sideOpen(u.side);
+  }
+  const state = S.doorP >= 1 ? 1 : (S.doorP <= 0 ? 0 : -1);
+  if (state !== -1 && state !== lastDoorState) {
+    if (state === 0) stIdx = (stIdx + 1) % STATIONS.length;   // 关好门 = 发车，下一站
+    lastDoorState = state;
+    drawInfo(); drawCab();
+  } else if ((prev === 0) !== (S.doorP === 0)) { drawInfo(); drawCab(); }
+}
+
+/* ───────── 视角 ───────── */
+const VIEWS = {
+  ext: { pos: B(17.5, -8.5, 3.6), target: B(1.5, 0, 1.9), fov: 40, hint: '拖动旋转 · 滚轮或双指缩放 · 右键或双指拖动平移' },
+  cut: { pos: B(6, -10, 13), target: B(0.5, 0, 1.6), fov: 40, hint: '车顶切掉了，从上面往下看座位、立柱和吊环' },
+  in: { hint: MOBILE ? '拖动看四周 · 摇杆走动 · 门开着能走到站台' : '拖动看四周 · WASD/方向键或左下摇杆走动 · 门开着可以走到站台' },
+  cab: { hint: '坐在司机座上 · 拖动看四周' },
+};
+const clip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 3.15);
+const look = { yaw: -Math.PI / 2, pitch: -0.05 };
+const walker = { x: -6.2, y: 0.1, eye: FLOOR + 1.55 };
+let tween = null;
+
+function setView(v) {
+  S.view = v;
+  document.querySelectorAll('.stop').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === v));
+  $('hint').textContent = VIEWS[v].hint;
+  renderer.clippingPlanes = v === 'cut' ? [clip] : [];
+  const orbit = v === 'ext' || v === 'cut';
+  controls.enabled = orbit;
+  $('joy').hidden = v !== 'in';
+  if (orbit) {
+    const P = VIEWS[v];
+    const pos = framed(P);
+    camera.fov = camera.aspect < 1 ? P.fov + 12 : P.fov; camera.updateProjectionMatrix();
+    camera.up.set(0, 1, 0);
+    if (REDUCED) { camera.position.copy(pos); controls.target.copy(P.target); tween = null; }
+    else tween = { t: 0, p0: camera.position.clone(), p1: pos, q0: controls.target.clone(), q1: P.target.clone() };
+  } else {
+    tween = null;
+    camera.fov = (v === 'in' ? 72 : 68) + (camera.aspect < 1 ? 14 : 0); camera.updateProjectionMatrix();
+    look.yaw = -Math.PI / 2; look.pitch = v === 'cab' ? -0.32 : -0.05;
+  }
+  placeJoy();
+  applyEnv();
+}
+/* 竖屏时整节车放不进画面，把相机沿视线往后拉 */
+function framed(P) {
+  const k = Math.min(2.4, Math.max(1, 1.2 / camera.aspect));
+  return P.target.clone().add(P.pos.clone().sub(P.target).multiplyScalar(k));
+}
+
+function walkable(x, y) {
+  if (x > -9.62 && x < 8.70 && Math.abs(y) < 0.80) return true;
+  if (x > 7.92 && x < 8.70 && Math.abs(y) < 1.20) return true;
+  const e = ease(S.doorP);
+  for (const c of DOORS) {
+    if (Math.abs(x - c) < 0.58 && Math.abs(y) < 1.28) return true;
+    const sy = y < 0 ? -1 : 1;
+    if (e > 0.85 && sideOpen(sy) && Math.abs(x - c) < 0.55 && Math.abs(y) < 1.75) return true;
+  }
+  if (y < -1.62 && y > -7.2 && Math.abs(x) < 15.6) return true;   // 站台
+  return false;
+}
+function stepWalker(dt) {
+  let f = 0, s = 0;
+  if (keys.has('w') || keys.has('arrowup')) f += 1;
+  if (keys.has('s') || keys.has('arrowdown')) f -= 1;
+  if (keys.has('d') || keys.has('arrowright')) s += 1;
+  if (keys.has('a') || keys.has('arrowleft')) s -= 1;
+  f += joyV.y; s += joyV.x;
+  const len = Math.hypot(f, s);
+  if (len > 1) { f /= len; s /= len; }
+  if (len > 0.02) {
+    const sp = 1.7 * dt, yw = look.yaw;
+    const dx = (-Math.sin(yw) * f + Math.cos(yw) * s) * sp;
+    const dy = (Math.cos(yw) * f + Math.sin(yw) * s) * sp;
+    if (walkable(walker.x + dx, walker.y + dy)) { walker.x += dx; walker.y += dy; }
+    else if (walkable(walker.x + dx, walker.y)) walker.x += dx;
+    else if (walkable(walker.x, walker.y + dy)) walker.y += dy;
+  }
+  const ground = walker.y < -1.5 ? PLAT : FLOOR;
+  walker.eye += (ground + 1.55 - walker.eye) * Math.min(1, dt * 8);
+}
+
+/* 拖动看四周（车内 / 驾驶室） */
+let drag = null;
+canvas.addEventListener('pointerdown', e => {
+  if (S.view !== 'in' && S.view !== 'cab') return;
+  drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const k = e.pointerType === 'touch' ? 0.006 : 0.004;
+  look.yaw += (e.clientX - drag.x) * k;
+  look.pitch = Math.max(-1.25, Math.min(1.25, look.pitch + (e.clientY - drag.y) * k));
+  if (S.view === 'cab') look.yaw = Math.max(-Math.PI / 2 - 1.9, Math.min(-Math.PI / 2 + 1.9, look.yaw));
+  drag.x = e.clientX; drag.y = e.clientY;
+});
+const endDrag = e => { if (drag && e.pointerId === drag.id) drag = null; };
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+
+const keys = new Set();
+addEventListener('keydown', e => {
+  if (e.target.closest && e.target.closest('button') && (e.key === ' ' || e.key === 'Enter')) return;
+  const k = e.key.toLowerCase();
+  if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k) && S.view === 'in') { keys.add(k); e.preventDefault(); }
+  if (k === 'o') toggleDoor();
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+addEventListener('blur', () => keys.clear());
+
+/* 摇杆 */
+const joyV = { x: 0, y: 0 };
+let joyId = null;
+const joy = $('joy'), knob = $('joyKnob');
+function placeJoy() {
+  const dock = document.querySelector('.dock-inner').getBoundingClientRect();
+  joy.style.bottom = (innerHeight - dock.top + 14) + 'px';
+}
+joy.addEventListener('pointerdown', e => { joyId = e.pointerId; joy.setPointerCapture(e.pointerId); moveJoy(e); });
+joy.addEventListener('pointermove', e => { if (e.pointerId === joyId) moveJoy(e); });
+const endJoy = e => { if (e.pointerId === joyId) { joyId = null; joyV.x = joyV.y = 0; knob.style.transform = ''; } };
+joy.addEventListener('pointerup', endJoy);
+joy.addEventListener('pointercancel', endJoy);
+function moveJoy(e) {
+  const r = joy.getBoundingClientRect(), R = r.width / 2;
+  let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R);
+  const l = Math.hypot(dx, dy), m = R - 23;
+  if (l > m) { dx *= m / l; dy *= m / l; }
+  knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  joyV.x = dx / m; joyV.y = -dy / m;
+}
+
+/* ───────── UI ───────── */
+document.querySelectorAll('.stop').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+$('doorBtn').addEventListener('click', toggleDoor);
+document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+  S.side = b.dataset.side;
+  document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  drawInfo();
+}));
+function toggler(id, key, after) {
+  $(id).addEventListener('click', () => { S[key] = !S[key]; $(id).setAttribute('aria-pressed', S[key]); after && after(); });
+}
+toggler('lightBtn', 'lights');
+toggler('headBtn', 'head', () => { $('headLbl').textContent = S.head ? '前照灯' : '尾灯'; drawCab(); });
+toggler('nightBtn', 'night', applyEnv);
+toggler('soundBtn', 'sound');
+$('specBtn').addEventListener('click', () => {
+  const sh = $('sheet'); sh.hidden = !sh.hidden; $('specBtn').setAttribute('aria-expanded', !sh.hidden);
+});
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  composer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  placeJoy();
+}
+addEventListener('resize', resize);
+
+/* ───────── loop ───────── */
+const clock = new THREE.Clock();
+let simT = 0;
+function update(dt) {
+  simT += dt;
+  const t = simT;
+  updateDoors(dt);
+  applyLamps(t);
+  if (S.view === 'ext' || S.view === 'cut') {
+    if (tween) {
+      tween.t = Math.min(1, tween.t + dt / 0.9);
+      const k = ease(tween.t);
+      camera.position.lerpVectors(tween.p0, tween.p1, k);
+      controls.target.lerpVectors(tween.q0, tween.q1, k);
+      if (tween.t >= 1) tween = null;
+    }
+    controls.update();
+  } else {
+    if (S.view === 'in') { stepWalker(dt); camera.position.copy(B(walker.x, walker.y, walker.eye)); }
+    else camera.position.copy(B(9.22, 0.70, 2.60));
+    camera.quaternion.setFromEuler(new THREE.Euler(look.pitch, look.yaw, 0, 'YXZ'));
+  }
+}
+function frame() {
+  if (window.__e235.manual) return;
+  update(Math.min(0.05, clock.getDelta()));
+  composer.render();
+  requestAnimationFrame(frame);
+}
+
+resize();
+setView('ext');
+camera.position.copy(framed(VIEWS.ext)); controls.target.copy(VIEWS.ext.target); tween = null;
+(document.fonts ? document.fonts.ready : Promise.resolve()).catch(() => {}).then(() =>
+  loadModel().then(g => {
+    setup(g);
+    $('loading').hidden = true;
+    requestAnimationFrame(frame);
+  }).catch(err => {
+    console.error(err);
+    $('ld-t').textContent = '模型载入失败：' + err.message;
+    $('ld-t').classList.add('err');
+  }));
+// 测试用：manual=true 时停掉动画循环，用 tick() 手动推进并渲染一帧
+window.__e235 = { S, setView, toggleDoor, manual: false,
+  tick(sec = 0, step = 0.05) { for (let k = 0; k < Math.ceil(sec / step); k++) update(step); update(0.0001); composer.render(); } };
+</script>

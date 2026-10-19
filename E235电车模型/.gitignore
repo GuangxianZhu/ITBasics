@@ -1,0 +1,6 @@
+output/
+blender_path.txt
+__pycache__/
+*.pyc
+tools/node_modules/
+tools/.build/
