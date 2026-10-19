@@ -3,7 +3,7 @@
 一架**原创**的 3 寸涵道穿越机（cinewhoop），全部零件由 `build_drone.py` 在 Blender 里用代码生成，不对应任何厂家的产品。
 同一个 `.blend` 里有两段动画：飞行演示 和 爆炸图。
 
-| 飞行（过竞速门时侧倾转弯） | 装配 | 爆炸 |
+| 飞行（弯道里侧倾约 37°） | 装配 | 爆炸 |
 |---|---|---|
 | ![飞行](preview/render_flight.jpg) | ![装配](preview/render_assembled.jpg) | ![爆炸](preview/render_exploded.jpg) |
 
