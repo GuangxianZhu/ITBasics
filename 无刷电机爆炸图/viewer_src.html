@@ -1,0 +1,767 @@
+<title>无刷电机拆解</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+/* Layout: full-bleed 3D stage; drawing title block + part card top-left, side panel (BOM / commutation) right,
+   mode tabs + controls in one strip at the bottom where the thumb is */
+:root{
+  --bg:#e4e8ec; --bg2:#f5f7f9; --panel:rgba(247,249,251,.93); --panel-solid:#f7f9fb;
+  --fg:#161d26; --muted:#56616f; --line:#c2cad3; --accent:#a8521f; --accent-ink:#ffffff;
+  --hl:#d6860b; --hl-ink:#1b1204; --shadow-a:.2;
+  --ph-u:#c99400; --ph-v:#1f9447; --ph-w:#2a66cf; --pole-n:#d93b3b; --pole-s:#6f88aa; --off:#9aa4b0;
+  --f-cn:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --f-num:"Barlow Condensed","Arial Narrow","Roboto Condensed",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --ctrl-h:120px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0f1318; --bg2:#1a212a; --panel:rgba(20,25,32,.93); --panel-solid:#151a21;
+  --fg:#e1e6ec; --muted:#98a3b0; --line:#2e3742; --accent:#e58c56; --accent-ink:#1a0d05;
+  --hl:#f2b13d; --hl-ink:#1b1204; --shadow-a:.5;
+  --ph-u:#f2c230; --ph-v:#46c477; --ph-w:#5b94ff; --pole-n:#ff5d5d; --pole-s:#8fa9cc; --off:#5b6573; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0f1318; --bg2:#1a212a; --panel:rgba(20,25,32,.93); --panel-solid:#151a21;
+  --fg:#e1e6ec; --muted:#98a3b0; --line:#2e3742; --accent:#e58c56; --accent-ink:#1a0d05;
+  --hl:#f2b13d; --hl-ink:#1b1204; --shadow-a:.5;
+  --ph-u:#f2c230; --ph-v:#46c477; --ph-w:#5b94ff; --pole-n:#ff5d5d; --pole-s:#8fa9cc; --off:#5b6573; color-scheme:dark }
+
+html{height:100%;box-sizing:border-box}
+*,*::before,*::after{box-sizing:inherit}
+body{height:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-family:var(--f-cn);-webkit-font-smoothing:antialiased}
+#app{position:relative;height:100%;overflow:hidden;background:radial-gradient(120% 90% at 50% 38%,var(--bg2),var(--bg) 72%)}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+#leaders,#tags{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;transition:opacity .2s}
+#leaders line{stroke:var(--fg);stroke-width:.9;opacity:.55}
+#leaders circle{fill:var(--fg);opacity:.7}
+#leaders line.sel{stroke:var(--hl);opacity:1;stroke-width:1.4}
+#leaders circle.sel{fill:var(--hl);opacity:1}
+.bln{position:absolute;left:0;top:0;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;
+  border:1.25px solid var(--fg);background:var(--panel-solid);color:var(--fg);font:600 12.5px/1 var(--f-num);
+  display:grid;place-items:center;padding:0;pointer-events:auto;cursor:pointer;font-variant-numeric:tabular-nums;will-change:transform}
+.bln:hover{border-color:var(--accent);color:var(--accent)}
+.bln.sel{background:var(--hl);border-color:var(--hl);color:var(--hl-ink)}
+.tag{position:absolute;left:0;top:0;margin:-9px 0 0 -13px;min-width:26px;height:18px;padding:0 4px;border-radius:4px;
+  font:600 11.5px/18px var(--f-num);text-align:center;color:#fff;letter-spacing:.02em;will-change:transform;opacity:.95}
+.tag.u{background:var(--ph-u);color:#1b1404}.tag.v{background:var(--ph-v)}.tag.w{background:var(--ph-w)}
+.tag.idle{background:var(--panel-solid);color:var(--muted);border:1px solid var(--line)}
+.bln:focus-visible,.btn:focus-visible,.row:focus-visible,.tab:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.hud{position:absolute;z-index:2}
+.left{top:12px;left:max(16px,env(safe-area-inset-left,0px));width:min(320px,calc(100% - 32px));display:flex;flex-direction:column;gap:10px}
+.tb{border:1.25px solid var(--fg);background:var(--panel);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:grid;grid-template-columns:1fr auto;font-size:12px}
+.tb>div{padding:6px 9px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);min-width:0}
+.tb>div:nth-child(2n){border-right:0}
+.tb>div:nth-last-child(-n+2){border-bottom:0}
+.tb .name{grid-column:1/-1;border-right:0;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.tb h1{margin:0;font-size:19px;font-weight:700;letter-spacing:.04em;text-wrap:balance}
+.tb .en{font:600 12px/1 var(--f-num);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.tb .k{display:block;font-size:10px;color:var(--muted);letter-spacing:.08em}
+.tb .v{font:500 12px/1.35 var(--f-mono)}
+
+.card{border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.card-head{display:flex;gap:10px;align-items:flex-start}
+.card-no{flex:none;width:28px;height:28px;border-radius:50%;background:var(--hl);color:var(--hl-ink);display:grid;place-items:center;font:600 15px/1 var(--f-num)}
+.card h2{margin:0;font-size:16px;font-weight:700;line-height:1.25}
+.card .jp{font-size:12px;color:var(--muted);margin-top:2px}
+.card .x{margin-left:auto;flex:none;border:0;background:transparent;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 4px;border-radius:4px}
+.card dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px}
+.card dt{color:var(--muted)} .card dd{margin:0;font-family:var(--f-mono);font-size:12px;min-width:0}
+.card p{margin:0;font-size:13px;line-height:1.6;max-width:60ch}
+.hint{font-size:12px;color:var(--muted);line-height:1.5}
+
+.side{top:12px;right:max(16px,env(safe-area-inset-right,0px));width:380px;bottom:calc(var(--ctrl-h) + 10px);
+  border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:6px;display:flex;flex-direction:column;min-height:0}
+.side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.side-head h3{margin:0;font-size:14px;font-weight:700}
+.side-head h3 small{font:500 12px var(--f-mono);color:var(--muted);margin-left:6px}
+.scroll{overflow:auto;flex:1;min-height:0}
+.row{display:grid;grid-template-columns:26px 1fr auto;gap:2px 10px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--line);cursor:pointer;width:100%;text-align:left;background:transparent;border-left:0;border-right:0;border-top:0;color:var(--fg);font:inherit}
+.row:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.row.sel{background:color-mix(in srgb,var(--hl) 18%,transparent)}
+.row .n{grid-column:1;grid-row:1/3;width:22px;height:22px;border-radius:50%;border:1.25px solid var(--fg);display:grid;place-items:center;font:600 12px/1 var(--f-num)}
+.row.sel .n{background:var(--hl);border-color:var(--hl);color:var(--hl-ink)}
+.row .nm{grid-column:2;grid-row:1;font-size:13px;font-weight:500;min-width:0}
+.row .nm span{color:var(--muted);font-weight:400;font-size:11.5px;margin-left:6px}
+.row .q{grid-column:3;grid-row:1/3;font:500 12px var(--f-mono);color:var(--muted)}
+.row .m{grid-column:2;grid-row:2;font:400 11px/1.3 var(--f-mono);color:var(--muted);min-width:0}
+
+/* commutation panel */
+.cm{padding:12px;display:flex;flex-direction:column;gap:10px}
+.sig{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;font-size:12px}
+.sig .lb{color:var(--muted)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font:600 12.5px/1 var(--f-num);letter-spacing:.03em;padding:5px 8px;border-radius:5px;border:1px solid var(--line);color:var(--muted);background:transparent;min-width:52px;text-align:center;font-variant-numeric:tabular-nums}
+.chip.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.chip.pu{background:var(--ph-u);border-color:var(--ph-u);color:#1b1404}
+.chip.pv{background:var(--ph-v);border-color:var(--ph-v);color:#fff}
+.chip.pw{background:var(--ph-w);border-color:var(--ph-w);color:#fff}
+#wave{width:100%;height:150px;display:block}
+table.st{width:100%;border-collapse:collapse;font:500 12px/1.2 var(--f-mono);font-variant-numeric:tabular-nums}
+table.st th{font:500 11px var(--f-cn);color:var(--muted);text-align:center;padding:4px 2px;border-bottom:1px solid var(--line)}
+table.st td{text-align:center;padding:5px 2px;border-bottom:1px solid var(--line)}
+table.st tr.cur td{background:color-mix(in srgb,var(--hl) 22%,transparent);font-weight:600}
+.pos{color:var(--pole-n)} .neg{color:var(--pole-s)} .flt{color:var(--muted)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.expl{font-size:13px;line-height:1.65;margin:0}
+.expl b{font-weight:600}
+
+.ctrl{left:0;right:0;bottom:0;padding-block:8px 10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.bar{max-width:1080px;margin:0 auto;border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
+.bar-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tabs{display:inline-flex;border:1px solid var(--line);border-radius:7px;padding:2px;gap:2px;background:var(--panel-solid)}
+.tab{font:500 13px/1 var(--f-cn);padding:7px 14px;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.btn{font:500 13px/1 var(--f-cn);padding:8px 11px;border:1px solid var(--line);background:var(--panel-solid);color:var(--fg);border-radius:6px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.btn svg{width:13px;height:13px;fill:currentColor}
+.slider{display:flex;align-items:center;gap:8px;flex:1 1 200px;min-width:170px}
+.slider label{font-size:12px;color:var(--muted);white-space:nowrap}
+.slider input{flex:1;min-width:0;accent-color:var(--accent)}
+.slider output{font:500 12px var(--f-mono);width:3.4em;text-align:right;font-variant-numeric:tabular-nums}
+.cap{font-size:12.5px;line-height:1.55;color:var(--muted);min-width:0}
+.cap b{color:var(--fg);font-weight:500}
+.spacer{flex:1 1 0}
+.grp{display:contents}
+
+.loading{position:absolute;inset:0;display:grid;place-items:center;z-index:5;pointer-events:none}
+.loading div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 18px;font-size:13px;min-width:220px}
+.loading .barl{height:4px;background:var(--line);border-radius:2px;margin-top:10px;overflow:hidden}
+.loading .barl i{display:block;height:100%;width:0;background:var(--accent)}
+
+@media (max-width:760px){
+  .left{width:calc(100% - 32px)}
+  .tb .hidemob{display:none}
+  .tb{grid-template-columns:1fr 1fr}
+  #info{position:fixed;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:calc(var(--ctrl-h) + 8px + env(safe-area-inset-bottom,0px));width:auto;max-height:40%;overflow:auto;z-index:3}
+  .side{left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));width:auto;top:auto;max-height:56%;bottom:calc(var(--ctrl-h) + 8px)}
+  #cmPanel{max-height:46%}
+  #wave{height:92px}
+  #app.mode-principle .left{display:none}
+  #app.mode-principle #cap{display:none}
+  .cm{gap:8px;padding:10px 12px}
+  .expl{font-size:12.5px;line-height:1.6}
+  .slider{flex-basis:100%}
+  .tab{padding:7px 12px}
+}
+@media (prefers-reduced-motion: reduce){ #leaders,#tags{transition:none} }
+</style>
+
+<div id="app">
+  <canvas id="c" aria-label="无刷电机三维模型，可拖动旋转"></canvas>
+  <svg id="leaders" aria-hidden="true"></svg>
+  <div id="tags"></div>
+  <div class="loading" id="loading"><div><span id="ld-t">正在加载模型…</span><div class="barl"><i id="ld-b"></i></div></div></div>
+
+  <div class="hud left">
+    <div class="tb" role="group" aria-label="图纸标题栏">
+      <div class="name"><h1>无刷直流电机</h1><span class="en">BLDC · 57 frame · Hall</span></div>
+      <div><span class="k">型号</span><span class="v">57BL75-24 · 24 V</span></div>
+      <div><span class="k">极槽配合</span><span class="v">8 极 12 槽 · 3 相</span></div>
+      <div class="hidemob"><span class="k">额定</span><span class="v">3000 rpm · 188 W</span></div>
+      <div class="hidemob"><span class="k">位置检测</span><span class="v">霍尔 ×3 · 120°</span></div>
+    </div>
+    <div id="info" class="card" hidden aria-live="polite">
+      <div class="card-head">
+        <div class="card-no" id="i-no">1</div>
+        <div><h2 id="i-cn">输出轴</h2><div class="jp" id="i-jp">シャフト</div></div>
+        <button class="x" id="i-close" aria-label="关闭说明">×</button>
+      </div>
+      <dl><dt>材料</dt><dd id="i-mat">—</dd><dt>数量</dt><dd id="i-qty">—</dd></dl>
+      <p id="i-desc"></p>
+    </div>
+    <div class="hint" id="hint">拖动旋转，滚轮或双指缩放。点零件或编号看说明。</div>
+  </div>
+
+  <section class="hud side" id="bom" hidden aria-label="零件表">
+    <div class="side-head"><h3>零件表<small id="bom-count"></small></h3><button class="btn" id="bom-close">收起</button></div>
+    <div class="scroll" id="bom-list"></div>
+  </section>
+
+  <section class="hud side" id="cmPanel" hidden aria-label="六步换相">
+    <div class="side-head"><h3>六步换相<small>霍尔 120°</small></h3><button class="btn" id="tbl-btn" aria-pressed="true">换相表</button></div>
+    <div class="scroll"><div class="cm">
+      <div class="sig">
+        <span class="lb">霍尔</span><div class="chips"><span class="chip" id="h1">H1 0</span><span class="chip" id="h2">H2 0</span><span class="chip" id="h3">H3 0</span></div>
+        <span class="lb">相线</span><div class="chips"><span class="chip" id="pu">U 悬空</span><span class="chip" id="pv">V 悬空</span><span class="chip" id="pw">W 悬空</span></div>
+      </div>
+      <canvas id="wave" aria-label="霍尔信号与三相通电波形"></canvas>
+      <div class="legend"><span><i style="background:var(--pole-n)"></i>N 极</span><span><i style="background:var(--pole-s)"></i>S 极</span><span><i style="background:var(--ph-u)"></i>U</span><span><i style="background:var(--ph-v)"></i>V</span><span><i style="background:var(--ph-w)"></i>W</span></div>
+      <p class="expl" id="expl"></p>
+      <table class="st" id="stbl"><thead><tr><th>步</th><th>霍尔 H1H2H3</th><th>U</th><th>V</th><th>W</th><th>转矩来源</th></tr></thead><tbody></tbody></table>
+    </div></div>
+  </section>
+
+  <div class="hud ctrl" id="ctrl">
+    <div class="bar">
+      <div class="bar-row">
+        <div class="tabs" role="tablist" aria-label="模式">
+          <button class="tab" role="tab" data-mode="struct" aria-selected="true">结构</button>
+          <button class="tab" role="tab" data-mode="principle" aria-selected="false">原理</button>
+          <button class="tab" role="tab" data-mode="model" aria-selected="false">模型</button>
+        </div>
+        <span class="spacer"></span>
+        <button class="btn" id="b-view">复位</button>
+      </div>
+      <div class="bar-row grp-struct">
+        <button class="btn primary" id="b-play"><svg viewBox="0 0 16 16"><path d="M3 2l11 6-11 6z"/></svg><span id="b-play-t">装配</span></button>
+        <div class="slider"><label for="r-ex">爆炸</label><input id="r-ex" type="range" min="0" max="100" value="100"><output id="o-ex">100%</output></div>
+        <button class="btn" id="b-lbl" aria-pressed="true">编号</button>
+        <button class="btn" id="b-bom" aria-pressed="false">零件表</button>
+      </div>
+      <div class="bar-row grp-principle" hidden>
+        <button class="btn primary" id="b-run"><span id="b-run-t">暂停</span></button>
+        <button class="btn" id="b-step">单步</button>
+        <div class="slider"><label for="r-sp">速度</label><input id="r-sp" type="range" min="10" max="300" value="100"><output id="o-sp">1.0×</output></div>
+      </div>
+      <div class="bar-row grp-model" hidden>
+        <button class="btn" id="b-cut" aria-pressed="false">剖切</button>
+        <button class="btn" id="b-spin" aria-pressed="false">转子转动</button>
+      </div>
+      <div class="cap" id="cap"></div>
+    </div>
+  </div>
+</div>
+
+<script>window.__GLB_B64="__GLB_BASE64__";</script>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const $ = id => document.getElementById(id);
+const D2R = Math.PI/180, MM = 0.001;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const prefersReduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ───────── renderer / scene ───────── */
+const canvas = $('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setClearColor(0x000000, 0);
+renderer.localClippingEnabled = true;
+
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.95;
+const camera = new THREE.PerspectiveCamera(30, 1, .002, 20);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = .08; controls.minDistance = .05; controls.maxDistance = 4;
+
+const key = new THREE.DirectionalLight(0xffffff, 2.0); key.castShadow = true;
+key.shadow.mapSize.set(2048,2048);
+Object.assign(key.shadow.camera, { left:-.35, right:.35, top:.35, bottom:-.35, near:.01, far:2 });
+key.shadow.bias = -.0004; key.shadow.normalBias = .0004;
+scene.add(key, key.target);
+const rim = new THREE.DirectionalLight(0xdfe8ff, .7); rim.position.set(-.4,.25,-.35); scene.add(rim);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(10,10).rotateX(-Math.PI/2), new THREE.ShadowMaterial({ opacity:.2 }));
+ground.receiveShadow = true; scene.add(ground);
+
+const root = new THREE.Group(); scene.add(root);
+const cutPlane = new THREE.Plane(new THREE.Vector3(0,0,-1), 0);
+
+/* ───────── state ───────── */
+const st = { mode:'struct', t:1, tTarget:null, labels: innerWidth >= 760, sel:null, hover:null, moved:false,
+  thE:30, running:!prefersReduced, speed:1, stepTo:null, cut:false, spin:false };
+const ease = x => x<.5 ? 4*x*x*x : 1-Math.pow(-2*x+2,3)/2;
+const prog = (t,s) => ease(Math.min(1, Math.max(0, (t - s*.6)/.4)));
+
+let parts = [], items = [], meshes = [], coils = [], magnets = [], poleMarks = [], model = null;
+const HIDE_IN_PRINCIPLE = new Set([1,2,5,6,7,8,9,10,16,17,18,19]);
+
+/* ───────── load ───────── */
+async function load(){
+  const loader = new GLTFLoader();
+  let b64 = window.__GLB_B64;
+  if(!b64 || b64.length < 100){
+    // published page: the model ships next to it as base64 text (motor_glb.txt)
+    const res = await fetch('motor_glb.txt');
+    if(!res.ok) throw new Error('motor_glb.txt ' + res.status);
+    const total = +res.headers.get('content-length') || 0, reader = res.body.getReader(), parts = [];
+    let got = 0;
+    for(;;){ const { done, value } = await reader.read(); if(done) break; parts.push(value); got += value.length;
+      $('ld-t').textContent = `正在下载模型… ${(got/1e6).toFixed(1)}${total ? ' / ' + (total/1e6).toFixed(1) : ''} MB`;
+      if(total) $('ld-b').style.width = (100*got/total).toFixed(0) + '%'; }
+    b64 = new TextDecoder().decode(await new Blob(parts).arrayBuffer());
+  }
+  $('ld-t').textContent = '正在解码模型…';
+  await new Promise(r=>setTimeout(r, 30));
+  const bin = atob(b64.trim()), buf = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
+  return loader.parseAsync(buf.buffer, '');
+}
+
+function setup(gltf){
+  model = gltf.scene; root.add(model);
+  const byNo = new Map();
+  for(const node of [...model.children]){
+    const u = node.userData || {};
+    if(u.part_no === undefined) continue;
+    let p = byNo.get(u.part_no);
+    if(!p){ p = { no:u.part_no, cn:u.name_cn, jp:u.name_jp, en:u.name_en, m:u.material_spec, qty:u.qty, desc:u.desc, group:u.group, items:[] }; byNo.set(u.part_no, p); }
+    const ex = JSON.parse(u.ex || '[]').map(e=>({ v:new THREE.Vector3(e[0],e[1],e[2]).multiplyScalar(MM), s:e[3] }));
+    // holder at the origin: explode moves it, rotor spin turns it about the shaft axis;
+    // the node keeps whatever transform the file gave it (e.g. from mesh quantization)
+    const holder = new THREE.Group(); holder.name = node.name + '_holder'; model.add(holder); holder.add(node);
+    const it = { obj:holder, base:new THREE.Vector3(), ex, spin:!!u.spin, part:p, u };
+    p.items.push(it); items.push(it);
+    node.traverse(o=>{
+      if(!o.isMesh) return;
+      o.material = Array.isArray(o.material) ? o.material.map(m=>m.clone()) : o.material.clone();
+      for(const m of [].concat(o.material)){ m.userData.color0 = m.color.clone(); m.userData.metal0 = m.metalness; m.userData.rough0 = m.roughness; m.side = THREE.DoubleSide; m.clippingPlanes = []; }
+      o.castShadow = o.receiveShadow = true; o.userData.part = p; meshes.push(o);
+    });
+    if(u.phase) coils.push({ it, phase:u.phase, tooth:u.tooth, ang:u.angle_deg });
+    if(u.pole) magnets.push({ it, pole:u.pole });
+  }
+  parts = [...byNo.values()].sort((a,b)=>a.no-b.no);
+  // pole marks on the insulator walls (front end), one per tooth — shown in 原理 mode
+  for(let i=0;i<12;i++){
+    const f = 30*i*D2R, half = 12.5*D2R;
+    const g = new THREE.RingGeometry(14.1*MM, 15.4*MM, 16, 1, f-half, 2*half).rotateY(Math.PI/2).translate(24.5*MM, 0, 0);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color:0x888888, roughness:.5, side:THREE.DoubleSide }));
+    m.visible = false; model.add(m); poleMarks.push({ mesh:m, tooth:i, phase:'UVW'[i%3] });
+  }
+  buildUI();
+  $('loading').hidden = true;
+  setMode('struct', true);
+}
+
+/* ───────── pose ───────── */
+function applyPose(){
+  const tt = st.mode === 'struct' ? st.t : 0;
+  const thM = st.thE / 4 * D2R;
+  for(const it of items){
+    const p = it.obj.position.copy(it.base);
+    for(const e of it.ex) p.addScaledVector(e.v, prog(tt, e.s));
+    it.obj.rotation.x = it.spin ? thM : 0;
+  }
+}
+function orientRoot(){
+  const portrait = canvas.clientWidth / canvas.clientHeight < .85;
+  root.rotation.set(0, 0, (st.mode !== 'principle' && portrait) ? Math.PI/2 : 0);
+  root.updateMatrixWorld(true);
+}
+
+/* ───────── camera fit ───────── */
+const ctrlEl = $('ctrl'), leftEl = document.querySelector('.left'), app = $('app');
+const view = { top:0, bottom:0, right:0, left:0 };
+function sidePanel(){ return st.mode === 'principle' ? $('cmPanel') : $('bom'); }
+function measure(){
+  const W = canvas.clientWidth, narrow = W < 760, ar = app.getBoundingClientRect();
+  const ch = Math.max(0, ar.bottom - ctrlEl.getBoundingClientRect().top);
+  document.documentElement.style.setProperty('--ctrl-h', ch + 'px');
+  const tb = document.querySelector('.tb').getBoundingClientRect();
+  view.bottom = ch; view.top = narrow ? tb.bottom - ar.top + 6 : 0;
+  const sp = sidePanel();
+  if(narrow){
+    if(!sp.hidden) view.bottom = Math.max(view.bottom, ar.bottom - sp.getBoundingClientRect().top + 6);
+    if(!$('info').hidden) view.bottom = Math.max(view.bottom, ar.bottom - $('info').getBoundingClientRect().top + 6);
+    view.right = 0; view.left = 0;
+  } else {
+    view.right = !sp.hidden ? sp.offsetWidth + 16 : 0;
+    view.left = W >= 900 ? Math.min(W*.3, leftEl.getBoundingClientRect().right - ar.left + 8) : 0;
+  }
+}
+function setOffset(){
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  camera.setViewOffset(W, H, (view.right - view.left)/2, (view.bottom - view.top)/2, W, H);
+}
+function project(p3){ const v = p3.clone().project(camera); return [ (v.x+1)/2*canvas.clientWidth, (1-v.y)/2*canvas.clientHeight ]; }
+const DIRS = { struct:new THREE.Vector3(.42,.46,1).normalize(), model:new THREE.Vector3(.55,.42,1).normalize(), principle:new THREE.Vector3(1,.26,.3).normalize() };
+function computeFit(tv, dir, margin){
+  const tSave = st.t, mSave = st.mode; st.t = tv; applyPose(); root.updateMatrixWorld(true); st.t = tSave;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  const ax0 = view.left + margin, ax1 = W - view.right - margin, ay0 = view.top + margin, ay1 = H - view.bottom - margin;
+  const corners = [], bb = new THREE.Box3(), all = new THREE.Box3();
+  for(const me of meshes){
+    if(!visibleMesh(me)) continue;
+    if(!me.geometry.boundingBox) me.geometry.computeBoundingBox();
+    bb.copy(me.geometry.boundingBox).applyMatrix4(me.matrixWorld); all.union(bb);
+    for(const x of [bb.min.x,bb.max.x]) for(const y of [bb.min.y,bb.max.y]) for(const z of [bb.min.z,bb.max.z]) corners.push(new THREE.Vector3(x,y,z));
+  }
+  applyPose(); root.updateMatrixWorld(true);
+  const target = all.getCenter(new THREE.Vector3());
+  let dist = all.getSize(new THREE.Vector3()).length() * 1.6;
+  const right = new THREE.Vector3(), up = new THREE.Vector3();
+  for(let k=0;k<7;k++){
+    camera.position.copy(target).addScaledVector(dir, dist); camera.lookAt(target);
+    camera.near = dist/60; camera.far = dist*8; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+    let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+    for(const c of corners){ const [px,py] = project(c); x0=Math.min(x0,px); x1=Math.max(x1,px); y0=Math.min(y0,py); y1=Math.max(y1,py); }
+    const sc = Math.max((x1-x0)/Math.max(60,ax1-ax0), (y1-y0)/Math.max(60,ay1-ay0));
+    const wpp = 2*dist*Math.tan(camera.fov*D2R/2)/H;
+    right.setFromMatrixColumn(camera.matrixWorld,0); up.setFromMatrixColumn(camera.matrixWorld,1);
+    target.addScaledVector(right, ((x0+x1)/2 - (ax0+ax1)/2)*wpp).addScaledVector(up, -((y0+y1)/2 - (ay0+ay1)/2)*wpp);
+    dist *= sc*.97;
+  }
+  return { target, dist, center: all.getCenter(new THREE.Vector3()) };
+}
+let F0 = null, F1 = null, FDIR = DIRS.struct;
+function fit(){
+  orientRoot(); measure(); setOffset();
+  FDIR = DIRS[st.mode];
+  const W = canvas.clientWidth;
+  if(st.mode === 'struct'){ F0 = computeFit(0, FDIR, Math.min(64, W*.08)); F1 = computeFit(1, FDIR, st.labels ? 46 : 22); }
+  else { F0 = F1 = computeFit(0, FDIR, st.mode === 'principle' ? 34 : Math.min(56, W*.07)); }
+  autoFrame(true);
+  const c = F1.center;
+  key.position.copy(c).add(new THREE.Vector3(.12,.6,.25)); key.target.position.copy(c);
+}
+const _t = new THREE.Vector3();
+function autoFrame(force){
+  if(!F0 || (st.moved && !force)) return;
+  const k = st.mode === 'struct' ? ease(Math.min(1, st.t/.82)) : 0;
+  _t.lerpVectors(F0.target, F1.target, k);
+  const d = F0.dist + (F1.dist - F0.dist)*k;
+  controls.target.copy(_t); camera.position.copy(_t).addScaledVector(FDIR, d);
+  camera.near = d/60; camera.far = d*8; camera.updateProjectionMatrix();
+}
+function visibleMesh(me){ let o = me; while(o){ if(!o.visible) return false; o = o.parent; } return true; }
+function relayout(){ measure(); setOffset(); if(!st.moved) fit(); }
+function resize(){
+  const W = canvas.clientWidth, H = canvas.clientHeight; if(!W || !H) return;
+  renderer.setSize(W, H, false); camera.aspect = W/H;
+  if(!model){ camera.updateProjectionMatrix(); return; }
+  measure(); setOffset(); if(!st.moved) fit(); else camera.updateProjectionMatrix();
+  drawWave();
+}
+controls.addEventListener('start', ()=>{ st.moved = true; });
+
+/* ───────── balloons ───────── */
+const svgNS = 'http://www.w3.org/2000/svg';
+const leaders = $('leaders'), tagsEl = $('tags');
+let lab = [], coilTags = [];
+function buildUI(){
+  for(const p of parts){
+    const b = document.createElement('button'); b.className = 'bln'; b.textContent = p.no; b.setAttribute('aria-label', `${p.no} ${p.cn}`);
+    b.addEventListener('click', e=>{ e.stopPropagation(); select(p); });
+    tagsEl.appendChild(b);
+    const ln = document.createElementNS(svgNS,'line'), dot = document.createElementNS(svgNS,'circle'); dot.setAttribute('r','2');
+    leaders.append(ln, dot);
+    lab.push({ p, b, ln, dot, x:0, y:0, init:false });
+  }
+  const cnt = { U:0, V:0, W:0 };
+  for(const c of coils){
+    const el = document.createElement('span'); el.className = 'tag ' + c.phase.toLowerCase();
+    el.textContent = c.phase + (++cnt[c.phase]); el.hidden = true; tagsEl.appendChild(el);
+    const f = c.ang*D2R, r = 28.5*MM;
+    coilTags.push({ el, c, pos:new THREE.Vector3(24*MM, r*Math.sin(f), -r*Math.cos(f)) });
+  }
+  const list = $('bom-list');
+  $('bom-count').textContent = `${parts.length} 种 · ${parts.reduce((a,p)=>a+p.qty,0)} 件`;
+  for(const p of parts){
+    const el = document.createElement('button'); el.className = 'row'; el.type = 'button';
+    el.innerHTML = `<span class="n">${p.no}</span><span class="nm">${p.cn}<span>${p.jp}</span></span><span class="q">×${p.qty}</span><span class="m">${p.m}</span>`;
+    el.addEventListener('click', ()=>select(p)); list.appendChild(el); p.row = el;
+  }
+  const tb = $('stbl').querySelector('tbody');
+  STEPS.forEach((s,i)=>{
+    const tr = document.createElement('tr');
+    const cell = ph => s.pos === ph ? '<td class="pos">+</td>' : s.neg === ph ? '<td class="neg">−</td>' : '<td class="flt">悬空</td>';
+    tr.innerHTML = `<td>${i+1}</td><td>${s.code}</td>${cell('U')}${cell('V')}${cell('W')}<td>${s.pos}→N ${s.neg}→S</td>`;
+    tb.appendChild(tr); s.tr = tr;
+  });
+}
+const box = new THREE.Box3(), anchorBox = new THREE.Box3();
+function updateLabels(){
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  const op = (st.mode === 'struct' && st.labels) ? Math.min(1, Math.max(0, (st.t - .55)/.25)) : 0;
+  leaders.style.opacity = op; leaders.style.visibility = op > 0 ? 'visible' : 'hidden';
+  for(const L of lab) L.b.hidden = op <= 0;
+  if(op > 0){
+    for(const L of lab) L.b.style.opacity = op;
+    const [cx, cy] = project(box.getCenter(new THREE.Vector3()));
+    for(const L of lab){
+      anchorBox.makeEmpty().expandByObject(L.p.items[0].obj);
+      const [ax, ay] = project(anchorBox.getCenter(new THREE.Vector3()));
+      L.ax = ax; L.ay = ay; L.off = ax < 0 || ax > W - view.right || ay < view.top || ay > H - view.bottom;
+      let dx = ax - cx, dy = ay - cy; const dl = Math.hypot(dx,dy) || 1; dx/=dl; dy/=dl;
+      L.tx = ax + dx*42; L.ty = ay + dy*38;
+      if(!L.init){ L.x = L.tx; L.y = L.ty; }
+      L.nx = L.x + (L.tx - L.x)*.5; L.ny = L.y + (L.ty - L.y)*.5;
+    }
+    const minX = view.left + 12, maxX = W - view.right - 12, minY = view.top + 12, maxY = H - view.bottom - 12;
+    for(let k=0;k<8;k++){
+      for(let i=0;i<lab.length;i++) for(let j=i+1;j<lab.length;j++){
+        const a = lab[i], b = lab[j]; if(a.off || b.off) continue;
+        let dx = b.nx-a.nx, dy = b.ny-a.ny; const d = Math.hypot(dx,dy);
+        if(d < 25){ if(d < .01){ dx = 1; dy = 0; } const m = (25-d)/2/(d||1); a.nx -= dx*m; a.ny -= dy*m; b.nx += dx*m; b.ny += dy*m; }
+      }
+      for(const L of lab){ L.nx = Math.min(maxX, Math.max(minX, L.nx)); L.ny = Math.min(maxY, Math.max(minY, L.ny)); }
+    }
+    for(const L of lab){
+      L.x = L.nx; L.y = L.ny; L.init = true;
+      L.b.hidden = L.off; L.ln.style.display = L.dot.style.display = L.off ? 'none' : '';
+      L.b.style.transform = `translate(${L.x.toFixed(1)}px,${L.y.toFixed(1)}px)`;
+      const dx = L.x - L.ax, dy = L.y - L.ay, d = Math.hypot(dx,dy) || 1;
+      L.ln.setAttribute('x1', L.ax.toFixed(1)); L.ln.setAttribute('y1', L.ay.toFixed(1));
+      L.ln.setAttribute('x2', (L.x - dx/d*11).toFixed(1)); L.ln.setAttribute('y2', (L.y - dy/d*11).toFixed(1));
+      L.dot.setAttribute('cx', L.ax.toFixed(1)); L.dot.setAttribute('cy', L.ay.toFixed(1));
+      const on = st.sel === L.p; L.b.classList.toggle('sel', on); L.ln.classList.toggle('sel', on); L.dot.classList.toggle('sel', on);
+    }
+  } else for(const L of lab) L.init = false;
+  const showTags = st.mode === 'principle';
+  for(const T of coilTags){
+    T.el.hidden = !showTags; if(!showTags) continue;
+    const [x, y] = project(T.pos.clone().applyMatrix4(model.matrixWorld));
+    T.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+  }
+}
+
+/* ───────── selection ───────── */
+const hl = new THREE.Color();
+function paint(){
+  hl.set(css('--hl') || '#d6860b');
+  for(const m of meshes){
+    const p = m.userData.part;
+    const on = p === st.sel ? .5 : p === st.hover ? .2 : 0;
+    for(const mt of [].concat(m.material)){
+      if(m.userData.principleLit) continue;
+      mt.emissive.copy(hl); mt.emissiveIntensity = on;
+    }
+  }
+}
+function select(p){
+  st.sel = p; paint();
+  for(const q of parts) q.row && q.row.classList.toggle('sel', q === p);
+  const info = $('info'), was = info.hidden;
+  if(!p){ info.hidden = true; $('hint').hidden = st.mode === 'principle'; if(!was && canvas.clientWidth < 760) relayout(); return; }
+  $('i-no').textContent = p.no; $('i-cn').textContent = p.cn; $('i-jp').textContent = p.jp;
+  $('i-mat').textContent = p.m; $('i-qty').textContent = p.qty + ' 件'; $('i-desc').textContent = p.desc;
+  info.hidden = false; $('hint').hidden = true;
+  if(canvas.clientWidth < 760){ if(!$('bom').hidden) toggleBom(false); else relayout(); }
+}
+$('i-close').addEventListener('click', ()=>select(null));
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pick(e){
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(meshes.filter(visibleMesh), false);
+  for(const h of hits){ if(st.cut && st.mode === 'model' && cutPlane.distanceToPoint(h.point) < 0) continue; return h.object.userData.part; }
+  return null;
+}
+let down = null;
+canvas.addEventListener('pointerdown', e=>{ down = { x:e.clientX, y:e.clientY }; });
+canvas.addEventListener('pointerup', e=>{ if(model && down && Math.hypot(e.clientX-down.x, e.clientY-down.y) < 6) select(pick(e)); down = null; });
+canvas.addEventListener('pointermove', e=>{
+  if(!model || e.pointerType !== 'mouse' || e.buttons) return;
+  const p = pick(e); if(p !== st.hover){ st.hover = p; paint(); canvas.style.cursor = p ? 'pointer' : ''; }
+});
+canvas.addEventListener('pointerleave', ()=>{ if(st.hover){ st.hover = null; paint(); canvas.style.cursor = ''; } });
+
+/* ───────── six-step commutation ─────────
+   Rotor electrical angle θe = 4 × mechanical (8 poles). Hall sensors sit at 15/45/75° mechanical
+   = 60/180/300° electrical, so their codes change every 60° electrical at 30, 90, 150 …
+   For each Hall code the driver energises the pair whose stator N pole sits ~90° behind the rotor N pole
+   (and S ~90° ahead), so the rotor is always being pulled forward. */
+const HALL_E = [60, 180, 300];
+const hallBits = thE => HALL_E.map(b => Math.cos((b - thE)*D2R) > 0 ? 1 : 0);
+const PAIR = { 270:['W','V'], 330:['U','V'], 30:['U','W'], 90:['V','W'], 150:['V','U'], 210:['W','U'] };
+const STEPS = [];
+for(let s=0;s<6;s++){
+  const k = (s + 1) % 6;                       // step 1 = U+ V−
+  const nAng = ((60*k - 90) % 360 + 360) % 360;
+  const [pos, neg] = PAIR[nAng];
+  STEPS.push({ k, pos, neg, code: hallBits(60*k).join(''), center:60*k });
+}
+const CODE2STEP = Object.fromEntries(STEPS.map((s,i)=>[s.code, i]));
+function stepNow(){ const code = hallBits(st.thE).join(''); return CODE2STEP[code] ?? 0; }
+
+const colU = new THREE.Color(), colV = new THREE.Color(), colW = new THREE.Color(), colN = new THREE.Color(), colS = new THREE.Color(), colOff = new THREE.Color();
+function readColors(){ colU.set(css('--ph-u')); colV.set(css('--ph-v')); colW.set(css('--ph-w')); colN.set(css('--pole-n')); colS.set(css('--pole-s')); colOff.set(css('--off')); }
+const phCol = ph => ph === 'U' ? colU : ph === 'V' ? colV : colW;
+let lastStep = -1;
+function updatePrinciple(force){
+  const si = stepNow(), s = STEPS[si];
+  const on = st.mode === 'principle';
+  for(const c of coils){
+    const state = s.pos === c.phase ? 1 : s.neg === c.phase ? -1 : 0;
+    c.it.obj.traverse(o=>{ if(!o.isMesh) return; o.userData.principleLit = on;
+      for(const m of [].concat(o.material)){
+        if(on && state !== 0){ m.color.copy(phCol(c.phase)); m.metalness = .2; m.roughness = .4; m.emissive.copy(phCol(c.phase)); m.emissiveIntensity = .55; }
+        else if(on){ m.color.copy(m.userData.color0); m.metalness = m.userData.metal0; m.roughness = m.userData.rough0; m.emissiveIntensity = 0; m.color.multiplyScalar(.55); }
+        else { m.color.copy(m.userData.color0); m.metalness = m.userData.metal0; m.roughness = m.userData.rough0; m.emissiveIntensity = 0; }
+      } });
+  }
+  for(const mg of magnets){
+    mg.it.obj.traverse(o=>{ if(!o.isMesh) return; o.userData.principleLit = on;
+      for(const m of [].concat(o.material)){
+        if(on){ m.color.copy(mg.pole === 'N' ? colN : colS); m.metalness = .15; m.roughness = .45; m.emissive.copy(m.color); m.emissiveIntensity = .18; }
+        else { m.color.copy(m.userData.color0); m.metalness = m.userData.metal0; m.roughness = m.userData.rough0; m.emissiveIntensity = 0; }
+      } });
+  }
+  for(const pm of poleMarks){
+    pm.mesh.visible = on;
+    const state = s.pos === pm.phase ? 1 : s.neg === pm.phase ? -1 : 0;
+    pm.mesh.material.color.copy(state > 0 ? colN : state < 0 ? colS : colOff);
+    pm.mesh.material.emissive.copy(pm.mesh.material.color); pm.mesh.material.emissiveIntensity = state ? .45 : 0;
+  }
+  if(!on) return;
+  const bits = hallBits(st.thE);
+  ['h1','h2','h3'].forEach((id,i)=>{ const el = $(id); el.textContent = `H${i+1} ${bits[i]}`; el.classList.toggle('on', !!bits[i]); });
+  for(const ph of ['U','V','W']){
+    const el = $('p'+ph.toLowerCase()), state = s.pos === ph ? '+' : s.neg === ph ? '−' : '悬空';
+    el.textContent = `${ph} ${state}`; el.className = 'chip' + (state !== '悬空' ? ' p'+ph.toLowerCase() : '');
+  }
+  if(si !== lastStep || force){
+    lastStep = si;
+    STEPS.forEach((x,i)=>x.tr.classList.toggle('cur', i === si));
+    const fl = ['U','V','W'].find(p=>p!==s.pos && p!==s.neg);
+    $('expl').innerHTML = `<b>第 ${si+1} 步 · 霍尔 ${s.code}</b>：${s.pos} 相通正电流、${s.neg} 相通负电流，${fl} 相悬空。${s.pos} 相的齿变成 <span class="pos">N</span> 极，${s.neg} 相的齿变成 <span class="neg">S</span> 极。转子的 N 极前方约 90° 电角度是 S 齿（吸引），后方是 N 齿（推斥），于是被推着往前转。转过 60° 电角度后霍尔码改变，驱动器切换到下一步。`;
+  }
+  drawWave();
+}
+
+/* waveform: one electrical revolution, cursor at θe */
+const wave = $('wave'), wctx = wave.getContext('2d');
+function drawWave(){
+  if(st.mode !== 'principle' || $('cmPanel').hidden) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), W = wave.clientWidth, H = wave.clientHeight;
+  if(!W || !H) return;
+  if(wave.width !== Math.round(W*dpr) || wave.height !== Math.round(H*dpr)){ wave.width = Math.round(W*dpr); wave.height = Math.round(H*dpr); }
+  const c = wctx; c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,W,H);
+  const fg = css('--fg'), mut = css('--muted'), line = css('--line');
+  const L = 26, R = W - 4, rows = 6, rh = (H - 14)/rows, x = a => L + (R-L)*a/360;
+  c.font = '500 10px ' + css('--f-mono');
+  const cur = ((st.thE % 360) + 360) % 360, si = stepNow();
+  // current sector shade
+  const s0 = ((STEPS[si].center - 30) % 360 + 360) % 360;
+  c.fillStyle = css('--hl'); c.globalAlpha = .16;
+  if(s0 + 60 <= 360) c.fillRect(x(s0), 0, x(s0+60)-x(s0), H-14); else { c.fillRect(x(s0), 0, R-x(s0), H-14); c.fillRect(L, 0, x(s0+60-360)-L, H-14); }
+  c.globalAlpha = 1;
+  c.strokeStyle = line; c.lineWidth = 1;
+  for(let a=30;a<360;a+=60){ c.beginPath(); c.moveTo(x(a)+.5, 0); c.lineTo(x(a)+.5, H-14); c.stroke(); }
+  const labels = ['H1','H2','H3','U','V','W'], cols = [fg, fg, fg, css('--ph-u'), css('--ph-v'), css('--ph-w')];
+  for(let r=0;r<rows;r++){
+    const y0 = r*rh + 2, mid = y0 + rh/2, amp = rh*.36;
+    c.fillStyle = mut; c.fillText(labels[r], 0, mid + 3.5);
+    c.strokeStyle = cols[r]; c.lineWidth = 1.6; c.beginPath();
+    for(let a=0;a<=360;a+=1){
+      let v;
+      if(r < 3) v = hallBits(a)[r] ? 1 : -1;
+      else { const s = STEPS[CODE2STEP[hallBits(a).join('')]]; const ph = labels[r]; v = s.pos === ph ? 1 : s.neg === ph ? -1 : 0; }
+      const yy = mid - v*amp;
+      if(a === 0) c.moveTo(x(a), yy); else c.lineTo(x(a), yy);
+    }
+    c.stroke();
+  }
+  c.fillStyle = mut;
+  for(const a of [0, 90, 180, 270, 360]){ const tw = c.measureText(a + '°').width; const tx = Math.min(R - tw, Math.max(L, x(a) - tw/2)); c.fillText(a + '°', tx, H - 2); }
+  c.strokeStyle = css('--accent'); c.lineWidth = 2; c.beginPath(); c.moveTo(x(cur), 0); c.lineTo(x(cur), H-14); c.stroke();
+}
+
+/* ───────── modes ───────── */
+const CAPS = {
+  struct:'<b>结构：</b>拖动“爆炸”滑杆看拆装顺序。先拆贯穿螺钉和后端盖，再抽出转子；机壳向上移开后能看到定子和 12 个线圈。',
+  principle:'<b>原理：</b>线圈按通电相位上色，齿端色块是此刻的 N/S 极，转子磁钢红 = N、灰蓝 = S。霍尔码一变，通电组合就切换一次。',
+  model:'<b>模型：</b>装配状态，自由旋转。打开“剖切”沿轴线切开一半，能看到轴承、转子和定子的相对位置。',
+};
+function setMode(m, first){
+  st.mode = m;
+  app.className = 'mode-' + m;
+  document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected', String(t.dataset.mode === m)));
+  document.querySelector('.grp-struct').hidden = m !== 'struct';
+  document.querySelector('.grp-principle').hidden = m !== 'principle';
+  document.querySelector('.grp-model').hidden = m !== 'model';
+  $('cap').innerHTML = CAPS[m];
+  const narrow = canvas.clientWidth < 760;
+  $('cmPanel').hidden = m !== 'principle';
+  if(m !== 'struct') $('bom').hidden = true, $('b-bom').setAttribute('aria-pressed','false');
+  for(const it of items){ it.obj.visible = !(m === 'principle' && HIDE_IN_PRINCIPLE.has(it.part.no)); }
+  for(const me of meshes) for(const mt of [].concat(me.material)) mt.clippingPlanes = (m === 'model' && st.cut) ? [cutPlane] : [];
+  if(m === 'principle'){
+    select(null); $('hint').hidden = true; readColors();
+    const showTbl = !narrow; $('tbl-btn').setAttribute('aria-pressed', String(showTbl)); $('stbl').hidden = !showTbl;
+  }
+  else $('hint').hidden = !$('info').hidden;
+  ground.visible = m !== 'principle';
+  st.moved = false;
+  updatePrinciple(true);
+  paint();
+  fit();
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>{ if(model) setMode(t.dataset.mode); }));
+$('b-view').addEventListener('click', ()=>{ st.moved = false; fit(); });
+
+/* struct controls */
+const rEx = $('r-ex'), oEx = $('o-ex'), playT = $('b-play-t');
+function syncEx(){ const pc = Math.round(st.t*100); rEx.value = pc; oEx.textContent = pc + '%'; playT.textContent = st.t > .5 ? '装配' : '爆炸'; }
+rEx.addEventListener('input', ()=>{ st.tTarget = null; st.t = rEx.value/100; syncEx(); });
+$('b-play').addEventListener('click', ()=>{ const g = st.t > .5 ? 0 : 1; if(prefersReduced){ st.t = g; syncEx(); } else st.tTarget = g; });
+const bLbl = $('b-lbl'); bLbl.setAttribute('aria-pressed', String(st.labels));
+bLbl.addEventListener('click', ()=>{ st.labels = !st.labels; bLbl.setAttribute('aria-pressed', String(st.labels)); });
+function toggleBom(on){ $('bom').hidden = !on; $('b-bom').setAttribute('aria-pressed', String(on)); relayout(); }
+$('b-bom').addEventListener('click', ()=>toggleBom($('bom').hidden));
+$('bom-close').addEventListener('click', ()=>toggleBom(false));
+
+/* principle controls */
+function syncRun(){ $('b-run-t').textContent = st.running ? '暂停' : '播放'; }
+$('b-run').addEventListener('click', ()=>{ st.running = !st.running; st.stepTo = null; syncRun(); });
+$('b-step').addEventListener('click', ()=>{
+  st.running = false; syncRun();
+  const base = st.stepTo ?? st.thE;
+  st.stepTo = 60*Math.floor((base + 30)/60) + 60;
+});
+$('r-sp').addEventListener('input', e=>{ st.speed = e.target.value/100; $('o-sp').textContent = st.speed.toFixed(1) + '×'; });
+$('tbl-btn').addEventListener('click', e=>{ const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); $('stbl').hidden = !on; });
+syncRun();
+
+/* model controls */
+$('b-cut').addEventListener('click', e=>{
+  st.cut = !st.cut; e.currentTarget.setAttribute('aria-pressed', String(st.cut));
+  for(const me of meshes) for(const mt of [].concat(me.material)) mt.clippingPlanes = (st.mode === 'model' && st.cut) ? [cutPlane] : [];
+});
+$('b-spin').addEventListener('click', e=>{ st.spin = !st.spin; e.currentTarget.setAttribute('aria-pressed', String(st.spin)); });
+
+/* theme */
+function themeSync(){ st.shadowA = parseFloat(css('--shadow-a')) || .22; readColors(); if(model){ updatePrinciple(true); paint(); } drawWave(); }
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeSync);
+new MutationObserver(themeSync).observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
+
+/* ───────── loop ───────── */
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(.05, (now - last)/1000); last = now;
+  if(!model) return;
+  if(st.tTarget !== null){
+    const d = Math.sign(st.tTarget - st.t); st.t += d*dt*.5;
+    if((d > 0 && st.t >= st.tTarget) || (d < 0 && st.t <= st.tTarget) || d === 0){ st.t = st.tTarget; st.tTarget = null; }
+    syncEx();
+  }
+  if(st.mode === 'principle'){
+    if(st.stepTo !== null){ st.thE = Math.min(st.stepTo, st.thE + dt*240); if(st.thE >= st.stepTo) st.stepTo = null; updatePrinciple(); }
+    else if(st.running){ st.thE += dt*150*st.speed; updatePrinciple(); }
+  } else if(st.mode === 'model' && st.spin){ st.thE += dt*400; }
+  applyPose();
+  autoFrame(false);
+  root.updateMatrixWorld(true);
+  box.makeEmpty(); for(const m of meshes) if(visibleMesh(m)) box.expandByObject(m);
+  ground.position.y = box.min.y - .0004;
+  ground.material.opacity = (st.shadowA ?? .2) * (st.mode === 'struct' ? (1 - Math.min(1, st.t*1.5)) : 1);
+  controls.update();
+  renderer.render(scene, camera);
+  updateLabels();
+}
+new ResizeObserver(resize).observe(canvas);
+themeSync(); syncEx();
+requestAnimationFrame(frame);
+load().then(g=>{ setup(g); resize(); }).catch(err=>{ $('ld-t').textContent = '模型加载失败：' + (err && err.message || err); console.error(err); });
+window.__motor = { st, setMode, camera, controls };
+</script>
