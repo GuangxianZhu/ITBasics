@@ -7,16 +7,17 @@
 
 输出（默认在 output/ 下）:
     drone.blend        Blender 工程，按空格播放：
-                         第 1~449 帧   飞行演示（起飞 → 8 字穿过两个竞速门 → 降落）
-                         第 450~750 帧 爆炸图（转台展示：拆开 → 停留 → 装回）
+                         第 1~449 帧    飞行演示（起飞 → 8 字穿过两个竞速门 → 降落）
+                         第 450~894 帧  差速原理（油门 → 偏航 → 横滚 → 俯仰；画面左下角是四个电机的推力差）
+                         第 895~1195 帧 爆炸图（展示台转圈：拆开 → 停留 → 装回）
                        时间线上的标记（Marker）会自动切换相机
-    render_*.png       加 --render 时用 Cycles 渲染 3 张预览图
+    render_*.png       加 --render 时用 Cycles 渲染 4 张预览图
     drone_demo.mp4     加 --video 时用 EEVEE 把整段动画渲染成视频（1280×720）
 
 坐标约定:
     零件尺寸按 毫米 写，建完统一缩放成米（1 Blender 单位 = 1 m）
     机头朝 -Y（Blender 前视图 Numpad1 正对机头），+Z 向上，+X 是机身右侧
-    所有零件都挂在空物体 Drone 下面：飞行动画只动 Drone，爆炸动画只动零件的相对位置
+    所有零件都挂在空物体 Drone 下面：飞行/差速动画只动 Drone，爆炸动画只动零件的相对位置
 
 兼容: Blender 4.2 ~ 5.x
 """
@@ -62,18 +63,34 @@ F_CLIMB = (30, 70)       # 1~30 地面怠速，30~70 起飞爬升
 F_LOOP = (70, 370)       # 8 字航线（10 秒）
 F_LAND = (370, 410)      # 下降落地
 F_STOP = (410, 435)      # 停桨
-F_CUT = 450              # 切到展示台
-F_EXP = (460, 580)       # 拆开
-F_ASM = (610, 730)       # 装回
-F_END = 750
+F_DEMO = 450             # 差速原理演示（在起降垫上原地做）
+D_UP = (475, 515)        # 油门：起飞到 DEMO_H
+D_YAW = (530, 585)       # 偏航：转出去 / 转回来 的起始帧（各 40 帧）
+D_ROLL = (640, 690)      # 横滚：右移 / 移回 的起始帧
+D_PITCH = (735, 785)     # 俯仰：前移 / 移回 的起始帧
+D_SHIFT = 36             # 横移、前移各用多少帧
+D_DOWN = (830, 865)      # 降落
+D_STOP = (867, 883)      # 停桨
+F_CUT = 895              # 切到展示台
+F_EXP = (905, 1025)      # 拆开
+F_ASM = (1055, 1175)     # 装回
+F_END = 1195
 
 H = 1.30                 # 巡航高度 (m)
 Z0 = 0.009               # 停在起降垫上时 Drone 原点高度（脚垫 4 mm + 垫子 5 mm）
 LOOP_A, LOOP_B = 2.6, 2.4    # 8 字航线尺寸 (m)
-DISPLAY_Z = 0.22         # 爆炸展示时悬停高度 (m)
+DISPLAY_Z = 0.22         # 爆炸展示时的展示台高度 (m)
+DEMO_H = 0.30            # 差速演示时的悬停高度 (m)
+DEMO_MOVE = 0.7          # 横滚/俯仰演示时平移多远 (m)
 GATE_X = LOOP_A          # 两个竞速门放在 x = ±A
 IDLE_DEG = 22.0          # 怠速：桨每帧转多少度
 HOVER_DEG = 42.0         # 悬停：桨每帧转多少度（30 fps 下故意取“看得出在转”的值，真实转速快得多）
+
+# 动力学参数（3 寸 4S 涵道机的量级估计，不是实测）
+MASS = 0.38              # 整机质量 (kg)
+INERTIA = (1.1e-3, 1.1e-3, 2.0e-3)   # 绕机身 x/y/z 的转动惯量 (kg·m²)
+KQ = 0.012               # 反扭矩系数 = 桨的扭矩 / 推力 (m)
+F_MAX = MASS * G         # 单个电机最大推力 (N)，相当于推重比 4
 
 
 # ---------------------------------------------------------------- 场景清理
@@ -208,6 +225,7 @@ def make_materials():
         gate=principled('M_Gate', '#ff7a1a', 0, .5),
         gate_dark=principled('M_Gate_Dark', '#24262a', 0, .6),
         cone=principled('M_Cone', '#ff6a1a', 0, .5),
+        acrylic=principled('M_Acrylic', '#dfe8f0', 0, .05, coat=1, alpha=.35),
     )
 
 
@@ -398,9 +416,11 @@ def catmull(ctrl, per=8):
     return out
 
 
-def text_into(bm, body, size, mtx, mi, extrude=0.05):
-    """Blender 内置字体 → 网格，并入 bm（mtx 把文字局部 XY 平面放到世界里）"""
+def text_into(bm, body, size, mtx, mi, extrude=0.05, font=None):
+    """文字 → 网格，并入 bm（mtx 把文字局部 XY 平面放到世界里）。font=None 用 Blender 内置字体"""
     cu = bpy.data.curves.new('txt', 'FONT')
+    if font is not None:
+        cu.font = font
     cu.body = body
     cu.size = size
     cu.extrude = extrude
@@ -436,6 +456,10 @@ def boolean(bm_a, bm_b, op='DIFFERENCE'):
     md.object = b
     md.operation = op
     md.solver = 'EXACT'
+    try:
+        md.use_self = True          # 刀具里几块可能互相重叠
+    except Exception:
+        pass
     b.hide_render = True
     dg = bpy.context.evaluated_depsgraph_get()
     me = bpy.data.meshes.new_from_object(a.evaluated_get(dg))
@@ -574,21 +598,36 @@ def build_ducts(M):
     prof = [(39.0, 0.0), (41.5, 0.0), (41.5, 16.0), (43.4, 20.5), (42.6, 22.0), (40.6, 21.6),
             (39.0, 18.0), (39.0, 4.5), (36.5, 4.5), (36.5, 3.0), (39.0, 3.0)]
     for tag, (mx, my), _ in MOTORS:
-        d, _n = diag(mx, my)
+        d, n = diag(mx, my)
         bm = bmesh.new()
         revolve(bm, prof, 0, seg=96, closed=True, b=.35)
+        revolve(bm, [(41.3, 0.0), (42.6, 0.0), (42.6, 1.6), (41.3, 1.6)], 0, seg=96, closed=True, b=.3)  # 底部加厚唇
+        for k in range(8):                     # 外侧竖向加强筋，避开机臂方向
+            a = pi / 8 + k * pi / 4
+            c, s = cos(a), sin(a)
+            pts = [(41.2 * c - .6 * -s, 41.2 * s - .6 * c), (42.9 * c - .6 * -s, 42.9 * s - .6 * c),
+                   (42.9 * c + .6 * -s, 42.9 * s + .6 * c), (41.2 * c + .6 * -s, 41.2 * s + .6 * c)]
+            extrude(bm, [pts], 1.6, 15.2, 0)
         c = -d * 37.75     # 涵道底法兰压在机臂末端，用两颗螺丝固定
         for k in (-2.5, 2.5):
-            p = c + _n * k
+            p = c + n * k
             cyl(bm, 1.3, 4.5, 5.4, 1, 12, p.x, p.y)
         ex = [(d.x * 45, d.y * 45, 0, .72)]
         finish(f'P04_Duct_{tag}', '涵道（桨保护圈）', bm, [M['duct'], M['steel']], base=(mx, my, 0), ex=ex,
-               smooth=40)
+               bevel=.25, angle=60, smooth=40)
+
+
+def esc_pads(mx, my):
+    """电调上某个电机的 3 个焊盘（世界坐标 mm）。焊盘偏向左右外侧，避开中间的排线插座和角上的立柱"""
+    d, n = diag(mx, my)
+    sgn = 1 if n.x * mx > 0 else -1
+    return [d * 13 + n * sgn * (4.4 + 1.6 * k) for k in range(3)], sgn
 
 
 def build_motors(M):
     for tag, (mx, my), _ in MOTORS:
         d, n = diag(mx, my)
+        mpos = Vector((mx, my, 0))
         bm = bmesh.new()
         revolve(bm, [(0, 3.0), (9.0, 3.0), (9.0, 5.0), (8.2, 5.5), (0, 5.5)], 0, closed=False)   # 底座
         revolve(bm, [(0, 5.7), (9.0, 5.7), (9.0, 12.6), (8.0, 14.0), (2.2, 14.0), (2.2, 14.6), (0, 14.6)],
@@ -598,13 +637,15 @@ def build_motors(M):
         for k in range(6):                                                                            # 顶部散热窗
             a = k * pi / 3 + pi / 6
             box(bm, (5.2 * cos(a), 5.2 * sin(a), 14.02), (3.2, 1.6, .1), 3)
-        # 三根相线沿机臂走到电调；越过涵道法兰时抬高一点
-        for j, k in enumerate((-.9, 0, .9)):
-            off = n * k
-            ctrl = [-d * 9 + off, -d * 22 + off, -d * 33 + off, -d * 37.5 + off, -d * 42 + off,
-                    -d * 50 + off, -d * 55 + off]
-            zs = [3.8, 3.8, 3.8, 5.3, 3.8, 3.8, 6.8]
-            pts = catmull([Vector((p.x, p.y, z)) for p, z in zip(ctrl, zs)], 6)
+        # 三根相线：沿机臂走，越过涵道法兰时抬高，到电调前绕开立柱，焊到电调焊盘上
+        pads, sgn = esc_pads(mx, my)
+        for k, o in enumerate((-.9, 0, .9)):
+            off = n * sgn * o
+            pad = pads[k] - mpos
+            ctrl = [(-d * 9 + off, 3.8), (-d * 22 + off, 3.8), (-d * 33 + off, 3.8), (-d * 37.5 + off, 6.0),
+                    (-d * 42 + off, 3.8), (-d * 48 + off, 4.6), (-d * 52 + n * sgn * (o + 3.2), 7.6),
+                    (pad - d * 1.5, 7.4), (pad, 6.9)]
+            pts = catmull([Vector((p.x, p.y, z)) for p, z in ctrl], 6)
             sweep(bm, pts, .42, 4, sides=6)
         finish(f'P05_Motor_{tag}', '1404 外转子无刷电机', bm,
                [M['bell'], M['accent'], M['steel'], M['chip'], M['black']], base=(mx, my, 0), ex=EX['motor'])
@@ -674,56 +715,130 @@ def board(bm, hw, z0, z1, mi):
     extrude(bm, [rrect(hw, hw, 3)] + holes, z0, z1, mi)
 
 
+def ribbon(bm, xs, ctrl_yz, r, mis):
+    """板间排线：每根线一条扫掠，颜色轮换"""
+    for i, x in enumerate(xs):
+        pts = catmull([Vector((x, y, z)) for (y, z) in ctrl_yz], 6)
+        sweep(bm, pts, r, mis[i % len(mis)], sides=6)
+
+
 def build_stack(M):
-    # 电调（四合一 ESC）
+    # ---- 四合一电调：每个电机 6 颗 MOS 管（3 个半桥）+ 1 颗驱动 MCU + 3 个电机焊盘
     bm = bmesh.new()
     board(bm, 16, 5.0, 6.6, 0)
-    for (x, y) in ((-8, -4), (-8, 4), (8, -4), (8, 4), (-4, -8), (4, -8), (-4, 8), (4, 8)):
-        box(bm, (x, y, 7.1), (4, 4, 1), 1)
-    box(bm, (0, 0, 7.0), (4, 4, .8), 1)
-    for k in range(4):                 # 电机线焊盘
-        a = pi / 4 + k * pi / 2
-        box(bm, (14 * cos(a) * .92, 14 * sin(a) * .92, 6.7), (2.4, 2.4, .2), 2)
-    # 电源线 + XT30 母头
-    for j, x in enumerate((-1.4, 1.4)):
+    for _, (mx, my), _s in MOTORS:
+        d, n = diag(mx, my)
+        for a in (5.2, 8.6):
+            for b in (-3.4, 0, 3.4):
+                p = d * a + n * b
+                box(bm, (p.x, p.y, 7.05), (2.9, 2.9, .9), 1)
+        pads, sgn = esc_pads(mx, my)
+        p = d * 12 - n * sgn * 4.0
+        box(bm, (p.x, p.y, 7.0), (3, 3, .8), 1)
+        for p in pads:
+            box(bm, (p.x, p.y, 6.7), (1.5, 1.5, .2), 2)
+    box(bm, (0, 0, 6.9), (3.2, 1.6, .6), 1)                 # 电流检测电阻
+    for x in (-2.6, 2.6):                                   # 电源焊盘
+        box(bm, (x, 13.6, 6.7), (2.4, 3.2, .2), 2)
+    box(bm, (0, -12.2, 7.4), (6.5, 3, 1.6), 6)              # 8P 排线插座
+    for j, x in enumerate((-1.4, 1.4)):                     # 电源线 → XT30 母头
         pts = catmull([Vector((x, 14, 6.8)), Vector((x, 26, 7)), Vector((x, 36, 10)), Vector((x, 42, 17)),
                        Vector((x, 42, 20))], 6)
         sweep(bm, pts, 1.1, 3 if j else 4, sides=8)
     box(bm, (0, 42, 24), (8, 5, 6), 5)
-    finish('P07_ESC', '四合一电调（含电源线、XT30 母头）', bm,
-           [M['pcb'], M['chip'], M['gold'], M['red'], M['black'], M['xt']], ex=EX['esc'], bevel=.15)
-    # 飞控
+    cap = revolve(bm, [(0, 0), (4.0, 0), (4.0, 11.2), (3.6, 12), (0, 12)], 7, seg=24, closed=False)
+    top = revolve(bm, [(0, 12), (3.6, 12), (3.6, 12.1), (0, 12.1)], 8, seg=24, closed=False)
+    xform(bm, cap + top, Matrix.Translation((9, 34, 7.2)) @ Matrix.Rotation(-pi / 2, 4, 'X'))  # 低 ESR 电解电容
+    for j, x in enumerate((8, 10)):                         # 电容引线接到电源线上
+        pts = catmull([Vector((x, 34, 7.2)), Vector((x - 2, 31, 8)), Vector((2.2 if j else 1.8, 30, 8.4))], 6)
+        sweep(bm, pts, .35, 3 if j else 4, sides=6)
+    finish('P07_ESC', '四合一电调（含电源线、电容、XT30 母头）', bm,
+           [M['pcb'], M['chip'], M['gold'], M['red'], M['black'], M['xt'], M['jst'], M['batt'], M['shield']],
+           ex=EX['esc'], bevel=.15)
+
+    # ---- 飞控
     bm = bmesh.new()
     board(bm, 16, 12.0, 13.6, 0)
-    box(bm, (0, 1, 14.2), (7, 7, 1.2), 1)       # MCU
-    box(bm, (0, -8, 14.0), (3, 3, .8), 1)       # 陀螺仪
-    box(bm, (7, 7, 14.0), (3, 2, .8), 1)        # BEC
-    box(bm, (-10.5, 0, 15.1), (3, 7, 3), 2)     # JST 插座
-    box(bm, (10.5, 0, 15.1), (3, 6, 3), 2)
-    box(bm, (0, 13.5, 13.9), (1.4, 1.0, .6), 3)  # LED
-    finish('P08_FC', '飞控', bm, [M['pcb'], M['chip'], M['jst'], M['accent']], ex=EX['fc'], bevel=.15)
-    # 图传
+    box(bm, (0, 1, 13.75), (8.4, 8.4, .3), 2)               # MCU 引脚
+    box(bm, (0, 1, 14.2), (7, 7, 1.2), 1)                   # MCU
+    box(bm, (0, -6.5, 14.0), (3, 3, .8), 1)                 # 陀螺仪
+    box(bm, (5.5, -6.5, 14.0), (2.5, 2.5, .8), 1)           # 气压计
+    box(bm, (-5.5, -6.5, 14.0), (3, 4, .8), 1)              # 黑匣子 Flash
+    box(bm, (5.5, 7.5, 14.0), (3.2, 1.6, .8), 2)            # 晶振
+    box(bm, (6, 10.5, 14.1), (2.5, 2.5, 1), 3)              # BOOT 键
+    box(bm, (-3, 12.5, 13.9), (1.4, 1, .6), 4)              # LED
+    box(bm, (-1, 12.5, 13.9), (1.4, 1, .6), 5)
+    box(bm, (10.5, 0, 15.1), (3, 6, 3), 3)                  # 接收机插座
+    box(bm, (-13.5, -1, 15.2), (7.5, 9.0, 3.2), 2)          # USB-C
+    box(bm, (-17.3, -1, 15.2), (.3, 7.2, 1.8), 1)
+    box(bm, (0, -12.2, 11.2), (6.5, 3, 1.6), 3)             # 底面 8P（接电调）
+    box(bm, (0, -12.2, 14.4), (5.5, 3, 1.6), 3)             # 顶面 6P（接图传）
+    ribbon(bm, [-2.45 + .7 * i for i in range(8)],
+           [(-12.8, 7.8), (-16.5, 8.6), (-18.2, 9.8), (-16.5, 11.0), (-12.8, 10.4)], .28, [6, 7, 8, 9])
+    finish('P08_FC', '飞控（含到电调的 8P 排线）', bm,
+           [M['pcb'], M['chip'], M['steel'], M['jst'], M['accent'], M['red'],
+            M['black'], M['red'], M['white'], M['xt']], ex=EX['fc'], bevel=.15)
+
+    # ---- 图传：屏蔽罩 + 铝散热片
     bm = bmesh.new()
     board(bm, 15, 19.0, 20.6, 0)
-    box(bm, (0, -2, 22.1), (18, 16, 3), 1)      # 屏蔽罩
-    for x in (-6, 6):                           # MMCX 天线座
+    box(bm, (0, -2, 21.6), (18, 16, 2), 1)
+    for k in range(7):
+        box(bm, (-7.5 + 2.5 * k, -2, 24.1), (.8, 15, 3), 1)
+    for x in (-6, 6):                                       # MMCX 天线座
         cyl(bm, 1.6, 20.6, 22.4, 2, 16, x, 12)
     box(bm, (-11, 9, 21.0), (3, 4, .8), 3)
-    finish('P09_VTX', '数字图传', bm, [M['pcb'], M['shield'], M['gold'], M['chip']], ex=EX['vtx'], bevel=.15)
+    box(bm, (0, -12.5, 21.2), (4, 2.4, 1.2), 4)             # 相机插座
+    box(bm, (0, -12.2, 18.2), (5.5, 3, 1.6), 4)             # 底面 6P（接飞控）
+    ribbon(bm, [-1.75 + .7 * i for i in range(6)],
+           [(-12.8, 15.0), (-16.0, 15.8), (-17.2, 16.8), (-16.0, 17.8), (-12.8, 17.6)], .28, [5, 6, 7])
+    finish('P09_VTX', '数字图传（含到飞控的 6P 排线）', bm,
+           [M['pcb'], M['shield'], M['gold'], M['chip'], M['jst'], M['black'], M['red'], M['white']],
+           ex=EX['vtx'], bevel=.15)
+
+
+def loft_block(zs, hw, yf, yb, rad, rp, ns=8):
+    """由一层层水平圆角矩形放样成实体：yf(z)/yb(z) 是前/后端的 y，顶部 rad 范围内四周按圆弧收进去（=顶边圆角）"""
+    z1 = zs[-1]
+    bm = bmesh.new()
+    rings = []
+    for z in zs:
+        dz = z - (z1 - rad)
+        ins = rad - sqrt(max(0.0, rad * rad - dz * dz)) if dz > 0 else 0.0
+        w, f, b = hw - ins, yf(z) + ins, yb(z) - ins
+        r = max(.8, min(rp - .6 * ins, w - .1, (b - f) / 2 - .1))
+        rings.append([bm.verts.new((u, v, z)) for (u, v) in rrect(w, (b - f) / 2, r, ns, 0, (b + f) / 2)])
+    fs = []
+    for a, c in zip(rings, rings[1:]):
+        fs += _bridge(bm, a, c)
+    fs.append(bm.faces.new(rings[0][::-1]))
+    fs.append(bm.faces.new(rings[-1]))
+    bmesh.ops.recalc_face_normals(bm, faces=fs)
+    return bm
+
+
+def _ramp(z, z0, z1, v0, v1):
+    return v0 if z <= z0 else v1 if z >= z1 else v0 + (v1 - v0) * (z - z0) / (z1 - z0)
 
 
 def build_canopy(M):
-    bm = bmesh.new()
-    extrude(bm, [rrect(22, 30, 8, 12)], 3.0, 31.0, 0)
-    cut = bmesh.new()
-    extrude(cut, [rrect(20.6, 28.6, 6.6, 12)], 1.0, 29.6, 0)
+    # 外形：前端上沿斜切（给相机让视野）、后端上沿小倒角，顶面四周 5 mm 圆角
+    zs = [3, 10, 18, 22, 24.5, 26, 26.8, 27.6, 28.4, 29.1, 29.7, 30.2, 30.6, 30.85, 31]
+    bm = loft_block(zs, 22.0, lambda z: _ramp(z, 24.5, 31, -30, -24), lambda z: _ramp(z, 27, 31, 30, 27), 5.0, 8.0)
+    zi = [1, 10, 18, 22.5, 24.5, 25.8, 26.6, 27.4, 28.1, 28.7, 29.1, 29.4]
+    cut = loft_block(zi, 20.5, lambda z: _ramp(z, 23.3, 29.4, -28.5, -23.4),
+                     lambda z: _ramp(z, 25.8, 29.4, 28.5, 26.3), 3.6, 6.5)
     for x in (-6, 6):                                          # 后壁天线孔
         extrude(cut, [circle(x, 24, 2.1, 20)], 26, 34, 0, axis='Y')
-    for z in (11, 17):                                         # 侧面散热槽
-        for (a0, a1) in ((18, 25), (-25, -18)):
-            extrude(cut, [stadium(4, z, 7, 1.4)], a0, a1, 0, axis='X')
+    extrude(cut, [[(-5, 1), (5, 1), (5, 11), (-5, 11)]], 26, 34, 0, axis='Y')    # 后下方电源线缺口
+    extrude(cut, [stadium(0, 17.5, 1.6, 1.8)], -34, -26, 0, axis='Y')            # 前壁相机线孔
+    extrude(cut, [stadium(-1, 15.2, 3.4, 2.2)], -25, -18, 0, axis='X')          # 左侧 USB-C 口
+    for z in (9, 12.5, 16, 19.5):                              # 右侧散热格栅
+        extrude(cut, [stadium(4, z, 7, .9)], 18, 25, 0, axis='X')
+    for z in (19.5, 23):                                       # 左侧格栅（让开 USB 口）
+        extrude(cut, [stadium(4, z, 7, .9)], -25, -18, 0, axis='X')
     bm = boolean(bm, cut, 'DIFFERENCE')
-    finish('P10_Canopy', 'TPU 机身罩', bm, [M['canopy']], ex=EX['canopy'], bevel=.9, seg=3, angle=40)
+    finish('P10_Canopy', 'TPU 机身罩', bm, [M['canopy']], ex=EX['canopy'], bevel=.6, seg=2, angle=40, smooth=40)
 
 
 def build_camera(M):
@@ -744,10 +859,14 @@ def build_camera(M):
                    closed=False)
     glass = revolve(bm, [(0, 9.3), (4.3, 9.3), (4.0, 9.9), (0, 10.2)], 1, closed=False)
     xform(bm, lens + glass, Matrix.Translation((0, -9, 0)) @ Matrix.Rotation(pi / 2, 4, 'X'))
+    box(bm, (0, 9.3, -1), (8, .6, 6), 2)                     # 背面插座
     bmesh.ops.transform(bm, matrix=Matrix.Translation((0, py, pz)) @ Matrix.Rotation(radians(-CAM_TILT), 4, 'X'),
                         verts=bm.verts[:])
-    finish('P12_Camera', 'FPV 相机（上仰 %d°）' % CAM_TILT, bm, [M['cam'], M['glass']], ex=EX['camera'],
-           bevel=.8, seg=2)
+    pts = catmull([Vector(p) for p in ((0, -32.6, 16.8), (0, -30, 17.4), (0, -25, 19.5), (0, -18, 22.6),
+                                       (0, -13.6, 22.0))], 6)
+    sweep(bm, pts, .8, 3, sides=8)                             # 相机线 → 图传
+    finish('P12_Camera', 'FPV 相机（上仰 %d°，含相机线）' % CAM_TILT, bm,
+           [M['cam'], M['glass'], M['jst'], M['black']], ex=EX['camera'], bevel=.8, seg=2)
 
 
 def build_battery(M):
@@ -782,7 +901,11 @@ def build_antennas(M):
         sweep(bm, [a + d * t for t in (0, L * .5, L)], 1.1, 0, sides=10)
         sweep(bm, [a - d * 2, a + d * 4], 2.0, 1, sides=12)                # 镀金接头
         sweep(bm, [a + d * L * .58, a + d * L * .97], 1.9, 2, sides=12)    # 振子套
-    finish('P15_Antennas', '图传天线 ×2', bm, [M['ant'], M['gold'], M['ant_sleeve']], ex=EX['antenna'])
+        coax = catmull([Vector((6 * s, y, z)) for (y, z) in ((12, 22.4), (14, 25.5), (22, 26.5), (28, 25),
+                                                             (30.5, 24))], 6)
+        sweep(bm, coax, .6, 0, sides=6)                                     # 同轴线 → 图传 MMCX
+    finish('P15_Antennas', '图传天线 ×2（含同轴线）', bm, [M['ant'], M['gold'], M['ant_sleeve']],
+           ex=EX['antenna'])
 
 
 # ---------------------------------------------------------------- 场景（单位：米）
@@ -827,6 +950,11 @@ def build_field(M):
         revolve(bm, [(0, 0), (.13, 0), (.13, .02), (.09, .02), (.025, .32), (0, .32)], 0, seg=24,
                 closed=False, cy=cx, cz=cy)
     scene_obj('Cones', bm, [M['cone']])
+    bm = bmesh.new()                     # 透明展示台：只在爆炸图段出现，托住机架底面
+    revolve(bm, [(0, 0), (.06, 0), (.06, .006), (.008, .008), (.005, DISPLAY_Z - .0018),
+                 (.012, DISPLAY_Z - .0018), (0, DISPLAY_Z - .0018)], 0, seg=48, closed=False)
+    stand = scene_obj('DisplayStand', bm, [M['acrylic']])
+    show_between(stand, F_CUT, F_END + 1)
 
 
 # ---------------------------------------------------------------- 飞行轨迹与姿态
@@ -836,8 +964,14 @@ def S5(x):
     return x * x * x * (x * (6 * x - 15) + 10)
 
 
+def S9(x):
+    """九次平滑：连 3 阶、4 阶导数在两端都是 0。平移用它，倾角（∝ 加速度）的角加速度才不会在起步瞬间突变"""
+    x = min(1.0, max(0.0, x))
+    return x ** 5 * (126 + x * (-420 + x * (540 + x * (-315 + x * 70))))
+
+
 def path(f):
-    """第 f 帧 Drone 的位置（米）"""
+    """飞行段第 f 帧 Drone 的位置（米）"""
     if f <= F_CLIMB[1]:
         z = Z0 + (H - Z0) * S5((f - F_CLIMB[0]) / (F_CLIMB[1] - F_CLIMB[0]))
         return Vector((0, 0, z))
@@ -848,9 +982,23 @@ def path(f):
     return Vector((0, 0, z))
 
 
+def demo_pos(f):
+    """差速演示段：起飞 → 原地偏航 → 右移再回来（横滚）→ 前移再回来（俯仰）→ 降落"""
+    z = Z0 + (DEMO_H - Z0) * (S5((f - D_UP[0]) / (D_UP[1] - D_UP[0]))
+                              - S5((f - D_DOWN[0]) / (D_DOWN[1] - D_DOWN[0])))
+    x = DEMO_MOVE * (S9((f - D_ROLL[0]) / D_SHIFT) - S9((f - D_ROLL[1]) / D_SHIFT))
+    y = -DEMO_MOVE * (S9((f - D_PITCH[0]) / D_SHIFT) - S9((f - D_PITCH[1]) / D_SHIFT))
+    return Vector((x, y, z))
+
+
+def demo_yaw(f):
+    return -pi / 2 + pi / 2 * (S5((f - D_YAW[0]) / 40) - S5((f - D_YAW[1]) / 40))
+
+
 def kinematics(f, h=.5):
+    fn = path if f < F_DEMO else demo_pos
     dt = h / FPS
-    p0, p1, p2 = path(f - h), path(f), path(f + h)
+    p0, p1, p2 = fn(f - h), fn(f), fn(f + h)
     return p1, (p2 - p0) / (2 * dt), (p2 - 2 * p1 + p0) / (dt * dt)
 
 
@@ -876,53 +1024,306 @@ def key_quat(ob, q, f, prev):
     return q
 
 
-def animate_flight():
-    ROOT.rotation_mode = 'QUATERNION'
-    yaw = -pi / 2              # 起飞前机头朝 -Y
-    prev_q = None
-    max_tilt, max_v = 0.0, 0.0
-    omega = []                 # 每帧桨的角速度（度/帧）
+# ---------------------------------------------------------------- 混控器：从姿态变化反推四个电机的推力
+def mixer_inverse():
+    """[总推力, 绕 x 力矩, 绕 y 力矩, 绕 z 力矩] = M @ [f1..f4]，求逆就得到每个电机该出多少力。
+    第 i 个电机在机身坐标 (x, y) 处向上推 f：力矩 = r × F = (y·f, −x·f, 0)；
+    桨转动时机身受到反扭矩 −spin·KQ·f（桨俯视逆时针转，机身就被往顺时针拧）"""
+    R = [(mx * MM, my * MM, s) for _, (mx, my), s in MOTORS]
+    rows = ([1.0] * 4, [y for _, y, _ in R], [-x for x, _, _ in R], [-s * KQ for _, _, s in R])
+    return Matrix(rows).inverted()
+
+
+def airborne(f):
+    """0 = 在地上怠速（混控器不管），1 = 飞起来了（混控器接管）"""
+    if f < F_DEMO:
+        return S5((f - F_CLIMB[0]) / 8) * (1 - S5((f - (F_LAND[1] - 8)) / 8))
+    return S5((f - D_UP[0]) / 8) * (1 - S5((f - (D_DOWN[1] - 6)) / 6))
+
+
+def armed(f):
+    """0 = 停桨，1 = 已解锁（至少在怠速）"""
+    if f < F_DEMO:
+        return S5((f - 1) / (F_CLIMB[0] - 1)) * (1 - S5((f - F_STOP[0]) / (F_STOP[1] - F_STOP[0])))
+    return S5((f - F_DEMO) / (D_UP[0] - 5 - F_DEMO)) * (1 - S5((f - D_STOP[0]) / (D_STOP[1] - D_STOP[0])))
+
+
+MOTION = {}     # f → dict(p, q, fi, k, e, w, dev, col)
+
+
+def compute_motion():
+    dt = 1.0 / FPS
+    P, Q, TH = {}, {}, {}
+    yaw, prev = -pi / 2, None              # 起飞前机头朝 -Y
     for f in range(1, F_CUT):
         p, v, a = kinematics(f)
         thrust = a + Vector((0, 0, G))
-        sp = Vector((v.x, v.y, 0)).length
-        if sp > .05:           # 机头慢慢转向速度方向（速度越快转得越干脆）
-            yaw += wrap(atan2(v.y, v.x) - yaw) * min(1.0, sp / 1.5) * .25
-        ROOT.location = p
-        ROOT.keyframe_insert('location', frame=f)
-        prev_q = key_quat(ROOT, attitude(thrust, yaw), f, prev_q)
-        if F_CLIMB[0] <= f <= F_LAND[1]:
-            max_tilt = max(max_tilt, math.degrees(thrust.angle(Vector((0, 0, 1)))))
-            max_v = max(max_v, v.length)
-        # 推力 ∝ 转速²，所以转速 ∝ √(需要的推力)
-        w_fly = HOVER_DEG * sqrt(thrust.length / G)
-        if f < F_CLIMB[0]:
-            w = IDLE_DEG * S5((f - 1) / (F_CLIMB[0] - 1))
-        elif f <= F_LAND[1]:
-            k = S5((f - F_CLIMB[0]) / 8) * (1 - S5((f - (F_LAND[1] - 8)) / 8))
-            w = IDLE_DEG + (w_fly - IDLE_DEG) * k
+        if f < F_DEMO:
+            sp = Vector((v.x, v.y, 0)).length
+            if sp > .05:                   # 机头慢慢转向速度方向（速度越快转得越干脆）
+                yaw += wrap(atan2(v.y, v.x) - yaw) * min(1.0, sp / 1.5) * .25
+            y = yaw
         else:
-            w = IDLE_DEG * (1 - S5((f - F_STOP[0]) / (F_STOP[1] - F_STOP[0])))
-        omega.append(w)
+            y = demo_yaw(f)
+        q = attitude(thrust, y)
+        if prev is not None and q.dot(prev) < 0:
+            q = -q
+        prev = q
+        P[f], Q[f], TH[f] = p, q, thrust
+
+    def seg(f):
+        return 0 if f < F_DEMO else 1
+
+    def nb(f):
+        f0 = f - 1 if (f - 1) in Q and seg(f - 1) == seg(f) else f
+        f1 = f + 1 if (f + 1) in Q and seg(f + 1) == seg(f) else f
+        return f0, f1
+
+    W = {}                                 # 机身坐标系下的角速度 (rad/s)
+    for f in Q:
+        f0, f1 = nb(f)
+        if f0 == f1:
+            W[f] = Vector((0, 0, 0))
+            continue
+        ax, ang = (Q[f0].conjugated() @ Q[f1]).to_axis_angle()
+        if ang > pi:
+            ang -= 2 * pi
+        W[f] = Vector(ax) * ang / ((f1 - f0) * dt)
+    I = Vector(INERTIA)
+    TAU = {}                               # 需要的力矩 τ = I·α + ω × (I·ω)
+    for f in Q:
+        f0, f1 = nb(f)
+        al = (W[f1] - W[f0]) / ((f1 - f0) * dt) if f1 != f0 else Vector((0, 0, 0))
+        w = W[f]
+        Iw = Vector((I.x * w.x, I.y * w.y, I.z * w.z))
+        TAU[f] = Vector((I.x * al.x, I.y * al.y, I.z * al.z)) + w.cross(Iw)
+    Minv = mixer_inverse()
+    hover = MASS * G / 4
+    stats = {}
+    for f in Q:
+        acc, n = Vector((0, 0, 0)), 0      # 5 帧平均，去掉数值微分的毛刺
+        for k in range(-2, 3):
+            g = f + k
+            if g in TAU and seg(g) == seg(f):
+                acc += TAU[g]
+                n += 1
+        tau = acc / n
+        fi = Minv @ Vector((MASS * TH[f].length, tau.x, tau.y, tau.z))
+        fi = [min(F_MAX, max(.03 * hover, x)) for x in fi]
+        k, e = airborne(f), armed(f)
+        mean = sum(fi) / 4
+        w = [IDLE_DEG * e * (1 - k) + k * HOVER_DEG * sqrt(x / hover) for x in fi]   # 推力 ∝ 转速²
+        dev = [k * (x - mean) / mean for x in fi]
+        col = k * mean / F_MAX + (1 - k) * e * .08
+        MOTION[f] = dict(p=P[f], q=Q[f], fi=fi, k=k, e=e, w=w, dev=dev, col=col)
+        key = 'flight' if f < F_DEMO else ('yaw' if D_YAW[0] <= f < D_ROLL[0] else
+                                           'roll' if D_ROLL[0] <= f < D_PITCH[0] else
+                                           'pitch' if D_PITCH[0] <= f < D_DOWN[0] else 'other')
+        stats[key] = max(stats.get(key, 0), max(abs(d) for d in dev))
+    print('[OK] max motor difference vs mean: ' + ', '.join(f'{k} {v * 100:.0f}%' for k, v in stats.items()))
+
+
+def animate_motion():
+    compute_motion()
+    ROOT.rotation_mode = 'QUATERNION'
+    prev = None
+    max_tilt = 0.0
+    for f in range(1, F_CUT):
+        m = MOTION[f]
+        ROOT.location = m['p']
+        ROOT.keyframe_insert('location', frame=f)
+        prev = key_quat(ROOT, m['q'], f, prev)
+        max_tilt = max(max_tilt, math.degrees((m['q'] @ Vector((0, 0, 1))).angle(Vector((0, 0, 1)))))
     # 展示台：机身水平，原地慢慢转一圈
     for f in range(F_CUT, F_END + 1):
         ROOT.location = (0, 0, DISPLAY_Z)
         ROOT.keyframe_insert('location', frame=f)
         yaw_d = -pi / 2 + 2 * pi * (f - F_CUT) / (F_END - F_CUT)
-        prev_q = key_quat(ROOT, attitude(Vector((0, 0, 1)), yaw_d), f, prev_q)
-    # 桨的转动（只转桨的局部 Z）和桨盘虚影
-    for prop, disc, spin in PROPS:
+        prev = key_quat(ROOT, attitude(Vector((0, 0, 1)), yaw_d), f, prev)
+    # 每个桨按自己的转速转（只转桨的局部 Z），桨盘虚影按转速淡入
+    for i, (prop, disc, spin) in enumerate(PROPS):
         ang = 0.0
         for f in range(1, F_CUT):
-            ang += omega[f - 1]
+            w = MOTION[f]['w'][i]
+            ang += w
             prop.rotation_euler = (0, 0, spin * radians(ang))
             prop.keyframe_insert('rotation_euler', index=2, frame=f)
-            s = min(1.0, max(0.0, (omega[f - 1] - 18) / 18))
+            s = min(1.0, max(0.0, (w - 18) / 18))
             disc.scale = (max(s, 1e-3),) * 3
             disc.keyframe_insert('scale', frame=f)
         disc.scale = (1e-3,) * 3
         disc.keyframe_insert('scale', frame=F_CUT)
-    print(f'[OK] flight: max tilt {max_tilt:.1f} deg, max speed {max_v:.1f} m/s')
+    print(f'[OK] motion: max tilt {max_tilt:.1f} deg')
+
+
+# ---------------------------------------------------------------- 画面上的电机转速条（HUD，挂在相机前面）
+FONT = None
+TEXT_K = 1.0
+
+
+def load_font():
+    """中文字幕要用系统里的中文字体；找不到就退回英文字幕"""
+    global FONT
+    for p in (r'C:\Windows\Fonts\msyh.ttc', r'C:\Windows\Fonts\msyh.ttf', r'C:\Windows\Fonts\simhei.ttf',
+              r'C:\Windows\Fonts\YuGothM.ttc', r'C:\Windows\Fonts\meiryo.ttc',
+              '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+              '/System/Library/Fonts/PingFang.ttc'):
+        if os.path.exists(p):
+            try:
+                FONT = bpy.data.fonts.load(p)
+                print('[OK] font', p)
+                break
+            except Exception:
+                continue
+    if FONT is None:
+        print('[INFO] no CJK font found, captions in English')
+    # 不同字体的字号和实际字高差别很大：量一个参考字，之后按“字高”来排版
+    global TEXT_K
+    bm = bmesh.new()
+    text_into(bm, '国' if FONT is not None else 'H', 1.0, Matrix.Identity(4), 0, 0.0, font=FONT)
+    ys = [v.co.y for v in bm.verts]
+    bm.free()
+    TEXT_K = 1.0 / max(1e-6, max(ys) - min(ys))
+
+
+def T(zh, en):
+    return zh if FONT is not None else en
+
+
+def emission_mat(name, hexc, strength=1.0, alpha=1.0):
+    m = bpy.data.materials.new(name)
+    try:
+        m.use_nodes = True
+    except Exception:
+        pass
+    nt = m.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new('ShaderNodeOutputMaterial')
+    em = nt.nodes.new('ShaderNodeEmission')
+    em.inputs['Color'].default_value = (*hexcol(hexc), 1)
+    em.inputs['Strength'].default_value = strength
+    if alpha < 1:
+        tr = nt.nodes.new('ShaderNodeBsdfTransparent')
+        mix = nt.nodes.new('ShaderNodeMixShader')
+        mix.inputs['Fac'].default_value = alpha
+        nt.links.new(tr.outputs[0], mix.inputs[1])
+        nt.links.new(em.outputs[0], mix.inputs[2])
+        nt.links.new(mix.outputs[0], out.inputs[0])
+        for attr, val in (('surface_render_method', 'BLENDED'), ('blend_method', 'BLEND')):
+            try:
+                setattr(m, attr, val)
+            except Exception:
+                pass
+    else:
+        nt.links.new(em.outputs[0], out.inputs[0])
+    m.diffuse_color = (*hexcol(hexc), alpha)
+    return m
+
+
+def hud_obj(name, bm, mat, cam, loc):
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    me.materials.append(mat)
+    ob = bpy.data.objects.new(name, me)
+    collection('HUD').objects.link(ob)
+    ob.parent = cam
+    ob.location = loc
+    for attr in ('visible_shadow', 'visible_diffuse', 'visible_glossy'):
+        try:
+            setattr(ob, attr, False)
+        except Exception:
+            pass
+    return ob
+
+
+def hud_rect(name, w, h, mat, cam, loc, bottom=False):
+    bm = bmesh.new()
+    y0, y1 = (0.0, 1.0) if bottom else (-.5, .5)
+    vs = [bm.verts.new((x * w, y * h, 0)) for (x, y) in ((-.5, y0), (.5, y0), (.5, y1), (-.5, y1))]
+    bm.faces.new(vs)
+    return hud_obj(name, bm, mat, cam, loc)
+
+
+def hud_text(name, body, height, mat, cam, loc):
+    """height = 一个汉字（英文时是大写字母）的实际高度 (m)"""
+    bm = bmesh.new()
+    text_into(bm, body, height * TEXT_K, Matrix.Identity(4), 0, 0.0, font=FONT)
+    return hud_obj(name, bm, mat, cam, loc)
+
+
+def show_between(ob, f0, f1):
+    """只在 [f0, f1) 这段帧里显示"""
+    keys = [(f0, False), (f1, True)]
+    if f0 > 1:
+        keys.insert(0, (1, True))
+    for f, hide in keys:
+        ob.hide_render = hide
+        ob.hide_viewport = hide
+        ob.keyframe_insert('hide_render', frame=f)
+        ob.keyframe_insert('hide_viewport', frame=f)
+
+
+def build_hud(cam, tag, f0, f1, captions):
+    """相机前 0.5 m 处的平面：左下角是 4 个电机的推力差条 + 总推力条，上方是字幕。
+    镜头 40 mm 时，这个距离上画面宽 0.45 m、高 0.253 m（720p 下 1 像素 ≈ 0.35 mm）"""
+    Z = -.5
+    mt = dict(bg=emission_mat(f'H_{tag}_bg', '#101418', 1, .6), white=emission_mat(f'H_{tag}_w', '#f2f4f6', 1.2),
+              dim=emission_mat(f'H_{tag}_dim', '#8a949e', 1), col=emission_mat(f'H_{tag}_col', '#e8e8e8', 1.2),
+              cw=emission_mat(f'H_{tag}_cw', '#ff8a2a', 1.5), ccw=emission_mat(f'H_{tag}_ccw', '#35c4be', 1.5))
+    obs = [hud_rect(f'HUD_{tag}_panel', .121, .072, mt['bg'], cam, (-.1585, -.088, Z - .002)),
+           hud_text(f'HUD_{tag}_title', T('推力差（满格 ±30%）', 'Thrust vs avg (full = 30%)'), .0048,
+                    mt['white'], cam, (-.1585, -.0595, Z)),
+           hud_text(f'HUD_{tag}_legend', T('橙 = 顺时针桨　青 = 逆时针桨', 'orange = CW   teal = CCW'), .0044,
+                    mt['white'], cam, (-.1585, -.0675, Z)),
+           hud_rect(f'HUD_{tag}_base', .088, .0007, mt['dim'], cam, (-.1515, -.093, Z)),
+           hud_rect(f'HUD_{tag}_colbg', .009, .04, mt['dim'], cam, (-.2075, -.114, Z - .001), bottom=True),
+           hud_text(f'HUD_{tag}_coll', T('总推力', 'Total'), .0040, mt['white'], cam, (-.2075, -.1195, Z))]
+    col = hud_rect(f'HUD_{tag}_colbar', .007, 1.0, mt['col'], cam, (-.2075, -.114, Z), bottom=True)
+    obs.append(col)
+    names = (T('右前', 'FR'), T('左前', 'FL'), T('右后', 'RR'), T('左后', 'RL'))
+    bars = {}
+    for slot, i in enumerate((1, 0, 3, 2)):   # 画面上从左到右：左前 右前 左后 右后
+        x = -.183 + slot * .021
+        spin = MOTORS[i][2]
+        bar = hud_rect(f'HUD_{tag}_bar_{MOTORS[i][0]}', .013, 1.0, mt['cw'] if spin < 0 else mt['ccw'], cam,
+                       (x, -.093, Z + .001), bottom=True)
+        bars[i] = bar
+        obs.append(bar)
+        obs.append(hud_text(f'HUD_{tag}_lbl_{MOTORS[i][0]}', names[i], .0044, mt['white'], cam, (x, -.1195, Z)))
+    for j, (c0, c1, zh, en) in enumerate(captions):
+        bg = hud_rect(f'HUD_{tag}_capbg{j}', .44, .017, mt['bg'], cam, (0, .107, Z - .002))
+        tx = hud_text(f'HUD_{tag}_cap{j}', T(zh, en), .0075, mt['white'], cam, (0, .107, Z))
+        show_between(bg, max(c0, f0), min(c1, f1))
+        show_between(tx, max(c0, f0), min(c1, f1))
+    for ob in obs:
+        show_between(ob, f0, f1)
+    gain = .02 / .30                      # 条形满格 = 比平均多/少 30%
+    for f in range(f0, f1):
+        m = MOTION[f]
+        col.scale = (1, max(m['col'] * .04, 1e-4), 1)
+        col.keyframe_insert('scale', index=1, frame=f)
+        for i, bar in bars.items():
+            h = max(-.02, min(.02, m['dev'][i] * gain))
+            bar.scale = (1, h if abs(h) > 1e-4 else 1e-4, 1)
+            bar.keyframe_insert('scale', index=1, frame=f)
+
+
+def build_huds(chase, cam_d):
+    load_font()
+    build_hud(chase, 'F', 1, F_DEMO, [
+        (F_CLIMB[0], F_LAND[1], '8 字航线：每次转弯、改方向的瞬间，四个电机的推力都不一样',
+         'Figure-8: whenever the drone turns, the four motors push differently')])
+    build_hud(cam_d, 'D', F_DEMO, F_CUT, [
+        (F_DEMO, D_YAW[0] - 8, '油门：四个电机一起加速 → 总推力大于重力 → 上升',
+         'Throttle: all four speed up -> thrust > weight -> climb'),
+        (D_YAW[0] - 8, D_ROLL[0] - 8, '偏航：顺时针桨和逆时针桨一快一慢 → 反扭矩不再抵消 → 机头转动',
+         'Yaw: CW pair vs CCW pair -> reaction torques no longer cancel -> nose turns'),
+        (D_ROLL[0] - 8, D_PITCH[0] - 8, '横滚：左右两侧一快一慢 → 机身侧倾 → 推力有了水平分量 → 横移',
+         'Roll: left vs right -> body banks -> thrust tilts -> slides sideways'),
+        (D_PITCH[0] - 8, D_DOWN[0], '俯仰：前后两组一快一慢 → 低头前进，抬头刹车',
+         'Pitch: front vs rear -> nose down to go, nose up to brake'),
+        (D_DOWN[0], F_CUT, '降落：四个电机一起减速', 'Land: all four slow down together')])
 
 
 def ease(x):
@@ -1014,6 +1415,18 @@ def setup_world_and_cams():
     t.track_axis = 'TRACK_NEGATIVE_Z'
     t.up_axis = 'UP_Y'
 
+    # 差速演示相机：固定在起降垫右前方，镜头跟着 Drone 转
+    cd = bpy.data.cameras.new('Cam_Demo')
+    cd.lens = 40
+    cd.clip_start = .01
+    cam_d = bpy.data.objects.new('Cam_Demo', cd)
+    collection('Studio').objects.link(cam_d)
+    cam_d.location = (.62, -.78, DEMO_H + .28)
+    t = cam_d.constraints.new('TRACK_TO')
+    t.target = ROOT
+    t.track_axis = 'TRACK_NEGATIVE_Z'
+    t.up_axis = 'UP_Y'
+
     # 爆炸图相机：固定在右前上方
     cd = bpy.data.cameras.new('Cam_Explode')
     cd.lens = 50
@@ -1033,10 +1446,11 @@ def setup_world_and_cams():
         cam_e.keyframe_insert('location', frame=f)
         cam_e.keyframe_insert('rotation_euler', frame=f)
 
-    for name, f, cam in (('飞行演示', 1, chase), ('爆炸图', F_CUT, cam_e)):
+    for name, f, cam in (('飞行演示', 1, chase), ('差速原理', F_DEMO, cam_d), ('爆炸图', F_CUT, cam_e)):
         m = sc.timeline_markers.new(name, frame=f)
         m.camera = cam
     for name, f in (('起飞', F_CLIMB[0]), ('8字航线', F_LOOP[0]), ('降落', F_LAND[0]),
+                    ('油门', D_UP[0]), ('偏航', D_YAW[0]), ('横滚', D_ROLL[0]), ('俯仰', D_PITCH[0]),
                     ('拆开', F_EXP[0]), ('装回', F_ASM[0])):
         sc.timeline_markers.new(name, frame=f)
     sc.camera = chase
@@ -1047,7 +1461,7 @@ def setup_world_and_cams():
     except Exception:
         pass
     set_engine('EEVEE')
-    return chase, cam_e
+    return chase, cam_d, cam_e
 
 
 def set_engine(kind):
@@ -1160,9 +1574,10 @@ def main():
     build_battery(M)
     build_antennas(M)
     build_field(M)
-    setup_world_and_cams()
-    animate_flight()
+    chase, cam_d, _cam_e = setup_world_and_cams()
+    animate_motion()
     animate_explode()
+    build_huds(chase, cam_d)
     viewport_defaults()
     bpy.context.scene.frame_set(1)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, 'drone.blend'))
@@ -1175,9 +1590,9 @@ def main():
     if DO_RENDER:
         set_engine('CYCLES')
         render_still('render_flight.png', 240)
-        render_still('render_takeoff.png', 45)
+        render_still('render_demo.png', D_YAW[0] + 8)
         render_still('render_assembled.png', F_CUT + 5)
-        render_still('render_exploded.png', 595)
+        render_still('render_exploded.png', F_EXP[1] + 15)
         set_engine('EEVEE')
     if DO_VIDEO:
         render_video()
