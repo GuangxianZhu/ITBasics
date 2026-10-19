@@ -10,6 +10,7 @@ import bpy
 
 CTRL = 'Train_Controls'
 _anim = {'target': None}
+_ex = {'target': None}
 
 
 def ctrl():
@@ -42,6 +43,40 @@ def _door_step():
         _anim['target'] = None
         return None
     return 0.02
+
+
+def _ex_step():
+    c, t = ctrl(), _ex['target']
+    if c is None or t is None:
+        return None
+    v = float(c['explode'])
+    v = min(t, v + 0.012) if t > v else max(t, v - 0.012)
+    c['explode'] = v
+    _refresh()
+    if v == t:
+        _ex['target'] = None
+        return None
+    return 0.02
+
+
+class TRAIN_OT_explode(bpy.types.Operator):
+    bl_idname = 'train.explode'
+    bl_label = '拆开/装配'
+    open: bpy.props.BoolProperty(default=True)
+
+    def execute(self, ctx):
+        if ctrl() is None:
+            return {'CANCELLED'}
+        _ex['target'] = 1.0 if self.open else 0.0
+        if not bpy.app.timers.is_registered(_ex_step):
+            bpy.app.timers.register(_ex_step, first_interval=0.02)
+        cam = bpy.data.objects.get('Cam_Explode')
+        if self.open and cam:
+            ctx.scene.camera = cam
+            for area in ctx.screen.areas:
+                if area.type == 'VIEW_3D':
+                    area.spaces.active.region_3d.view_perspective = 'CAMERA'
+        return {'FINISHED'}
 
 
 class TRAIN_OT_door(bpy.types.Operator):
@@ -132,15 +167,23 @@ class TRAIN_PT_panel(bpy.types.Panel):
         b.operator('train.toggle', text='夜晚' if c['night'] > 0.5 else '白天', depress=c['night'] > 0.5).prop = 'night'
 
         b = L.box()
+        b.label(text='爆炸图')
+        r = b.row(align=True)
+        r.operator('train.explode', text='拆开').open = True
+        r.operator('train.explode', text='装配').open = False
+        b.prop(c, '["explode"]', text='拆开程度', slider=True)
+
+        b = L.box()
         b.label(text='视角（相机）')
         g = b.grid_flow(columns=2, align=True)
         for cam, label in (('Cam_Exterior', '外观'), ('Cam_Side', '侧面'), ('Cam_Front', '车头'),
-                           ('Cam_Interior', '车内'), ('Cam_Cab', '驾驶室'), ('Cam_Under', '转向架')):
+                           ('Cam_Interior', '车内'), ('Cam_Cab', '驾驶室'), ('Cam_Under', '转向架'),
+                           ('Cam_Explode', '爆炸图')):
             g.operator('train.view', text=label).cam = cam
         L.label(text='视图里按 Z 可切换着色方式')
 
 
-CLASSES = (TRAIN_OT_door, TRAIN_OT_side, TRAIN_OT_toggle, TRAIN_OT_view, TRAIN_PT_panel)
+CLASSES = (TRAIN_OT_explode, TRAIN_OT_door, TRAIN_OT_side, TRAIN_OT_toggle, TRAIN_OT_view, TRAIN_PT_panel)
 
 
 def _setup_view():

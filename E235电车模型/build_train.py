@@ -126,7 +126,7 @@ def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.unit_settings.system = 'METRIC'
-    for name in ('Body', 'Doors', 'Interior', 'Cab', 'Underfloor', 'Lamps', 'Environment', 'Rig'):
+    for name in ('Body', 'Doors', 'Interior', 'Cab', 'Underfloor', 'Lamps', 'Environment', 'Explode', 'Rig'):
         c = bpy.data.collections.new(name)
         sc.collection.children.link(c)
 
@@ -1374,7 +1374,7 @@ def make_controls():
     C('Rig').objects.link(ctrl)
     ctrl.location = (0, 0, 4.5)
     ctrl.empty_display_size = 0.3
-    defaults = dict(door_open=0.0, door_left=0, door_right=1, lights=1.0, headlight=1, night=0.0)
+    defaults = dict(door_open=0.0, door_left=0, door_right=1, lights=1.0, headlight=1, night=0.0, explode=0.0)
     for k, v in defaults.items():
         ctrl[k] = v
         ui = ctrl.id_properties_ui(k)
@@ -1464,6 +1464,81 @@ def make_lights(ctrl):
     add_driver(bg.inputs['Strength'], 'default_value', -1, '0.9*(1-n)+0.012', {'n': 'night'}, ctrl)
 
 
+# ───────────────────────── 爆炸图 ─────────────────────────
+# 拆法：转向架和车底设备留在轨道上，其余按“从下到上”分层抬起来——
+#   客室（地板/座椅/立柱/行李架）→ 天花板（灯带/液晶屏/吊环）→ 车体外壳+车门 → 车顶空调；
+#   车头往前、端墙往后、车门往两侧。
+# 每组一个空物体 EX_*，组里的物体都挂在它下面；空物体的位置由驱动器读 explode（0~1）。
+# start 是这一组开始动的时刻（0~1），让各层错开先后，看得出拆的顺序。
+# 依据：pub=公开资料 std=常规值/通用原理 est=推测 simp=简化
+EXPLODE = [
+    ('Roof', '车顶空调', (0, 0, 9.5), 0.00, ['Body_Roof'], None, 'std',
+     '集中式空调机组装在车顶中央。冷风经车顶里的风道，从天花板中间那条出风口吹进客室。'
+     '先头车没有受电弓，所以车顶只有空调和天线。'),
+    ('Body', '车体外壳', (0, 0, 7.0), 0.15,
+     ['Body_Shell', 'Body_WindowGlass', 'Body_SideDetails', 'Lamp_Side', 'Dest_Side', 'DestText_Side', 'Logo_JR', 'CrewDoor_'],
+     (-3.6, -1.48, 2.7), 'std',
+     '不锈钢车体，宽车体：最宽 2.95 m，在站台以上才加宽，下部往里收。原因是站台边缘离轨道中心的距离是固定的，'
+     '车体在站台高度附近不能更宽，上面加宽就能多站人。侧墙是双层的，门开时门扇滑进夹层（戸袋）。'),
+    ('DoorsL', '', (0, 1.3, 7.0), 0.20, ['Door_L'], None, 'std', ''),
+    ('DoorsR', '车门 ×16', (0, -1.3, 7.0), 0.20, ['Door_R'], (DOORS[0], -1.45, 2.3), 'std',
+     '每侧 4 对双开滑门，开口 1.30 m，每扇滑 0.64 m 进入侧墙夹层。门窗之间至少要留出门扇的行程，'
+     '所以门旁边的窗离门边有一段距离。'),
+    ('Front', '车头', (3.0, 0, 7.0), 0.25,
+     ['Body_FrontCap', 'Body_FrontFace', 'Body_Windshield', 'Lamp_Front', 'Dest_Front', 'DestText_Front', 'Headlight_', 'Taillight_'],
+     (10.25, 0.0, 2.4), 'est',
+     '黑色大面板 + 绿色包边，前窗、行先显示器、前照灯和尾灯都在面板里。没有前面的贯通门。'
+     '灯具的颗数和位置是照着照片估的。'),
+    ('End', '端墙·贯通路', (-2.5, 0, 7.0), 0.25, ['Body_EndWall', 'Body_Gangway', 'Interior_GangwayDoor'],
+     (-9.85, 0.0, 2.2), 'std', '和下一节车相连的一端：橡胶风挡（幌）围着通道，里面是可以滑开的贯通门。'),
+    ('Ceiling', '天花板', (0, 0, 3.6), 0.40,
+     ['Interior_Ceiling', 'Lamp_InteriorLED', 'Interior_Screens', 'Interior_Straps', 'Lamp_DoorIndicator', 'InteriorArea_'],
+     (2.6, 0.0, 3.3), 'pub',
+     '两条 LED 灯带、中间的出风口、液晶屏和吊环。行李架上方每段 3 块 21.5 英寸液晶屏；吊环和行李架比旧车低了 5 cm。'),
+    ('Saloon', '客室', (0, 0, 1.4), 0.55, ['Interior_Seats', 'Interior_Fixtures'], (-4.8, -1.0, 1.6), 'pub',
+     '地板、长条座椅、立柱、行李架。门之间是 7 人座，每人 46 cm，用两根立柱分成 2+3+2，'
+     '这样站着的人有东西扶、坐着的人也不会被挤到别人的位置上。座椅两端是大隔板（袖仕切り）。'),
+    ('Cab', '驾驶室', (1.2, 0, 1.4), 0.55, ['Cab_'], (9.4, 0.0, 2.0), 'simp',
+     '隔墙后面是驾驶台：3 块显示屏、单手柄主控制器（往前推是加速，往后拉是制动）、司机座。细节是简化的。'),
+    ('Skirt', '排障器', (1.5, 0, 0), 0.70, ['Under_Skirt'], None, 'std',
+     '车头下面的钢板，把轨道上的障碍物推开，保护转向架和车底设备。前车钩收在它后面。'),
+    ('Bogies', '转向架', (0, 0, 0), 0.0, ['Under_Bogie'], (BOGIES[0], -1.05, 0.55), 'std',
+     '两根车轴、四个车轮（直径 860 mm）。弹簧分两级：轴箱上的螺旋弹簧（一系）吸收轮对的振动，'
+     '中间的空气弹簧（二系）托住车体，充放气让地板高度不随乘客多少变化。拖车用车轴上的制动盘刹车。'),
+    ('Under', '车底设备', (0, 0, 0), 0.0, ['Under_Equipment'], (-3.5, -1.25, 0.7), 'simp',
+     '辅助电源、空压机、蓄电池、储气缸等挂在底架下面。各个箱子的位置是示意的。'),
+]
+
+
+def make_explode(ctrl):
+    coll = C('Explode')
+    objs = [o for o in bpy.data.objects if o.name != 'Train_Controls' and o.parent is None
+            and not o.name.startswith(('Cam_', 'EX_', 'Env_', 'Sun'))]
+    for key, label, off, start, prefixes, anchor, basis, info in EXPLODE:
+        ex = bpy.data.objects.new('EX_' + key, None)
+        coll.objects.link(ex)
+        ex.empty_display_size = 0.4
+        members = [o for o in objs if o.name.startswith(tuple(prefixes))]
+        if anchor is None:
+            pts = [o.matrix_world @ Vector(c) for o in members if o.type == 'MESH' for c in o.bound_box]
+            lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
+            hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+            anchor = tuple(round(v, 3) for v in (lo + hi) / 2)
+        for o in members:
+            o.parent = ex
+        ex['ex_offset'] = [float(v) for v in off]
+        ex['ex_start'] = float(start)
+        ex['ex_anchor'] = [float(v) for v in anchor]
+        ex['label'] = label
+        ex['info'] = info
+        ex['basis'] = basis
+        P = 'min(1,max(0,(e-%.3f)/0.4))' % (start * 0.6)
+        for i, d in enumerate(off):
+            if d:
+                add_driver(ex, 'location', i, '%.3f*%s*%s*(3-2*%s)' % (d, P, P, P), {'e': 'explode'}, ctrl)
+        print('[INFO] explode group %-8s %2d objects' % (key, len(members)))
+
+
 def look_cam(name, loc, target, lens=28):
     cd = bpy.data.cameras.new(name)
     cd.lens = lens
@@ -1481,6 +1556,7 @@ def make_cameras():
     look_cam('Cam_Side', (0.0, 13.0, 2.4), (0.0, 0.0, 2.0), 22)
     look_cam('Cam_Front', (15.5, 3.2, 2.0), (10.0, 0.0, 1.9), 35)
     look_cam('Cam_Under', (2.0, 6.0, 0.5), (6.5, 0.0, 0.7), 24)
+    look_cam('Cam_Explode', (19.0, 27.0, 11.0), (0.8, 0.0, 5.8), 35)
     look_cam('Cam_Interior', (-8.9, 0.30, 2.70), (6.0, -0.15, 2.45), 18)
     look_cam('Cam_Cab', (9.20, 0.70, 2.58), (16.0, 0.40, 2.10), 22)
     bpy.context.scene.camera = ext
@@ -1568,7 +1644,8 @@ def render_previews(ctrl):
              ('side', 'Cam_Side', dict(night=0.0, door_open=0.0)),
              ('front', 'Cam_Front', dict(night=0.0, door_open=0.0)),
              ('bogie', 'Cam_Under', dict(night=0.0, door_open=0.0)),
-             ('interior', 'Cam_Interior', dict(night=1.0, door_open=0.0)),
+             ('exploded', 'Cam_Explode', dict(night=0.0, door_open=0.0, explode=1.0)),
+             ('interior', 'Cam_Interior', dict(night=1.0, door_open=0.0, explode=0.0)),
              ('cab', 'Cam_Cab', dict(night=0.0, door_open=0.0))]
     only = os.environ.get('E235_SHOTS')
     for name, cam, props in shots:
@@ -1584,6 +1661,7 @@ def render_previews(ctrl):
         print('[OK] rendered', name)
     ctrl['night'] = 0.0
     ctrl['door_open'] = 0.0
+    ctrl['explode'] = 0.0
     sc.camera = bpy.data.objects['Cam_Exterior']
     scene_settings()
 
@@ -1606,6 +1684,7 @@ def main():
     build_environment()
     drive_materials(ctrl)
     make_lights(ctrl)
+    make_explode(ctrl)
     make_cameras()
     scene_settings()
 

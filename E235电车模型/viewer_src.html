@@ -49,8 +49,8 @@ body { background: var(--navy); color: var(--text); font-family: var(--f-body); 
 .hint { font-size: 12px; color: var(--mute); text-align: center; min-height: 1.2em; }
 
 /* 视角切换：画成一段线路图，四个视角是四个“车站” */
-.route { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); }
-.route::before { content: ""; position: absolute; left: 12.5%; right: 12.5%; top: 13px; height: 6px; border-radius: 3px; background: var(--green); }
+.route { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); }
+.route::before { content: ""; position: absolute; left: 10%; right: 10%; top: 13px; height: 6px; border-radius: 3px; background: var(--green); }
 .stop { position: relative; display: grid; justify-items: center; gap: 4px; padding: 0 0 2px; border: 0; background: none;
   color: var(--mute); font: 700 13px/1.2 var(--f-body); cursor: pointer; border-radius: 8px; }
 .stop i { width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 6px solid var(--green); box-sizing: border-box; transition: transform .2s; }
@@ -92,6 +92,22 @@ body { background: var(--navy); color: var(--text); font-family: var(--f-body); 
 .tag.pub { background: #1e4a1a; color: #b6ef8f; }
 .tag.std { background: #1c3466; color: #a9c4ff; }
 .tag.est { background: #4d3008; color: #ffcd7a; }
+.tag.simp { background: #3a2a52; color: #d9c2ff; }
+
+/* ── 爆炸图：滑杆、零件标签、说明卡 ── */
+.exrow { display: flex; align-items: center; gap: 12px; }
+.exrow input { flex: 1; min-width: 0; accent-color: var(--green); height: 28px; }
+.exrow .num { width: 3.2em; text-align: right; color: var(--mute); font-size: 13px; }
+.labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.lbl { position: absolute; left: 0; top: 0; pointer-events: auto; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 9px; border-radius: 7px; background: var(--panel-solid); border: 1px solid var(--line); color: var(--text);
+  font: 700 12px/1 var(--f-body); white-space: nowrap; cursor: pointer; transition: opacity .2s; }
+.lbl::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.lbl:hover, .lbl[aria-expanded="true"] { border-color: var(--orange); }
+.lbl:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.card p { margin: 0 0 10px; font-size: 13px; line-height: 1.7; max-width: 60ch; }
+.card .close { position: absolute; top: 8px; right: 8px; padding: 6px 9px; }
+.card { padding-right: 52px; }
 .sheet .legend { margin-top: 10px; font-size: 12px; color: var(--mute); line-height: 1.6; }
 .num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 
@@ -110,6 +126,8 @@ body { background: var(--navy); color: var(--text); font-family: var(--f-body); 
   .btn { padding: 9px 10px; font-size: 12px; }
   .seg button { padding: 9px 8px; }
   .stop { font-size: 12px; }
+  .lbl { padding: 4px 6px; font-size: 11px; gap: 4px; }
+  .lbl::before { width: 5px; height: 5px; }
 }
 @media (prefers-reduced-motion: reduce) { .stop i, .ld-bar i { transition: none; } }
 </style>
@@ -144,6 +162,14 @@ body { background: var(--navy); color: var(--text); font-family: var(--f-body); 
   <p class="legend"><span class="tag pub">公开资料</span> 报道或 JR 东日本资料里写明的；<span class="tag std">常规值</span> JR 东日本通勤车通用尺寸，没有找到 E235 专门的数字；<span class="tag est">推测</span> 照着照片和玩具估的。</p>
 </aside>
 
+<div class="labels" id="labels"></div>
+<aside class="sheet card" id="partCard" hidden aria-live="polite">
+  <button class="btn close" id="cardClose" aria-label="关闭">✕</button>
+  <h2 id="cardTitle"></h2>
+  <p id="cardText"></p>
+  <span class="tag" id="cardTag"></span>
+</aside>
+
 <div class="joy" id="joy" hidden><i id="joyKnob"></i></div>
 
 <nav class="dock" aria-label="控制">
@@ -153,8 +179,14 @@ body { background: var(--navy); color: var(--text); font-family: var(--f-body); 
       <button class="stop" data-view="cut" aria-pressed="false"><i></i>剖视<small>CUT</small></button>
       <button class="stop" data-view="in" aria-pressed="false"><i></i>车内<small>CAR</small></button>
       <button class="stop" data-view="cab" aria-pressed="false"><i></i>驾驶室<small>CAB</small></button>
+      <button class="stop" data-view="exp" aria-pressed="false"><i></i>爆炸图<small>EXP</small></button>
     </div>
-    <div class="row">
+    <div class="exrow" id="exRow" hidden>
+      <button class="btn door" id="exBtn" data-open="0">拆开</button>
+      <input type="range" id="exSlider" min="0" max="1000" value="0" aria-label="拆开程度">
+      <span class="num" id="exPct">0%</span>
+    </div>
+    <div class="row" id="ctlRow">
       <button class="btn door" id="doorBtn" data-open="0">开门</button>
       <div class="seg" role="group" aria-label="开哪一侧">
         <button data-side="R" aria-pressed="true">右侧·站台</button>
@@ -201,7 +233,7 @@ const DOORS = [-7.245, -2.425, 2.395, 7.215];
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const MOBILE = Math.min(innerWidth, innerHeight) < 600;
 
-const S = { view: 'ext', doorTarget: 0, doorP: 0, side: 'R', lights: true, head: true, night: false, sound: true };
+const S = { view: 'ext', doorTarget: 0, doorP: 0, side: 'R', lights: true, head: true, night: false, sound: true, ex: 0, exTarget: 0 };
 
 /* ───────── renderer / scene ───────── */
 const canvas = $('c');
@@ -406,11 +438,13 @@ async function loadModel() {
 
 const MAT = {};
 const leaves = [];
+const groups = [];   // 爆炸分组：EX_* 空物体，extras 里有位移、开始时刻、标签和说明
 function setup(gltf) {
   const root = gltf.scene;
   scene.add(root);
   root.traverse(o => {
     if (o.userData && o.userData.travel !== undefined) leaves.push(o);
+    if (o.name.startsWith('EX_') && o.userData.ex_offset) groups.push(makeGroup(o));
     if (o.name.startsWith('DestText')) o.visible = false;   // 网页里行先显示用画布贴图，带日文
     if (!o.isMesh) return;
     const ms = Array.isArray(o.material) ? o.material : [o.material];
@@ -434,6 +468,73 @@ function setup(gltf) {
   useCanvas('LCD_Info', TX.info); useCanvas('DestPanel', TX.dest); useCanvas('LCD_Cab', TX.cab);
   [0, 1, 2].forEach(i => useCanvas('LCD_Ad' + i, TX.ad[i]));
   applyEnv(); applyLamps(0);
+}
+
+/* ───────── 爆炸图 ───────── */
+const BASIS = { pub: ['公开资料', 'pub'], std: ['常规值 / 通用原理', 'std'], est: ['推测', 'est'], simp: ['简化', 'simp'] };
+function makeGroup(node) {
+  const u = node.userData, [dx, dy, dz] = u.ex_offset, [ax, ay, az] = u.ex_anchor;
+  const g = { node, off: B(dx, dy, dz), start: u.ex_start, anchor: B(ax, ay, az), label: u.label, info: u.info, basis: u.basis, el: null };
+  if (u.label) {
+    const b = document.createElement('button');
+    b.className = 'lbl'; b.type = 'button'; b.textContent = u.label; b.hidden = true;
+    b.setAttribute('aria-expanded', 'false');
+    b.addEventListener('click', () => openCard(g));
+    $('labels').appendChild(b);
+    g.el = b;
+  }
+  return g;
+}
+const prog = (t, s) => { const p = Math.min(1, Math.max(0, (t - s * 0.6) / 0.4)); return p * p * (3 - 2 * p); };
+const _v = new THREE.Vector3();
+function updateExplode(dt) {
+  if (S.ex !== S.exTarget) {
+    const st = dt / 2.6;
+    S.ex = S.ex < S.exTarget ? Math.min(S.exTarget, S.ex + st) : Math.max(S.exTarget, S.ex - st);
+  }
+  if (!exDragging && +$('exSlider').value !== Math.round(S.ex * 1000)) {
+    $('exSlider').value = Math.round(S.ex * 1000);
+    $('exPct').textContent = Math.round(S.ex * 100) + '%';
+  }
+  const show = S.view === 'exp' && S.ex > 0.5;
+  for (const g of groups) {
+    const k = prog(S.ex, g.start);
+    g.node.position.copy(g.off).multiplyScalar(k);
+    if (!g.el) continue;
+    if (!show) { g.el.hidden = true; continue; }
+    _v.copy(g.anchor).addScaledVector(g.off, k).project(camera);
+    const vis = _v.z < 1 && Math.abs(_v.x) < 1.1 && Math.abs(_v.y) < 1.1;
+    g.el.hidden = !vis;
+    if (vis) {
+      g.el.style.transform = `translate(${((_v.x + 1) / 2 * innerWidth).toFixed(1)}px, ${((1 - _v.y) / 2 * innerHeight).toFixed(1)}px) translate(-50%, -50%)`;
+      g.el.style.opacity = Math.min(1, (S.ex - 0.5) * 4);
+    }
+  }
+}
+function setExTarget(v) {
+  S.exTarget = v;
+  const b = $('exBtn');
+  b.dataset.open = v ? 1 : 0;
+  b.textContent = v ? '装配' : '拆开';
+}
+let cardFor = null, exDragging = false;
+function openCard(g) {
+  if (cardFor === g) { closeCard(); return; }
+  closeCard();
+  cardFor = g;
+  $('cardTitle').textContent = g.label;
+  $('cardText').textContent = g.info;
+  const [txt, cls] = BASIS[g.basis] || BASIS.std;
+  $('cardTag').textContent = '依据：' + txt;
+  $('cardTag').className = 'tag ' + cls;
+  $('partCard').hidden = false;
+  $('sheet').hidden = true; $('specBtn').setAttribute('aria-expanded', 'false');
+  g.el.setAttribute('aria-expanded', 'true');
+}
+function closeCard() {
+  if (cardFor && cardFor.el) cardFor.el.setAttribute('aria-expanded', 'false');
+  cardFor = null;
+  $('partCard').hidden = true;
 }
 
 /* ───────── 状态 → 画面 ───────── */
@@ -520,6 +621,7 @@ const VIEWS = {
   cut: { pos: B(6, -10, 13), target: B(0.5, 0, 1.6), fov: 40, hint: '车顶切掉了，从上面往下看座位、立柱和吊环' },
   in: { hint: MOBILE ? '拖动看四周 · 摇杆走动 · 门开着能走到站台' : '拖动看四周 · WASD/方向键或左下摇杆走动 · 门开着可以走到站台' },
   cab: { hint: '坐在司机座上 · 拖动看四周' },
+  exp: { pos: B(19, 27, 11), target: B(0.8, 0, 5.8), fov: 38, hint: '拖动滑杆拆开或装回 · 点标签看每一层是什么' },
 };
 const clip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 3.15);
 const look = { yaw: -Math.PI / 2, pitch: -0.05 };
@@ -531,7 +633,12 @@ function setView(v) {
   document.querySelectorAll('.stop').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === v));
   $('hint').textContent = VIEWS[v].hint;
   renderer.clippingPlanes = v === 'cut' ? [clip] : [];
-  const orbit = v === 'ext' || v === 'cut';
+  const orbit = v === 'ext' || v === 'cut' || v === 'exp';
+  controls.maxDistance = v === 'exp' ? 95 : 48;
+  $('exRow').hidden = v !== 'exp';
+  $('ctlRow').hidden = v === 'exp';
+  setExTarget(v === 'exp' ? 1 : 0);
+  if (v !== 'exp') closeCard();
   controls.enabled = orbit;
   $('joy').hidden = v !== 'in';
   if (orbit) {
@@ -656,7 +763,17 @@ toggler('nightBtn', 'night', applyEnv);
 toggler('soundBtn', 'sound');
 $('specBtn').addEventListener('click', () => {
   const sh = $('sheet'); sh.hidden = !sh.hidden; $('specBtn').setAttribute('aria-expanded', !sh.hidden);
+  if (!sh.hidden) closeCard();
 });
+$('exBtn').addEventListener('click', () => setExTarget(S.exTarget ? 0 : 1));
+$('exSlider').addEventListener('input', e => {
+  S.ex = e.target.value / 1000; setExTarget(S.ex > 0.5 ? 1 : 0); S.exTarget = S.ex;
+  $('exPct').textContent = Math.round(S.ex * 100) + '%';
+});
+$('exSlider').addEventListener('pointerdown', () => { exDragging = true; });
+addEventListener('pointerup', () => { exDragging = false; });
+$('cardClose').addEventListener('click', closeCard);
+addEventListener('keydown', e => { if (e.key === 'Escape') closeCard(); });
 
 function resize() {
   const w = innerWidth, h = innerHeight;
@@ -676,7 +793,7 @@ function update(dt) {
   const t = simT;
   updateDoors(dt);
   applyLamps(t);
-  if (S.view === 'ext' || S.view === 'cut') {
+  if (S.view === 'ext' || S.view === 'cut' || S.view === 'exp') {
     if (tween) {
       tween.t = Math.min(1, tween.t + dt / 0.9);
       const k = ease(tween.t);
@@ -690,6 +807,8 @@ function update(dt) {
     else camera.position.copy(B(9.22, 0.70, 2.60));
     camera.quaternion.setFromEuler(new THREE.Euler(look.pitch, look.yaw, 0, 'YXZ'));
   }
+  camera.updateMatrixWorld();
+  updateExplode(dt);
 }
 function frame() {
   if (window.__e235.manual) return;
@@ -712,6 +831,6 @@ camera.position.copy(framed(VIEWS.ext)); controls.target.copy(VIEWS.ext.target);
     $('ld-t').classList.add('err');
   }));
 // 测试用：manual=true 时停掉动画循环，用 tick() 手动推进并渲染一帧
-window.__e235 = { S, setView, toggleDoor, manual: false,
+window.__e235 = { S, setView, toggleDoor, manual: false, setExplode(v) { S.ex = S.exTarget = v; }, openCard: i => openCard(groups.filter(g => g.el)[i]),
   tick(sec = 0, step = 0.05) { for (let k = 0; k < Math.ceil(sec / step); k++) update(step); update(0.0001); composer.render(); } };
 </script>
