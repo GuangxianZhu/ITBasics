@@ -57,11 +57,12 @@ if not exist "%~dp0output\drone.blend" (
 :menu
 echo.
 echo Done. output\drone.blend is ready.
-echo   Frames 1-449   flight demo   (take-off, figure-8 through two gates, landing)
-echo   Frames 450-750 exploded view (turntable: take apart, hold, put back)
+echo   Frames 1-449    flight demo     (take-off, figure-8 through two gates, landing)
+echo   Frames 450-894  thrust demo     (throttle, yaw, roll, pitch - bars show each motor)
+echo   Frames 895-1195 exploded view   (turntable: take apart, hold, put back)
 echo.
 echo   [1] Open in Blender  (press Space to play)
-echo   [2] Render MP4 video (EEVEE, 1280x720, 750 frames, uses GPU, several minutes)
+echo   [2] Render MP4 video (EEVEE, 1280x720, 1195 frames, uses GPU, several minutes)
 echo   [3] Render 4 preview PNGs (Cycles)
 echo   [4] Quit
 choice /c 1234 /n /m "Choose 1-4: "
