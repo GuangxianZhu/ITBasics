@@ -1174,7 +1174,7 @@ def main():
     print(f'[OK] {len(OBJS)} drone objects, {tris} triangles')
     if DO_RENDER:
         set_engine('CYCLES')
-        render_still('render_flight.png', 178)
+        render_still('render_flight.png', 240)
         render_still('render_takeoff.png', 45)
         render_still('render_assembled.png', F_CUT + 5)
         render_still('render_exploded.png', 595)
