@@ -1,0 +1,1102 @@
+<title>三相异步电机拆解</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+/* Layout: full-bleed navy 3D stage (one deliberate dark look, like an engineering animation);
+   drawing title block + part card top-left, side panel right (bottom sheet on phones), mode tabs + controls in one bottom strip */
+:root{
+  --bg:#08111f; --bg2:#13284a; --panel:rgba(11,21,39,.9); --panel-solid:#0e1b31;
+  --fg:#e8eef7; --muted:#93a4bb; --line:#24364f; --accent:#ffb547; --accent-ink:#1d1203;
+  --hl:#ffd166; --hl-ink:#1b1204; --chart-bg:#0b1628;
+  --ph-u:#f2c230; --ph-v:#3fbf6a; --ph-w:#ef5545; --pole-n:#ff7a90; --pole-s:#7fb2ff;
+  --cur-out:#ff9f43; --cur-in:#3fc5ff; --flux:#dfe8ff; --good:#4fd18b; --warn:#ff7066;
+  --f-cn:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --f-num:"Barlow Condensed","Arial Narrow","Roboto Condensed",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --ctrl-h:130px; color-scheme:dark;
+}
+html{height:100%;box-sizing:border-box}
+*,*::before,*::after{box-sizing:inherit}
+body{height:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-family:var(--f-cn);-webkit-font-smoothing:antialiased}
+#app{position:relative;height:100%;overflow:hidden;background:radial-gradient(110% 85% at 50% 40%,var(--bg2),var(--bg) 75%)}
+#c,#ov{position:absolute;inset:0;width:100%;height:100%;display:block}
+#c{touch-action:none;outline:none}
+#ov{pointer-events:none}
+#leaders,#tags{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;transition:opacity .2s}
+#leaders line{stroke:var(--fg);stroke-width:.9;opacity:.5}
+#leaders circle{fill:var(--fg);opacity:.7}
+#leaders line.sel{stroke:var(--hl);opacity:1;stroke-width:1.4}
+#leaders circle.sel{fill:var(--hl);opacity:1}
+.bln{position:absolute;left:0;top:0;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;
+  border:1.25px solid var(--fg);background:var(--panel-solid);color:var(--fg);font:600 12.5px/1 var(--f-num);
+  display:grid;place-items:center;padding:0;pointer-events:auto;cursor:pointer;font-variant-numeric:tabular-nums;will-change:transform}
+.bln:hover{border-color:var(--accent);color:var(--accent)}
+.bln.sel{background:var(--hl);border-color:var(--hl);color:var(--hl-ink)}
+.bln:focus-visible,.btn:focus-visible,.row:focus-visible,.tab:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.hud{position:absolute;z-index:2}
+.left{top:12px;left:max(16px,env(safe-area-inset-left,0px));width:min(330px,calc(100% - 32px));display:flex;flex-direction:column;gap:10px}
+.tb{border:1.25px solid #b8c6da;background:var(--panel);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:grid;grid-template-columns:1fr auto;font-size:12px}
+.tb>div{padding:6px 9px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);min-width:0}
+.tb>div:nth-child(2n){border-right:0}
+.tb>div:nth-last-child(-n+2){border-bottom:0}
+.tb .name{grid-column:1/-1;border-right:0;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.tb h1{margin:0;font-size:19px;font-weight:700;letter-spacing:.04em;text-wrap:balance}
+.tb .en{font:600 12px/1 var(--f-num);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.tb .k{display:block;font-size:10px;color:var(--muted);letter-spacing:.08em}
+.tb .v{font:500 12px/1.35 var(--f-mono)}
+
+.card{border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.card-head{display:flex;gap:10px;align-items:flex-start}
+.card-no{flex:none;width:28px;height:28px;border-radius:50%;background:var(--hl);color:var(--hl-ink);display:grid;place-items:center;font:600 15px/1 var(--f-num)}
+.card h2{margin:0;font-size:16px;font-weight:700;line-height:1.25}
+.card .jp{font-size:12px;color:var(--muted);margin-top:2px}
+.card .x{margin-left:auto;flex:none;border:0;background:transparent;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 4px;border-radius:4px}
+.card dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px}
+.card dt{color:var(--muted)} .card dd{margin:0;font-family:var(--f-mono);font-size:12px;min-width:0}
+.card p{margin:0;font-size:13px;line-height:1.6;max-width:60ch}
+.hint{font-size:12px;color:var(--muted);line-height:1.5}
+
+.side{top:12px;right:max(16px,env(safe-area-inset-right,0px));width:390px;bottom:calc(var(--ctrl-h) + 10px);
+  border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:6px;display:flex;flex-direction:column;min-height:0}
+.side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.side-head h3{margin:0;font-size:14px;font-weight:700}
+.side-head h3 small{font:500 12px var(--f-mono);color:var(--muted);margin-left:6px}
+.scroll{overflow:auto;flex:1;min-height:0}
+.row{display:grid;grid-template-columns:26px 1fr auto;gap:2px 10px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--line);cursor:pointer;width:100%;text-align:left;background:transparent;border-left:0;border-right:0;border-top:0;color:var(--fg);font:inherit}
+.row:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.row.sel{background:color-mix(in srgb,var(--hl) 16%,transparent)}
+.row .n{grid-column:1;grid-row:1/3;width:22px;height:22px;border-radius:50%;border:1.25px solid var(--fg);display:grid;place-items:center;font:600 12px/1 var(--f-num)}
+.row.sel .n{background:var(--hl);border-color:var(--hl);color:var(--hl-ink)}
+.row .nm{grid-column:2;grid-row:1;font-size:13px;font-weight:500;min-width:0}
+.row .nm span{color:var(--muted);font-weight:400;font-size:11.5px;margin-left:6px}
+.row .q{grid-column:3;grid-row:1/3;font:500 12px var(--f-mono);color:var(--muted)}
+.row .m{grid-column:2;grid-row:2;font:400 11px/1.3 var(--f-mono);color:var(--muted);min-width:0}
+
+.pn{padding:12px;display:flex;flex-direction:column;gap:10px}
+.cv{width:100%;display:block;border-radius:5px;background:var(--chart-bg)}
+#wave{height:132px} #vec{height:132px} #tn{height:170px}
+.duo{display:grid;grid-template-columns:1.35fr 1fr;gap:8px}
+.legend{display:flex;gap:10px 12px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);align-items:center}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.sym{display:inline-grid;place-items:center;width:14px;height:14px;border-radius:50%;border:1.6px solid currentColor;font:700 9px/1 var(--f-mono);margin-right:4px;vertical-align:-3px}
+.expl{font-size:13px;line-height:1.65;margin:0}
+.expl b{font-weight:600}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.kpi{border:1px solid var(--line);border-radius:5px;padding:6px 7px;min-width:0;background:var(--chart-bg)}
+.kpi .k{font-size:10.5px;color:var(--muted);letter-spacing:.04em;white-space:nowrap}
+.kpi .v{font:600 20px/1.15 var(--f-num);font-variant-numeric:tabular-nums;white-space:nowrap}
+.kpi .v small{font:500 11px var(--f-cn);color:var(--muted);margin-left:2px}
+.flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px}
+.flow .node{border:1px solid var(--line);border-radius:4px;padding:3px 7px;background:var(--chart-bg)}
+.flow .arr{font:600 13px var(--f-num);color:var(--accent);white-space:nowrap}
+.flow .arr.back{color:var(--good)}
+.state{display:inline-block;font:600 12px/1 var(--f-cn);padding:4px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.state.ok{color:var(--good)} .state.warn{color:var(--warn)} .state.mid{color:var(--accent)} .state.gen{color:var(--cur-in)}
+
+.ctrl{left:0;right:0;bottom:0;padding-block:8px 10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.bar{max-width:1100px;margin:0 auto;border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
+.bar-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tabs{display:inline-flex;border:1px solid var(--line);border-radius:7px;padding:2px;gap:2px;background:var(--panel-solid)}
+.tab{font:500 13px/1 var(--f-cn);padding:7px 13px;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.btn{font:500 13px/1 var(--f-cn);padding:8px 11px;border:1px solid var(--line);background:var(--panel-solid);color:var(--fg);border-radius:6px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.btn svg{width:13px;height:13px;fill:currentColor}
+.slider{display:flex;align-items:center;gap:8px;flex:1 1 200px;min-width:170px}
+.slider label{font-size:12px;color:var(--muted);white-space:nowrap}
+.slider input{flex:1;min-width:0;accent-color:var(--accent)}
+.slider output{font:500 12px var(--f-mono);width:3.6em;text-align:right;font-variant-numeric:tabular-nums}
+.cap{font-size:12.5px;line-height:1.55;color:var(--muted);min-width:0}
+.cap b{color:var(--fg);font-weight:500}
+.spacer{flex:1 1 0}
+
+.loading{position:absolute;inset:0;display:grid;place-items:center;z-index:5;pointer-events:none}
+.loading div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 18px;font-size:13px;min-width:220px}
+.loading .barl{height:4px;background:var(--line);border-radius:2px;margin-top:10px;overflow:hidden}
+.loading .barl i{display:block;height:100%;width:0;background:var(--accent)}
+
+@media (max-width:760px){
+  .left{width:calc(100% - 32px)}
+  .tb .hidemob{display:none}
+  .tb{grid-template-columns:1fr 1fr}
+  #info{position:fixed;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:calc(var(--ctrl-h) + 8px + env(safe-area-inset-bottom,0px));width:auto;max-height:40%;overflow:auto;z-index:3}
+  .side{left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));width:auto;top:auto;max-height:50%;bottom:calc(var(--ctrl-h) + 8px)}
+  #pPanel,#rPanel{height:46%;max-height:none}
+  #app.run .left{display:none}
+  #app.run #cap{display:none}
+  .pn{gap:8px;padding:10px 12px}
+  #wave,#vec{height:96px} #tn{height:116px}
+  .kpis{grid-template-columns:repeat(4,1fr);gap:4px}
+  .kpi{padding:4px 5px} .kpi .v{font-size:17px}
+  .expl{font-size:12.5px;line-height:1.58}
+  .slider{flex-basis:100%}
+  .tab{padding:7px 11px}
+  .hide-narrow{display:none}
+}
+@media (prefers-reduced-motion: reduce){ #leaders,#tags{transition:none} }
+</style>
+
+<div id="app">
+  <canvas id="c" aria-label="三相异步电动机三维模型，可拖动旋转"></canvas>
+  <canvas id="ov" aria-hidden="true"></canvas>
+  <svg id="leaders" aria-hidden="true"></svg>
+  <div id="tags"></div>
+  <div class="loading" id="loading"><div><span id="ld-t">正在加载模型…</span><div class="barl"><i id="ld-b"></i></div></div></div>
+
+  <div class="hud left">
+    <div class="tb" role="group" aria-label="图纸标题栏">
+      <div class="name"><h1>三相异步电动机</h1><span class="en">Squirrel-cage induction motor</span></div>
+      <div><span class="k">型号</span><span class="v">YE4-132M-4 · IE4</span></div>
+      <div><span class="k">额定</span><span class="v">7.5 kW · 380 V Δ</span></div>
+      <div class="hidemob"><span class="k">转速</span><span class="v">1460 r/min · 4 极</span></div>
+      <div class="hidemob"><span class="k">槽 / 导条</span><span class="v">36 槽 · 28 斜导条</span></div>
+    </div>
+    <div id="info" class="card" hidden aria-live="polite">
+      <div class="card-head">
+        <div class="card-no" id="i-no">1</div>
+        <div><h2 id="i-cn">机座</h2><div class="jp" id="i-jp">フレーム</div></div>
+        <button class="x" id="i-close" aria-label="关闭说明">×</button>
+      </div>
+      <dl><dt>材料</dt><dd id="i-mat">—</dd><dt>数量</dt><dd id="i-qty">—</dd></dl>
+      <p id="i-desc"></p>
+    </div>
+    <div class="hint" id="hint">拖动旋转，滚轮或双指缩放。点零件或编号看说明。</div>
+  </div>
+
+  <section class="hud side" id="bom" hidden aria-label="零件表">
+    <div class="side-head"><h3>零件表<small id="bom-count"></small></h3><button class="btn" id="bom-close">收起</button></div>
+    <div class="scroll" id="bom-list"></div>
+  </section>
+
+  <section class="hud side" id="pPanel" hidden aria-label="旋转磁场">
+    <div class="side-head"><h3>旋转磁场<small>f = 50 Hz · ns = 1500 r/min</small></h3><span class="state mid" id="seqTag">正序 U→V→W</span></div>
+    <div class="scroll"><div class="pn">
+      <div class="duo"><canvas id="wave" class="cv" aria-label="三相电流波形"></canvas><canvas id="vec" class="cv" aria-label="合成磁场矢量"></canvas></div>
+      <div class="legend"><span><i style="background:var(--ph-u)"></i>U 相</span><span><i style="background:var(--ph-v)"></i>V 相</span><span><i style="background:var(--ph-w)"></i>W 相</span>
+        <span><span class="sym" style="color:var(--fg)">•</span>电流朝你流出</span><span><span class="sym" style="color:var(--fg)">×</span>流进去</span></div>
+      <p class="expl" id="pExpl"></p>
+    </div></div>
+  </section>
+
+  <section class="hud side" id="rPanel" hidden aria-label="运行状态">
+    <div class="side-head"><h3 id="rTitle">电动运行</h3><span class="state ok" id="rState">稳定运行</span></div>
+    <div class="scroll"><div class="pn">
+      <div class="kpis">
+        <div class="kpi"><div class="k">转速 n</div><div class="v" id="k-n">0<small>r/min</small></div></div>
+        <div class="kpi"><div class="k">转差率 s</div><div class="v" id="k-s">0<small>%</small></div></div>
+        <div class="kpi"><div class="k">电磁转矩</div><div class="v" id="k-t">0<small>N·m</small></div></div>
+        <div class="kpi"><div class="k">转子电流</div><div class="v" id="k-i">0<small>×额定</small></div></div>
+      </div>
+      <canvas id="tn" class="cv" aria-label="转矩-转速曲线"></canvas>
+      <div class="flow" id="flow"></div>
+      <div class="legend"><span><span class="sym" style="color:var(--cur-out)">•</span>导条电流朝你</span><span><span class="sym" style="color:var(--cur-in)">×</span>导条电流背离你</span><span><i style="background:var(--accent)"></i>电磁转矩</span></div>
+      <p class="expl" id="rExpl"></p>
+    </div></div>
+  </section>
+
+  <div class="hud ctrl" id="ctrl">
+    <div class="bar">
+      <div class="bar-row">
+        <div class="tabs" role="tablist" aria-label="模式">
+          <button class="tab" role="tab" data-mode="struct" aria-selected="true">结构</button>
+          <button class="tab" role="tab" data-mode="principle" aria-selected="false">原理</button>
+          <button class="tab" role="tab" data-mode="motor" aria-selected="false">电动</button>
+          <button class="tab" role="tab" data-mode="gen" aria-selected="false">发电</button>
+        </div>
+        <span class="spacer"></span>
+        <button class="btn" id="b-xray" aria-pressed="false" hidden>透视</button>
+        <button class="btn" id="b-view">复位</button>
+      </div>
+      <div class="bar-row grp-struct">
+        <button class="btn primary" id="b-play"><svg viewBox="0 0 16 16"><path d="M3 2l11 6-11 6z"/></svg><span id="b-play-t">装配</span></button>
+        <div class="slider"><label for="r-ex">爆炸</label><input id="r-ex" type="range" min="0" max="100" value="100"><output id="o-ex">100%</output></div>
+        <button class="btn" id="b-cut" aria-pressed="true">剖开</button>
+        <button class="btn" id="b-cage" aria-pressed="false">鼠笼</button>
+        <button class="btn" id="b-lbl" aria-pressed="true">编号</button>
+        <button class="btn" id="b-bom" aria-pressed="false">零件表</button>
+      </div>
+      <div class="bar-row grp-principle" hidden>
+        <button class="btn primary" id="b-run"><span id="b-run-t">暂停</span></button>
+        <button class="btn" id="b-step">单步 30°</button>
+        <button class="btn" id="b-seq" aria-pressed="false">调换 V、W 两相</button>
+        <div class="slider"><label for="r-sp">速度</label><input id="r-sp" type="range" min="10" max="300" value="100"><output id="o-sp">1.0×</output></div>
+      </div>
+      <div class="bar-row grp-motor" hidden>
+        <button class="btn primary" id="b-start">重新启动</button>
+        <button class="btn" id="b-grid" aria-pressed="true">电网 通</button>
+        <div class="slider"><label for="r-load">负载</label><input id="r-load" type="range" min="0" max="300" value="100"><output id="o-load">100%</output></div>
+      </div>
+      <div class="bar-row grp-gen" hidden>
+        <button class="btn" id="b-grid2" aria-pressed="true">电网 通</button>
+        <div class="slider"><label for="r-drive">原动机</label><input id="r-drive" type="range" min="0" max="300" value="100"><output id="o-drive">100%</output></div>
+      </div>
+      <div class="cap" id="cap"></div>
+    </div>
+  </div>
+</div>
+
+<script>window.__GLB_B64="__GLB_BASE64__";</script>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const $ = id => document.getElementById(id);
+const D2R = Math.PI/180, MM = 0.001, TAU = Math.PI*2;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const prefersReduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const clamp = (x,a,b) => Math.min(b, Math.max(a, x));
+
+/* ───────── machine model (per-unit) ─────────
+   T(s) = K·s·R(s) / (R(s)² + (s·X)²), R(s) = R0(1 + kd·s²) imitates the deep-bar effect so the starting torque is realistic.
+   Tuned to: rated 1460 r/min = 1.0 pu, starting 2.3 pu, breakdown 2.6 pu at s ≈ 13 %. */
+const P = 2, NS = 1500, T_RATED = 7500/(1460*TAU/60);
+const R0 = .1335, KD = 3.5, XR = 1;
+const Rr = s => R0*(1 + KD*s*s);
+const Traw = s => s*Rr(s)/(Rr(s)**2 + (s*XR)**2);
+const SR = 1 - 1460/NS, KT = 1/Traw(SR);
+const Tem = s => KT*Traw(s);
+const I2 = s => Math.abs(s)/Math.hypot(Rr(s), s*XR);
+const I2R = I2(SR);
+let TMAX = 0, SM = 0; for(let s=.001; s<1; s+=.001){ const t = Tem(s); if(t > TMAX){ TMAX = t; SM = s; } }
+const J = 2.4, FRIC = .02;
+
+/* ───────── renderer / scene ───────── */
+const canvas = $('c'), ov = $('ov'), octx = ov.getContext('2d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = .95;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setClearColor(0x000000, 0);
+renderer.localClippingEnabled = true;
+
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = .85;
+const camera = new THREE.PerspectiveCamera(30, 1, .005, 30);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = .08; controls.minDistance = .12; controls.maxDistance = 8;
+
+const key = new THREE.DirectionalLight(0xfff4e8, 2.1); key.castShadow = true;
+key.shadow.mapSize.set(2048,2048);
+Object.assign(key.shadow.camera, { left:-.8, right:.8, top:.8, bottom:-.8, near:.01, far:4 });
+key.shadow.bias = -.0004; key.shadow.normalBias = .0006;
+scene.add(key, key.target);
+const rim = new THREE.DirectionalLight(0x9cc4ff, 1.0); rim.position.set(-.8,.5,-.9); scene.add(rim);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(20,20).rotateX(-Math.PI/2), new THREE.ShadowMaterial({ opacity:.38 }));
+ground.receiveShadow = true; scene.add(ground);
+
+const root = new THREE.Group(); scene.add(root);
+// clipping planes in model space (glTF axes: x = shaft toward drive end, y = up, z = front)
+const L_QA = new THREE.Plane(new THREE.Vector3(0,-1,0), 0), L_QB = new THREE.Plane(new THREE.Vector3(0,0,-1), 0);
+const L_SEC = new THREE.Plane(new THREE.Vector3(-1,0,0), 0);
+const QA = L_QA.clone(), QB = L_QB.clone(), SEC = L_SEC.clone();
+const PL_Q = [QA, QB], PL_S = [SEC], PL_NONE = [];
+
+/* ───────── state ───────── */
+const st = { mode:'struct', t:1, tTarget:null, labels: innerWidth >= 760, sel:null, hover:null, moved:false,
+  cut:true, cage:false, xray:false,
+  thE:30*D2R, running:!prefersReduced, speed:1, stepTo:null, seq:1,
+  n:0, grid:true, load:1, drive:1, thR:0, runaway:false, starting:false };
+const ease = x => x<.5 ? 4*x*x*x : 1-Math.pow(-2*x+2,3)/2;
+const prog = (t,s) => ease(clamp((t - s*.6)/.4, 0, 1));
+
+let parts = [], items = [], meshes = [], model = null;
+let coils = [], bars = [], barCaps = [], slotCaps = [], slots = [];
+const TBOX = new Set([3,7,23,24,25,26,27]);
+const XRAY_KEEP = new Set([4,5,6,8,9,10,11]);
+
+/* ───────── load ───────── */
+async function load(){
+  const loader = new GLTFLoader();
+  let b64 = window.__GLB_B64;
+  if(!b64 || b64.length < 100){
+    const res = await fetch('motor_glb.txt');
+    if(!res.ok) throw new Error('motor_glb.txt ' + res.status);
+    const total = +res.headers.get('content-length') || 0, reader = res.body.getReader(), chunks = [];
+    let got = 0;
+    for(;;){ const { done, value } = await reader.read(); if(done) break; chunks.push(value); got += value.length;
+      $('ld-t').textContent = `正在下载模型… ${(got/1e6).toFixed(1)}${total ? ' / ' + (total/1e6).toFixed(1) : ''} MB`;
+      if(total) $('ld-b').style.width = (100*got/total).toFixed(0) + '%'; }
+    b64 = new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
+  }
+  $('ld-t').textContent = '正在解码模型…';
+  await new Promise(r=>setTimeout(r, 30));
+  const bin = atob(b64.trim()), buf = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
+  return loader.parseAsync(buf.buffer, '');
+}
+
+function setup(gltf){
+  model = gltf.scene; root.add(model);
+  const byNo = new Map();
+  for(const node of [...model.children]){
+    const u = node.userData || {};
+    if(u.part_no === undefined) continue;
+    let p = null;
+    if(!u.cap){
+      p = byNo.get(u.part_no);
+      if(!p){ p = { no:u.part_no, cn:u.name_cn, jp:u.name_jp, en:u.name_en, m:u.material_spec, qty:u.qty, desc:u.desc, group:u.group, items:[] }; byNo.set(u.part_no, p); }
+    }
+    const ex = JSON.parse(u.ex || '[]').map(e=>({ v:new THREE.Vector3(e[0],e[1],e[2]).multiplyScalar(MM), s:e[3] }));
+    const holder = new THREE.Group(); holder.name = node.name + '_h'; model.add(holder); holder.add(node);
+    const it = { obj:holder, ex, spin:!!u.spin, cutq:!!u.cutq, sec:u.sec || 'clip', cap:u.cap || null, partNo:u.part_no, part:p, u, mats:[] };
+    node.traverse(o=>{
+      if(!o.isMesh) return;
+      o.material = Array.isArray(o.material) ? o.material.map(m=>m.clone()) : o.material.clone();
+      for(const m of [].concat(o.material)){
+        m.userData.c0 = m.color.clone(); m.userData.m0 = m.metalness; m.userData.r0 = m.roughness;
+        m.side = THREE.DoubleSide; m.clipShadows = true; it.mats.push(m);
+      }
+      o.castShadow = !u.cap; o.receiveShadow = true; o.userData.part = p; o.userData.item = it; meshes.push(o);
+    });
+    if(p) p.items.push(it);
+    items.push(it);
+    if(!u.cap && u.phase && u.slots) coils.push({ it, phase:u.phase });
+    if(u.bar !== undefined) (u.cap ? barCaps : bars).push({ it, a0:u.angle });
+    if(u.slot !== undefined){ slotCaps.push({ it, k:u.slot, phase:u.phase, sign:u.sign, a:u.angle }); }
+  }
+  slots = slotCaps.map(s=>({ k:s.k, phase:s.phase, sign:s.sign, a:s.a })).sort((a,b)=>a.k-b.k);
+  parts = [...byNo.values()].sort((a,b)=>a.no-b.no);
+  calibrateField();
+  buildUI();
+  $('loading').hidden = true;
+  setMode('struct');
+}
+
+/* ───────── field from stator currents ─────────
+   Slot k carries sign_k · i_phase (positive = toward the drive end = toward you in the end view).
+   Fundamental: B_N(φ) = Σ i_k sin(p(φ − φ_k)) = |C| cos(pφ − Θ), N pole where B_N > 0. */
+function phaseCurrents(th, seq){ return { U:Math.cos(th), V:Math.cos(th - seq*120*D2R), W:Math.cos(th - seq*240*D2R) }; }
+function fieldAngle(th, seq){
+  const I = phaseCurrents(th, seq); let re = 0, im = 0;
+  for(const s of slots){ const i = s.sign*I[s.phase]; re += i*Math.cos(P*s.a); im -= i*Math.sin(P*s.a); }
+  return { amp:Math.hypot(re, im), Th: Math.PI/2 - Math.atan2(im, re) };
+}
+let DIR = -1;     // rotation sense of the field in model φ (−1 = clockwise seen from the drive end)
+function calibrateField(){
+  const a = fieldAngle(0, 1).Th, b = fieldAngle(.01, 1).Th;
+  DIR = Math.sign(Math.atan2(Math.sin(b - a), Math.cos(b - a))) || -1;
+}
+
+/* ───────── pose ───────── */
+function applyPose(){
+  const tt = st.mode === 'struct' ? st.t : 0;
+  for(const it of items){
+    const p = it.obj.position.set(0,0,0);
+    for(const e of it.ex) p.addScaledVector(e.v, prog(tt, e.s));
+    it.obj.rotation.x = (it.spin && st.mode !== 'struct') ? st.thR : 0;
+  }
+}
+function portrait(){ return canvas.clientWidth / canvas.clientHeight < .85; }
+function sectionView(){ return st.mode !== 'struct' && !st.xray; }
+function orientRoot(){
+  root.rotation.set(0, 0, (!sectionView() && portrait()) ? Math.PI/2 : 0);
+  root.updateMatrixWorld(true);
+  QA.copy(L_QA).applyMatrix4(root.matrixWorld); QB.copy(L_QB).applyMatrix4(root.matrixWorld); SEC.copy(L_SEC).applyMatrix4(root.matrixWorld);
+}
+
+/* ───────── visibility / clipping / materials per mode ───────── */
+function applyVisibility(){
+  const sec = sectionView(), xr = st.mode !== 'struct' && st.xray;
+  for(const it of items){
+    let vis = true, planes = PL_NONE, inter = false, ghost = 0;
+    if(it.cap){ vis = (it.cap === 'q' && st.mode === 'struct' && st.cut) || (it.cap === 's' && sec); }
+    else if(st.mode === 'struct'){
+      if(st.cut && it.cutq){ planes = PL_Q; inter = true; }
+      if(st.cage && it.partNo === 10) ghost = .16;
+    } else if(sec){
+      if(it.sec === 'hide' || TBOX.has(it.partNo)) vis = false; else planes = PL_S;
+    } else {
+      vis = XRAY_KEEP.has(it.partNo);
+      if(it.partNo === 4) ghost = .1;
+      if(it.partNo === 10) ghost = .14;
+      if(it.partNo === 6) ghost = .35;
+    }
+    it.obj.visible = vis;
+    for(const m of it.mats){
+      const changed = m.clippingPlanes !== planes || m.clipIntersection !== inter || m.transparent !== (ghost > 0);
+      m.clippingPlanes = planes; m.clipIntersection = inter;
+      m.transparent = ghost > 0; m.opacity = ghost > 0 ? ghost : 1; m.depthWrite = !(ghost > 0);
+      if(changed) m.needsUpdate = true;
+    }
+    it.obj.traverse(o=>{ if(o.isMesh) o.castShadow = !it.cap && !(ghost > 0); });
+  }
+}
+
+/* ───────── camera fit ───────── */
+const ctrlEl = $('ctrl'), leftEl = document.querySelector('.left'), app = $('app');
+const view = { top:0, bottom:0, right:0, left:0 };
+function sidePanel(){ return st.mode === 'principle' ? $('pPanel') : st.mode === 'struct' ? $('bom') : $('rPanel'); }
+function measure(){
+  const W = canvas.clientWidth, narrow = W < 760, ar = app.getBoundingClientRect();
+  const ch = Math.max(0, ar.bottom - ctrlEl.getBoundingClientRect().top);
+  document.documentElement.style.setProperty('--ctrl-h', ch + 'px');
+  const tbVisible = getComputedStyle(leftEl).display !== 'none';
+  const tb = document.querySelector('.tb').getBoundingClientRect();
+  view.bottom = ch; view.top = (narrow && tbVisible) ? tb.bottom - ar.top + 6 : 0;
+  const sp = sidePanel();
+  if(narrow){
+    if(!sp.hidden) view.bottom = Math.max(view.bottom, ar.bottom - sp.getBoundingClientRect().top + 6);
+    if(!$('info').hidden) view.bottom = Math.max(view.bottom, ar.bottom - $('info').getBoundingClientRect().top + 6);
+    view.right = 0; view.left = 0;
+  } else {
+    view.right = !sp.hidden ? sp.offsetWidth + 16 : 0;
+    view.left = (W >= 900 && tbVisible) ? Math.min(W*.3, leftEl.getBoundingClientRect().right - ar.left + 8) : 0;
+  }
+}
+function setOffset(){
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  camera.setViewOffset(W, H, (view.right - view.left)/2, (view.bottom - view.top)/2, W, H);
+}
+const _pv = new THREE.Vector3();
+function project(p3){ _pv.copy(p3).project(camera); return [ (_pv.x+1)/2*canvas.clientWidth, (1-_pv.y)/2*canvas.clientHeight, _pv.z ]; }
+const DIRS = { struct:new THREE.Vector3(.42,.44,1).normalize(), section:new THREE.Vector3(1,.15,.22).normalize(), xray:new THREE.Vector3(.8,.5,1).normalize() };
+function visibleMesh(me){ let o = me; while(o){ if(!o.visible) return false; o = o.parent; } return true; }
+function fitFilter(me){
+  const it = me.userData.item;
+  if(st.mode === 'struct') return true;
+  if(sectionView()) return it.cap === 's';
+  return [4,5,8,10,11].includes(it.partNo);
+}
+function computeFit(tv, dir, margin){
+  const tSave = st.t; st.t = tv; applyPose(); root.updateMatrixWorld(true); st.t = tSave;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  const ax0 = view.left + margin, ax1 = W - view.right - margin, ay0 = view.top + margin, ay1 = H - view.bottom - margin;
+  const corners = [], bb = new THREE.Box3(), all = new THREE.Box3();
+  for(const me of meshes){
+    if(!visibleMesh(me) || !fitFilter(me)) continue;
+    if(!me.geometry.boundingBox) me.geometry.computeBoundingBox();
+    bb.copy(me.geometry.boundingBox).applyMatrix4(me.matrixWorld); all.union(bb);
+    for(const x of [bb.min.x,bb.max.x]) for(const y of [bb.min.y,bb.max.y]) for(const z of [bb.min.z,bb.max.z]) corners.push(new THREE.Vector3(x,y,z));
+  }
+  applyPose(); root.updateMatrixWorld(true);
+  if(all.isEmpty()) return null;
+  const target = all.getCenter(new THREE.Vector3());
+  let dist = all.getSize(new THREE.Vector3()).length() * 1.6;
+  const right = new THREE.Vector3(), up = new THREE.Vector3();
+  for(let k=0;k<7;k++){
+    camera.position.copy(target).addScaledVector(dir, dist); camera.lookAt(target);
+    camera.near = dist/80; camera.far = dist*10; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+    let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+    for(const c of corners){ const [px,py] = project(c); x0=Math.min(x0,px); x1=Math.max(x1,px); y0=Math.min(y0,py); y1=Math.max(y1,py); }
+    const sc = Math.max((x1-x0)/Math.max(60,ax1-ax0), (y1-y0)/Math.max(60,ay1-ay0));
+    const wpp = 2*dist*Math.tan(camera.fov*D2R/2)/H;
+    right.setFromMatrixColumn(camera.matrixWorld,0); up.setFromMatrixColumn(camera.matrixWorld,1);
+    target.addScaledVector(right, ((x0+x1)/2 - (ax0+ax1)/2)*wpp).addScaledVector(up, -((y0+y1)/2 - (ay0+ay1)/2)*wpp);
+    dist *= sc*.97;
+  }
+  return { target, dist, center: all.getCenter(new THREE.Vector3()) };
+}
+let F0 = null, F1 = null, FDIR = DIRS.struct;
+function fit(){
+  orientRoot(); measure(); setOffset();
+  FDIR = st.mode === 'struct' ? DIRS.struct : st.xray ? DIRS.xray : DIRS.section;
+  const W = canvas.clientWidth;
+  if(st.mode === 'struct'){ F0 = computeFit(0, FDIR, Math.min(64, W*.08)); F1 = computeFit(1, FDIR, st.labels ? 46 : 22); }
+  else { F0 = F1 = computeFit(0, FDIR, sectionView() ? 26 : Math.min(48, W*.06)); }
+  if(!F0) return;
+  autoFrame(true);
+  const c = F1.center;
+  key.position.copy(c).add(new THREE.Vector3(.35,1.2,.7)); key.target.position.copy(c);
+}
+const _t = new THREE.Vector3();
+function autoFrame(force){
+  if(!F0 || (st.moved && !force)) return;
+  const k = st.mode === 'struct' ? ease(Math.min(1, st.t/.82)) : 0;
+  _t.lerpVectors(F0.target, F1.target, k);
+  const d = F0.dist + (F1.dist - F0.dist)*k;
+  controls.target.copy(_t); camera.position.copy(_t).addScaledVector(FDIR, d);
+  camera.near = d/80; camera.far = d*10; camera.updateProjectionMatrix();
+}
+function relayout(){ measure(); setOffset(); if(!st.moved) fit(); }
+function resize(){
+  const W = canvas.clientWidth, H = canvas.clientHeight; if(!W || !H) return;
+  renderer.setSize(W, H, false); camera.aspect = W/H;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  ov.width = Math.round(W*dpr); ov.height = Math.round(H*dpr); octx.setTransform(dpr,0,0,dpr,0,0);
+  if(!model){ camera.updateProjectionMatrix(); return; }
+  measure(); setOffset(); if(!st.moved) fit(); else camera.updateProjectionMatrix();
+  drawCharts(true);
+}
+controls.addEventListener('start', ()=>{ st.moved = true; });
+
+/* ───────── balloons ───────── */
+const svgNS = 'http://www.w3.org/2000/svg';
+const leaders = $('leaders'), tagsEl = $('tags');
+let lab = [];
+function buildUI(){
+  for(const p of parts){
+    const b = document.createElement('button'); b.className = 'bln'; b.textContent = p.no; b.setAttribute('aria-label', `${p.no} ${p.cn}`);
+    b.addEventListener('click', e=>{ e.stopPropagation(); select(p); });
+    tagsEl.appendChild(b);
+    const ln = document.createElementNS(svgNS,'line'), dot = document.createElementNS(svgNS,'circle'); dot.setAttribute('r','2');
+    leaders.append(ln, dot);
+    lab.push({ p, b, ln, dot, x:0, y:0, init:false });
+  }
+  const list = $('bom-list');
+  $('bom-count').textContent = `${parts.length} 种 · ${parts.reduce((a,p)=>a+p.qty,0)} 件`;
+  for(const p of parts){
+    const el = document.createElement('button'); el.className = 'row'; el.type = 'button';
+    el.innerHTML = `<span class="n">${p.no}</span><span class="nm">${p.cn}<span>${p.jp}</span></span><span class="q">×${p.qty}</span><span class="m">${p.m}</span>`;
+    el.addEventListener('click', ()=>select(p)); list.appendChild(el); p.row = el;
+  }
+}
+const box = new THREE.Box3(), anchorBox = new THREE.Box3(), _c = new THREE.Vector3();
+const _ib = new THREE.Box3();
+function anchorOf(p){
+  // several instances (bolts at both ends, 18 coils…): point at the instance nearest the group centre
+  anchorBox.makeEmpty();
+  const vis = p.items.filter(it=>it.obj.visible);
+  for(const it of vis) anchorBox.expandByObject(it.obj);
+  if(anchorBox.isEmpty()) return null;
+  const c = anchorBox.getCenter(new THREE.Vector3());
+  if(vis.length < 2) return c;
+  let best = null, bd = 1e9;
+  for(const it of vis){ _ib.makeEmpty().expandByObject(it.obj); const ic = _ib.getCenter(new THREE.Vector3()), d = ic.distanceTo(c); if(d < bd){ bd = d; best = ic; } }
+  return bd < .05 ? c : best;
+}
+function updateLabels(){
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  const op = (st.mode === 'struct' && st.labels) ? clamp((st.t - .55)/.25, 0, 1) : 0;
+  leaders.style.opacity = op; leaders.style.visibility = op > 0 ? 'visible' : 'hidden';
+  for(const L of lab) L.b.hidden = op <= 0;
+  if(op <= 0){ for(const L of lab) L.init = false; return; }
+  const [cx, cy] = project(box.getCenter(_c));
+  for(const L of lab){
+    L.b.style.opacity = op;
+    const a = anchorOf(L.p);
+    if(!a){ L.off = true; continue; }
+    const [ax, ay] = project(a);
+    L.ax = ax; L.ay = ay; L.off = ax < 0 || ax > W - view.right || ay < view.top || ay > H - view.bottom;
+    let dx = ax - cx, dy = ay - cy; const dl = Math.hypot(dx,dy) || 1; dx/=dl; dy/=dl;
+    L.tx = ax + dx*42; L.ty = ay + dy*38;
+    if(!L.init){ L.x = L.tx; L.y = L.ty; }
+    L.nx = L.x + (L.tx - L.x)*.5; L.ny = L.y + (L.ty - L.y)*.5;
+  }
+  const minX = view.left + 12, maxX = W - view.right - 12, minY = view.top + 12, maxY = H - view.bottom - 12;
+  for(let k=0;k<8;k++){
+    for(let i=0;i<lab.length;i++) for(let j=i+1;j<lab.length;j++){
+      const a = lab[i], b = lab[j]; if(a.off || b.off) continue;
+      let dx = b.nx-a.nx, dy = b.ny-a.ny; const d = Math.hypot(dx,dy);
+      if(d < 25){ if(d < .01){ dx = 1; dy = 0; } const m = (25-d)/2/(d||1); a.nx -= dx*m; a.ny -= dy*m; b.nx += dx*m; b.ny += dy*m; }
+    }
+    for(const L of lab){ if(L.off) continue; L.nx = clamp(L.nx, minX, maxX); L.ny = clamp(L.ny, minY, maxY); }
+  }
+  for(const L of lab){
+    L.b.hidden = !!L.off; L.ln.style.display = L.dot.style.display = L.off ? 'none' : '';
+    if(L.off) continue;
+    L.x = L.nx; L.y = L.ny; L.init = true;
+    L.b.style.transform = `translate(${L.x.toFixed(1)}px,${L.y.toFixed(1)}px)`;
+    const dx = L.x - L.ax, dy = L.y - L.ay, d = Math.hypot(dx,dy) || 1;
+    L.ln.setAttribute('x1', L.ax.toFixed(1)); L.ln.setAttribute('y1', L.ay.toFixed(1));
+    L.ln.setAttribute('x2', (L.x - dx/d*11).toFixed(1)); L.ln.setAttribute('y2', (L.y - dy/d*11).toFixed(1));
+    L.dot.setAttribute('cx', L.ax.toFixed(1)); L.dot.setAttribute('cy', L.ay.toFixed(1));
+    const on = st.sel === L.p; L.b.classList.toggle('sel', on); L.ln.classList.toggle('sel', on); L.dot.classList.toggle('sel', on);
+  }
+}
+
+/* ───────── selection ───────── */
+const hl = new THREE.Color();
+function paint(){
+  if(st.mode !== 'struct') return;
+  hl.set(css('--hl') || '#ffd166');
+  for(const it of items){
+    if(it.cap) continue;
+    const on = it.part === st.sel ? .45 : it.part === st.hover ? .18 : 0;
+    for(const m of it.mats){ m.emissive.copy(hl); m.emissiveIntensity = on; }
+  }
+}
+function select(p){
+  if(st.mode !== 'struct') p = null;
+  st.sel = p; paint();
+  for(const q of parts) q.row && q.row.classList.toggle('sel', q === p);
+  const info = $('info'), was = info.hidden;
+  if(!p){ info.hidden = true; $('hint').hidden = st.mode !== 'struct'; if(!was && canvas.clientWidth < 760) relayout(); return; }
+  $('i-no').textContent = p.no; $('i-cn').textContent = p.cn; $('i-jp').textContent = p.jp;
+  $('i-mat').textContent = p.m; $('i-qty').textContent = p.qty + ' 件'; $('i-desc').textContent = p.desc;
+  info.hidden = false; $('hint').hidden = true;
+  if(canvas.clientWidth < 760){ if(!$('bom').hidden) toggleBom(false); else relayout(); }
+}
+$('i-close').addEventListener('click', ()=>select(null));
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function clippedAway(it, pt){
+  const m = it.mats[0]; if(!m || !m.clippingPlanes.length) return false;
+  const neg = m.clippingPlanes.map(pl=>pl.distanceToPoint(pt) < 0);
+  return m.clipIntersection ? neg.every(Boolean) : neg.some(Boolean);
+}
+function pick(e){
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(meshes.filter(visibleMesh), false);
+  for(const h of hits){
+    const it = h.object.userData.item;
+    if(clippedAway(it, h.point)) continue;
+    if(it.cap){ const p = parts.find(q=>q.no === it.partNo); if(p) return p; continue; }
+    if(it.mats[0] && it.mats[0].transparent) continue;
+    return h.object.userData.part;
+  }
+  return null;
+}
+let down = null;
+canvas.addEventListener('pointerdown', e=>{ down = { x:e.clientX, y:e.clientY }; });
+canvas.addEventListener('pointerup', e=>{ if(model && st.mode === 'struct' && down && Math.hypot(e.clientX-down.x, e.clientY-down.y) < 6) select(pick(e)); down = null; });
+canvas.addEventListener('pointermove', e=>{
+  if(!model || st.mode !== 'struct' || e.pointerType !== 'mouse' || e.buttons) return;
+  const p = pick(e); if(p !== st.hover){ st.hover = p; paint(); canvas.style.cursor = p ? 'pointer' : ''; }
+});
+canvas.addEventListener('pointerleave', ()=>{ if(st.hover){ st.hover = null; paint(); canvas.style.cursor = ''; } });
+
+/* ───────── colours for the running views ───────── */
+const C = {};
+function readColors(){
+  for(const k of ['ph-u','ph-v','ph-w','pole-n','pole-s','cur-out','cur-in','flux','accent','fg','muted','line','chart-bg','good','warn'])
+    C[k] = css('--' + k);
+  C.U = new THREE.Color(C['ph-u']); C.V = new THREE.Color(C['ph-v']); C.W = new THREE.Color(C['ph-w']);
+  C.out = new THREE.Color(C['cur-out']); C.inn = new THREE.Color(C['cur-in']);
+}
+const _col = new THREE.Color();
+function setGlow(it, col, k, base){
+  for(const m of it.mats){
+    m.color.copy(m.userData.c0).multiplyScalar(base);
+    if(k > 0){ m.color.lerp(col, Math.min(1, k*.8)); m.emissive.copy(col); m.emissiveIntensity = k*.85; }
+    else { m.emissiveIntensity = 0; }
+    m.metalness = k > 0 ? m.userData.m0*.4 : m.userData.m0;
+  }
+}
+function resetGlow(){
+  for(const it of items) for(const m of it.mats){
+    m.color.copy(m.userData.c0); m.metalness = m.userData.m0; m.roughness = m.userData.r0; m.emissiveIntensity = 0;
+  }
+}
+
+/* ───────── physics + per-frame state of the running views ───────── */
+const ph = { Th:0, amp:1, I:{U:1,V:0,W:0}, s:1, T:0, i2:0, i1:0, phi2:0 };
+function stepPhysics(dt){
+  if(st.mode === 'motor' || st.mode === 'gen'){
+    for(let k=0;k<4;k++){
+      const h = dt/4, s = 1 - st.n;
+      const te = st.grid ? Tem(s) : 0;
+      let dn;
+      if(st.mode === 'motor'){ dn = (te - st.load - FRIC*st.n)/J; if(st.n <= 0 && dn < 0) dn = 0; }
+      else dn = (te + st.drive - FRIC*st.n)/J;
+      st.n = clamp(st.n + dn*h, 0, 2.2);
+    }
+    st.runaway = st.n >= 2.19;
+    if(st.runaway) st.n = 2.2;
+  }
+}
+function updateRun(dt){
+  const run = st.mode !== 'struct';
+  if(!run) return;
+  const fVis = st.mode === 'principle' ? .16*st.speed : .2;
+  const fieldOn = st.mode === 'principle' || st.grid;
+  if(st.mode === 'principle'){
+    if(st.stepTo !== null){ st.thE = Math.min(st.stepTo, st.thE + dt*TAU*.35); if(st.thE >= st.stepTo) st.stepTo = null; }
+    else if(st.running) st.thE += dt*TAU*fVis;
+  } else {
+    if(fieldOn) st.thE += dt*TAU*fVis;
+    stepPhysics(dt);
+    // rotor mechanical angle: field turns at ωe/p in the sense DIR; the rotor at n (per-unit of synchronous)
+    st.thR += DIR*st.n*dt*TAU*fVis/P;
+  }
+  const seq = st.mode === 'principle' ? st.seq : 1;
+  const f = fieldAngle(st.thE, seq);
+  ph.Th = f.Th; ph.amp = f.amp; ph.I = phaseCurrents(st.thE, seq);
+  ph.s = st.mode === 'principle' ? 0 : 1 - st.n;
+  ph.T = (st.mode !== 'principle' && st.grid) ? Tem(ph.s) : 0;
+  ph.i2 = (st.mode !== 'principle' && st.grid) ? I2(ph.s)/I2R : 0;
+  ph.phi2 = Math.atan2(ph.s*XR, Rr(ph.s));
+  ph.i1 = st.mode === 'principle' ? 1 : (st.grid ? Math.hypot(.35, ph.i2)/Math.hypot(.35, 1) : 0);
+  colorRun(fieldOn);
+}
+function barCurrent(phiBar){
+  // i = −DIR·sign(s)·I2(s)·cos(pφ − Θ + DIR·φ2)   (normalised to the rated rotor current)
+  if(st.mode === 'principle' || !st.grid) return 0;
+  const z = P*phiBar - ph.Th;
+  return -DIR*Math.sign(ph.s)*ph.i2*Math.cos(z + DIR*ph.phi2);
+}
+const bright = a => clamp(Math.pow(clamp(Math.abs(a)/2.2, 0, 1), .75), 0, 1);
+function colorRun(fieldOn){
+  const sec = sectionView();
+  const stK = st.mode === 'principle' ? 1 : clamp(.35 + .65*ph.i1/2.2, .35, 1);
+  // stator: slot caps (section) and coils (x-ray)
+  for(const sc of slotCaps){
+    const i = fieldOn ? sc.sign*ph.I[sc.phase] : 0;
+    setGlow(sc.it, C[sc.phase], Math.abs(i)*stK, .45);
+  }
+  for(const c of coils){
+    const i = fieldOn ? ph.I[c.phase] : 0;
+    setGlow(c.it, C[c.phase], st.xray ? Math.abs(i)*stK*.9 : 0, st.xray ? .55 : 1);
+  }
+  for(const b of barCaps){
+    const i = barCurrent(b.a0 + st.thR);
+    setGlow(b.it, i >= 0 ? C.out : C.inn, bright(i), .55);
+  }
+  for(const b of bars){
+    const i = barCurrent(b.a0 + st.thR);
+    setGlow(b.it, i >= 0 ? C.out : C.inn, st.xray ? bright(i) : 0, st.xray ? .6 : 1);
+  }
+}
+
+/* ───────── overlay: conductor symbols, flux lines, N/S, torque ───────── */
+const _v = new THREE.Vector3();
+function P3(x, r, phi){ return _v.set(x*MM, r*Math.sin(phi)*MM, -r*Math.cos(phi)*MM).applyMatrix4(model.matrixWorld); }
+function scr(x, r, phi){ return project(P3(x, r, phi)); }
+function drawSym(x, y, rad, col, alpha, out){
+  octx.globalAlpha = alpha; octx.strokeStyle = col; octx.lineWidth = Math.max(1.2, rad*.28);
+  octx.beginPath(); octx.arc(x, y, rad, 0, TAU); octx.stroke();
+  if(out){ octx.fillStyle = col; octx.beginPath(); octx.arc(x, y, rad*.3, 0, TAU); octx.fill(); }
+  else { const d = rad*.55; octx.beginPath(); octx.moveTo(x-d,y-d); octx.lineTo(x+d,y+d); octx.moveTo(x+d,y-d); octx.lineTo(x-d,y+d); octx.stroke(); }
+  octx.globalAlpha = 1;
+}
+function arrowHead(x, y, ang, size, col){
+  octx.fillStyle = col; octx.beginPath();
+  octx.moveTo(x + Math.cos(ang)*size, y + Math.sin(ang)*size);
+  octx.lineTo(x + Math.cos(ang + 2.5)*size*.8, y + Math.sin(ang + 2.5)*size*.8);
+  octx.lineTo(x + Math.cos(ang - 2.5)*size*.8, y + Math.sin(ang - 2.5)*size*.8);
+  octx.closePath(); octx.fill();
+}
+function drawOverlay(){
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  octx.clearRect(0, 0, W, H);
+  if(!model || st.mode === 'struct' || !sectionView()) return;
+  const fieldOn = st.mode === 'principle' || st.grid;
+  const XF = 1.2;
+  // scale: pixels per slot pitch at the slot radius
+  const a0 = scr(XF, 78.5, 0), a1 = scr(XF, 78.5, 10*D2R);
+  const pitch = Math.hypot(a1[0]-a0[0], a1[1]-a0[1]);
+  const rs = clamp(pitch*.3, 3, 8.5);
+  // flux loops
+  if(fieldOn){
+    const lw = W < 760 ? 1.1 : 1.5;
+    octx.lineWidth = lw; octx.strokeStyle = C.flux; octx.globalAlpha = .5;
+    const g = x => Math.sign(x)*Math.pow(Math.abs(x), .55);
+    for(let m=0;m<P;m++){
+      const phN = (ph.Th + TAU*m)/P;
+      for(const sg of [1,-1]){
+        const phm = phN + sg*Math.PI/(2*P);
+        for(let k=0;k<3;k++){
+          const w = (Math.PI/(2*P))*(.36 + .28*k), rin = 61 - 9.5*k, rout = 89 + 6*k, rc = (rin+rout)/2, hh = (rout-rin)/2;
+          octx.beginPath();
+          for(let j=0;j<=56;j++){
+            const u = TAU*j/56, ang = phm + w*g(Math.cos(u)), r = rc + hh*g(Math.sin(u));
+            const [x,y] = scr(XF, r, ang); if(j === 0) octx.moveTo(x,y); else octx.lineTo(x,y);
+          }
+          octx.stroke();
+          // arrows: through the rotor from the N side toward the S side, back through the stator yoke
+          const e = .07;
+          const [xa,ya] = scr(XF, rin, phm - sg*e), [xb,yb] = scr(XF, rin, phm + sg*e);
+          arrowHead(xb, yb, Math.atan2(yb-ya, xb-xa), 4 + lw, C.flux);
+          const [xc,yc] = scr(XF, rout, phm + sg*e), [xd,yd] = scr(XF, rout, phm - sg*e);
+          arrowHead(xd, yd, Math.atan2(yd-yc, xd-xc), 4 + lw, C.flux);
+        }
+      }
+    }
+    octx.globalAlpha = 1;
+  }
+  // stator conductors
+  for(const s of slots){
+    const i = fieldOn ? s.sign*ph.I[s.phase] : 0;
+    const [x,y] = scr(XF, 78.5, s.a);
+    if(Math.abs(i) < .1){ octx.globalAlpha = .35; octx.strokeStyle = C[s.phase === 'U' ? 'ph-u' : s.phase === 'V' ? 'ph-v' : 'ph-w']; octx.lineWidth = 1; octx.beginPath(); octx.arc(x,y,rs*.55,0,TAU); octx.stroke(); octx.globalAlpha = 1; continue; }
+    drawSym(x, y, rs, '#ffffff', .35 + .65*Math.abs(i), i > 0);
+  }
+  // rotor bars
+  if(st.mode !== 'principle'){
+    for(const b of barCaps){
+      const phi = b.a0 + st.thR, i = barCurrent(phi), k = bright(i);
+      if(k < .08) continue;
+      const [x,y] = scr(XF, 60, phi);
+      drawSym(x, y, rs*.9, '#ffffff', .3 + .7*k, i > 0);
+    }
+  }
+  // N / S labels outside the stator
+  if(fieldOn){
+    const fs = W < 760 ? 11 : 13;
+    octx.font = `600 ${fs}px ${css('--f-num')}`; octx.textAlign = 'center'; octx.textBaseline = 'middle';
+    for(let m=0;m<2*P;m++){
+      const phi = (ph.Th + Math.PI*m)/P, isN = m % 2 === 0;
+      const [x,y] = scr(XF, 118, phi);
+      octx.fillStyle = isN ? C['pole-n'] : C['pole-s'];
+      octx.beginPath(); octx.roundRect ? octx.roundRect(x - fs*.75, y - fs*.72, fs*1.5, fs*1.44, 4) : octx.rect(x - fs*.75, y - fs*.72, fs*1.5, fs*1.44); octx.fill();
+      octx.fillStyle = '#0b1220'; octx.fillText(isN ? 'N' : 'S', x, y + .5);
+    }
+  }
+  // electromagnetic torque arc around the shaft
+  if(st.mode !== 'principle' && Math.abs(ph.T) > .02){
+    const span = clamp(Math.abs(ph.T)/TMAX, .05, 1)*200*D2R, sense = Math.sign(ph.T)*DIR;
+    const st0 = Math.PI/2 - sense*span/2;
+    octx.strokeStyle = C.accent; octx.lineWidth = W < 760 ? 3 : 4; octx.lineCap = 'round';
+    octx.beginPath();
+    let last = null, prev = null;
+    for(let j=0;j<=40;j++){
+      const ang = st0 + sense*span*j/40, [x,y] = scr(XF, 36, ang);
+      if(j === 0) octx.moveTo(x,y); else octx.lineTo(x,y);
+      prev = last; last = [x,y];
+    }
+    octx.stroke(); octx.lineCap = 'butt';
+    if(prev) arrowHead(last[0], last[1], Math.atan2(last[1]-prev[1], last[0]-prev[0]), 8, C.accent);
+  }
+}
+
+/* ───────── side-panel charts ───────── */
+function prepCanvas(cv){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), w = cv.clientWidth, h = cv.clientHeight;
+  if(!w || !h) return null;
+  if(cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)){ cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr); }
+  const c = cv.getContext('2d'); c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,w,h);
+  return { c, w, h };
+}
+function drawWave(){
+  const g = prepCanvas($('wave')); if(!g) return;
+  const { c, w, h } = g, L = 18, R = w - 6, T0 = 8, B0 = h - 16, mid = (T0+B0)/2, amp = (B0-T0)/2*.88;
+  const x = a => L + (R-L)*a/360;
+  c.strokeStyle = C.line; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(L, mid+.5); c.lineTo(R, mid+.5); c.stroke();
+  for(let a=90;a<360;a+=90){ c.beginPath(); c.moveTo(x(a)+.5, T0); c.lineTo(x(a)+.5, B0); c.stroke(); }
+  const cols = { U:C['ph-u'], V:C['ph-v'], W:C['ph-w'] };
+  for(const p of ['U','V','W']){
+    c.strokeStyle = cols[p]; c.lineWidth = 1.8; c.beginPath();
+    for(let a=0;a<=360;a+=3){ const I = phaseCurrents(a*D2R, st.seq)[p], y = mid - I*amp; if(a === 0) c.moveTo(x(a), y); else c.lineTo(x(a), y); }
+    c.stroke();
+  }
+  const cur = ((st.thE/D2R) % 360 + 360) % 360;
+  c.strokeStyle = C.accent; c.lineWidth = 2; c.beginPath(); c.moveTo(x(cur), T0); c.lineTo(x(cur), B0); c.stroke();
+  const I = phaseCurrents(st.thE, st.seq);
+  for(const p of ['U','V','W']){ c.fillStyle = cols[p]; c.beginPath(); c.arc(x(cur), mid - I[p]*amp, 3.2, 0, TAU); c.fill(); }
+  c.fillStyle = C.muted; c.font = `500 10px ${css('--f-mono')}`; c.textBaseline = 'alphabetic';
+  c.fillText('i', 4, T0 + 8);
+  for(const a of [0, 180, 360]){ const s = a + '°', tw = c.measureText(s).width; c.fillText(s, clamp(x(a) - tw/2, L, R - tw), h - 3); }
+}
+function drawVec(){
+  const g = prepCanvas($('vec')); if(!g) return;
+  const { c, w, h } = g, cx = w/2, cy = h/2 + 2, R = Math.min(w, h)/2 - 14, sc = R/1.6;
+  c.strokeStyle = C.line; c.lineWidth = 1; c.setLineDash([3,3]);
+  c.beginPath(); c.arc(cx, cy, 1.5*sc, 0, TAU); c.stroke(); c.setLineDash([]);
+  const I = phaseCurrents(st.thE, st.seq), axes = { U:0, V:120, W:240 }, cols = { U:C['ph-u'], V:C['ph-v'], W:C['ph-w'] };
+  let sx = 0, sy = 0;
+  c.font = `600 10px ${css('--f-num')}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  for(const p of ['U','V','W']){
+    const a = -axes[p]*D2R + Math.PI/2;      // draw U axis pointing up, positive angle = counter-clockwise on screen
+    const ux = Math.cos(a), uy = -Math.sin(a);
+    c.strokeStyle = C.line; c.beginPath(); c.moveTo(cx - ux*R, cy - uy*R); c.lineTo(cx + ux*R, cy + uy*R); c.stroke();
+    c.fillStyle = cols[p]; c.fillText(p, cx + ux*(R + 7), cy + uy*(R + 7));
+    const L = I[p]*sc; sx += ux*L; sy += uy*L;
+    c.strokeStyle = cols[p]; c.lineWidth = 2.2; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + ux*L, cy + uy*L); c.stroke();
+  }
+  c.strokeStyle = C.fg; c.lineWidth = 2.6; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + sx, cy + sy); c.stroke();
+  arrowHeadCtx(c, cx + sx, cy + sy, Math.atan2(sy, sx), 7, C.fg);
+}
+function arrowHeadCtx(c, x, y, ang, size, col){
+  c.fillStyle = col; c.beginPath();
+  c.moveTo(x + Math.cos(ang)*size, y + Math.sin(ang)*size);
+  c.lineTo(x + Math.cos(ang + 2.5)*size*.8, y + Math.sin(ang + 2.5)*size*.8);
+  c.lineTo(x + Math.cos(ang - 2.5)*size*.8, y + Math.sin(ang - 2.5)*size*.8);
+  c.closePath(); c.fill();
+}
+function drawTN(){
+  const g = prepCanvas($('tn')); if(!g) return;
+  const { c, w, h } = g, L = 34, R = w - 8, T0 = 10, B0 = h - 18;
+  const nMax = 2000, tMax = 3;
+  const X = n => L + (R-L)*n/nMax, Y = t => T0 + (B0-T0)*(tMax - t)/(2*tMax);
+  c.fillStyle = 'rgba(255,181,71,.07)'; c.fillRect(L, T0, X(NS)-L, B0-T0);
+  c.fillStyle = 'rgba(63,197,255,.08)'; c.fillRect(X(NS), T0, R-X(NS), B0-T0);
+  c.strokeStyle = C.line; c.lineWidth = 1;
+  for(const t of [-2,-1,1,2]){ c.beginPath(); c.moveTo(L, Y(t)+.5); c.lineTo(R, Y(t)+.5); c.stroke(); }
+  c.strokeStyle = C.muted; c.beginPath(); c.moveTo(L, Y(0)+.5); c.lineTo(R, Y(0)+.5); c.stroke();
+  c.setLineDash([4,3]); c.beginPath(); c.moveTo(X(NS)+.5, T0); c.lineTo(X(NS)+.5, B0); c.stroke(); c.setLineDash([]);
+  c.font = `500 10px ${css('--f-mono')}`; c.fillStyle = C.muted; c.textAlign = 'right'; c.textBaseline = 'middle';
+  for(const t of [-2,0,2]) c.fillText(Math.round(t*T_RATED), L - 4, Y(t));
+  c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  for(const n of [0, 500, 1000, 1500, 2000]) c.fillText(n, clamp(X(n), L + 8, R - 12), h - 4);
+  c.font = `500 10.5px ${css('--f-cn')}`; c.textAlign = 'left'; c.fillStyle = C.accent; c.fillText('电动区', L + 6, T0 + 12);
+  c.fillStyle = C['cur-in']; c.textAlign = 'right'; c.fillText('发电区', R - 4, T0 + 12);
+  c.fillStyle = C.muted; c.textAlign = 'left'; c.fillText('T / N·m', 2, T0 + 2 > 10 ? T0 + 2 : 10);
+  // torque curve
+  c.strokeStyle = C.accent; c.lineWidth = 2; c.beginPath();
+  for(let n=0;n<=nMax;n+=8){ const t = Tem(1 - n/NS), y = Y(clamp(t, -tMax, tMax)); if(n === 0) c.moveTo(X(n), y); else c.lineTo(X(n), y); }
+  c.stroke();
+  // external torque line
+  const ext = st.mode === 'motor' ? st.load : -st.drive;
+  c.strokeStyle = C.fg; c.globalAlpha = .7; c.setLineDash([5,4]); c.lineWidth = 1.4;
+  c.beginPath(); c.moveTo(L, Y(ext)); c.lineTo(R, Y(ext)); c.stroke(); c.setLineDash([]); c.globalAlpha = 1;
+  c.fillStyle = C.fg; c.textAlign = 'right'; c.font = `500 10px ${css('--f-cn')}`;
+  c.fillText(st.mode === 'motor' ? '负载转矩' : '原动机转矩（取负）', R - 4, Y(ext) + (ext >= 0 ? -5 : 12));
+  // operating point
+  const n = st.n*NS, t = st.grid ? Tem(1 - st.n) : 0;
+  c.fillStyle = C.fg; c.beginPath(); c.arc(X(Math.min(n, nMax)), Y(clamp(t, -tMax, tMax)), 5, 0, TAU); c.fill();
+  c.strokeStyle = C['chart-bg']; c.lineWidth = 2; c.stroke();
+}
+let lastCharts = 0;
+function drawCharts(force){
+  const now = performance.now();
+  if(!force && now - lastCharts < 66) return;
+  lastCharts = now;
+  if(st.mode === 'principle' && !$('pPanel').hidden){ drawWave(); drawVec(); updatePrincipleText(); }
+  if((st.mode === 'motor' || st.mode === 'gen') && !$('rPanel').hidden){ drawTN(); updateRunText(); }
+}
+
+/* ───────── texts ───────── */
+const fmt = (x, d=0) => (Math.abs(x) < .5*Math.pow(10,-d) ? 0 : x).toFixed(d);
+function updatePrincipleText(){
+  const I = phaseCurrents(st.thE, st.seq);
+  $('seqTag').textContent = st.seq === 1 ? '正序 U→V→W' : '反序 U→W→V';
+  $('seqTag').className = 'state ' + (st.seq === 1 ? 'mid' : 'gen');
+  const dirTxt = (DIR*st.seq < 0) ? '顺时针' : '逆时针';
+  $('pExpl').innerHTML = `此刻 i<sub>U</sub> = ${fmt(I.U,2)}，i<sub>V</sub> = ${fmt(I.V,2)}，i<sub>W</sub> = ${fmt(I.W,2)}（以最大值为 1）。` +
+    `三相电流在时间上依次差 120°，三相绕组在空间上也依次错开 120° 电角度（4 极电机 = 60° 机械角）。两个 120° 叠在一起，合成磁场的<b>大小始终不变</b>（右上图白色箭头，是单相最大值的 1.5 倍），<b>方向匀速旋转</b>。` +
+    `电流变化一个周期，磁场只转过一对极（半圈），所以同步转速 n<sub>s</sub> = 60f / p = 60 × 50 / 2 = <b>1500 r/min</b>。现在从轴伸端看，磁场<b>${dirTxt}</b>旋转。` +
+    (st.seq === 1 ? '点“调换 V、W 两相”试试：磁场会反着转，这就是电机反转的接线方法。' : '调换了 V、W 两相后，磁场反转了；实际接线中对调任意两根电源线都一样。');
+}
+let lastState = '';
+function updateRunText(){
+  const s = 1 - st.n, n = st.n*NS, t = st.grid ? Tem(s) : 0, Tn = t*T_RATED;
+  const Pm = Tn*n*TAU/60/1000, Pag = Tn*NS*TAU/60/1000;
+  $('k-n').innerHTML = `${fmt(n)}<small>r/min</small>`;
+  $('k-s').innerHTML = `${fmt(s*100, Math.abs(s) < .1 ? 1 : 0)}<small>%</small>`;
+  $('k-t').innerHTML = `${fmt(Tn)}<small>N·m</small>`;
+  $('k-i').innerHTML = `${fmt(st.grid ? I2(s)/I2R : 0, 1)}<small>×额定</small>`;
+  let flow;
+  if(!st.grid) flow = `<span class="node">电网</span><span class="arr">✕ 已断开</span><span class="node">电机</span>`;
+  else if(t >= 0) flow = `<span class="node">电网</span><span class="arr">→ ${fmt(Pag,1)} kW →</span><span class="node">电机</span><span class="arr">→ ${fmt(Math.max(0,Pm),1)} kW →</span><span class="node">${st.mode === 'motor' ? '负载' : '转轴'}</span>`;
+  else flow = `<span class="node">原动机</span><span class="arr back">→ ${fmt(-Pm,1)} kW →</span><span class="node">电机</span><span class="arr back">→ ${fmt(-Pag,1)} kW →</span><span class="node">电网</span>`;
+  $('flow').innerHTML = flow;
+  let state, cls, txt;
+  const tmaxN = Math.round(TMAX*T_RATED);
+  if(st.mode === 'motor'){
+    $('rTitle').textContent = '电动运行';
+    if(!st.grid){ state = '断电'; cls = 'warn'; txt = '电网断开：没有电流就没有旋转磁场，转子在负载拖动下减速停转。点“电网 通”重新供电。'; }
+    else if(st.n < .02 && st.load + FRIC > Tem(1)){ state = '堵转'; cls = 'warn'; txt = `负载太大，连启动转矩（${Math.round(Tem(1)*T_RATED)} N·m）都克服不了，电机转不起来。转差率 s = 1，导条电流是额定的 ${fmt(I2(1)/I2R,1)} 倍，时间一长绕组就烧了，实际要靠过载保护跳闸。`; }
+    else if(st.load > TMAX){ state = '过载失速'; cls = 'warn'; txt = `负载转矩超过了最大转矩 ${tmaxN} N·m，转速一路往下掉，越过曲线顶点后转矩反而更小，很快失速堵转。最大转矩和额定转矩之比叫过载能力，这台约 ${fmt(TMAX,1)} 倍。`; }
+    else if(s > SM){ state = '启动加速'; cls = 'mid'; txt = `启动阶段：转子转得慢，磁场相对导条扫过得很快（s = ${fmt(s*100)}%），导条感应电流大（约为额定的 ${fmt(I2(s)/I2R,1)} 倍），转矩把转子往磁场转的方向推。注意上面的功率：电网送进来的功率大部分变成了转子发热（转子铜损 = s × 电磁功率），所以电机不能频繁启动。转速越接近 1500，转差越小。`; }
+    else { state = '稳定运行'; cls = 'ok'; txt = `转子 ${fmt(n)} r/min，比旋转磁场（1500 r/min）慢 ${fmt(s*100,1)}%。正是这点“转差”让导条切割磁力线，感应出电流（橙色朝你、蓝色背离你），电流在磁场里受力产生转矩。负载越大，转差越大；要是转子追上了磁场（s = 0），导条不再切割磁力线，转矩就没了——所以叫“异步”电动机。`; }
+  } else {
+    $('rTitle').textContent = '发电运行';
+    if(st.runaway){ state = '飞车'; cls = 'warn'; txt = st.grid ? `原动机转矩超过了最大制动转矩 ${tmaxN} N·m，电机拉不住，转速失控。实际系统会触发超速保护。` : '已脱网：没有电网提供的励磁，电机里没有旋转磁场，也就没有制动转矩，原动机把转子越拖越快。'; }
+    else if(!st.grid){ state = '脱网'; cls = 'warn'; txt = '异步发电机的转子里没有磁铁，也没有励磁绕组，磁场全靠定子从电网吸收的励磁电流建立。一脱网磁场就没了，发不出电，原动机会把转子越拖越快。（单独发电要在出线端并电容自励。）'; }
+    else if(s >= 0){ state = '仍是电动'; cls = 'mid'; txt = `原动机转矩不够，转子还没超过同步转速（s = ${fmt(s*100,1)}% ≥ 0），电机仍然从电网吸收功率。把“原动机”加大试试。`; }
+    else { state = '发电'; cls = 'gen'; txt = `原动机把转子拖到 ${fmt(n)} r/min，比旋转磁场还快 ${fmt(-s*100,1)}%（转差率为负）。导条反过来切割磁力线，感应电流和电磁转矩都反向，转矩变成阻碍转动的“制动”方向（黄色箭头和转向相反）。原动机克服这个转矩做功，机械能变成电能回馈电网。风力发电、小水电常用这种异步发电机。`; }
+  }
+  $('rState').textContent = state; $('rState').className = 'state ' + cls;
+  if(txt !== lastState){ $('rExpl').textContent = txt; lastState = txt; }
+}
+
+/* ───────── modes ───────── */
+const CAPS = {
+  struct:'<b>结构：</b>拖“爆炸”滑杆看拆装顺序。“剖开”切掉前上方四分之一，能看到定子绕组；“鼠笼”把转子铁芯变透明，露出铸铜导条和端环。',
+  principle:'<b>原理：</b>从轴伸端看的横剖面。槽里的圆圈表示导体：中间一点 = 电流朝你流出，叉 = 流进去，颜色区分 U/V/W 相，越亮电流越大。白线是磁力线。',
+  motor:'<b>电动：</b>转子比磁场慢一点。导条上的橙色点 / 蓝色叉是感应电流方向，黄色弧线是电磁转矩。可以断电、重新启动、拖动负载看转速和转差怎么变。',
+  gen:'<b>发电：</b>原动机拖着转子比磁场转得快，导条电流和转矩反向，电能回馈电网。试试关掉电网看看会怎样。',
+};
+function setMode(m){
+  st.mode = m;
+  app.className = m === 'struct' ? '' : 'run';
+  document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected', String(t.dataset.mode === m)));
+  for(const g of ['struct','principle','motor','gen']) document.querySelector('.grp-' + g).hidden = g !== m;
+  $('b-xray').hidden = m === 'struct';
+  $('cap').innerHTML = CAPS[m];
+  $('pPanel').hidden = m !== 'principle';
+  $('rPanel').hidden = !(m === 'motor' || m === 'gen');
+  if(m !== 'struct'){ $('bom').hidden = true; $('b-bom').setAttribute('aria-pressed','false'); select(null); $('hint').hidden = true; resetGlow(); }
+  else { resetGlow(); $('hint').hidden = !$('info').hidden; }
+  if(m === 'motor'){ st.grid = true; syncGrid(); if(st.n < .05 || st.n > 1.2){ st.n = 0; } }
+  if(m === 'gen'){ st.grid = true; syncGrid(); st.runaway = false; if(st.n < .9 || st.n > 1.3) st.n = .973; }
+  if(m === 'principle'){ st.thR = 0; }
+  ground.visible = m === 'struct' || st.xray;
+  st.moved = false;
+  applyVisibility();
+  paint();
+  lastState = '';
+  drawCharts(true);
+  fit();
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>{ if(model) setMode(t.dataset.mode); }));
+$('b-view').addEventListener('click', ()=>{ st.moved = false; fit(); });
+$('b-xray').addEventListener('click', e=>{
+  st.xray = !st.xray; e.currentTarget.setAttribute('aria-pressed', String(st.xray)); e.currentTarget.textContent = st.xray ? '剖面' : '透视';
+  resetGlow(); ground.visible = st.mode === 'struct' || st.xray; st.moved = false; applyVisibility(); fit();
+});
+
+/* struct controls */
+const rEx = $('r-ex'), oEx = $('o-ex'), playT = $('b-play-t');
+function syncEx(){ const pc = Math.round(st.t*100); rEx.value = pc; oEx.textContent = pc + '%'; playT.textContent = st.t > .5 ? '装配' : '爆炸'; }
+rEx.addEventListener('input', ()=>{ st.tTarget = null; st.t = rEx.value/100; syncEx(); });
+$('b-play').addEventListener('click', ()=>{ const g = st.t > .5 ? 0 : 1; if(prefersReduced){ st.t = g; syncEx(); } else st.tTarget = g; });
+const bLbl = $('b-lbl'); bLbl.setAttribute('aria-pressed', String(st.labels));
+bLbl.addEventListener('click', ()=>{ st.labels = !st.labels; bLbl.setAttribute('aria-pressed', String(st.labels)); relayout(); });
+function toggleBom(on){ $('bom').hidden = !on; $('b-bom').setAttribute('aria-pressed', String(on)); relayout(); }
+$('b-bom').addEventListener('click', ()=>toggleBom($('bom').hidden));
+$('bom-close').addEventListener('click', ()=>toggleBom(false));
+$('b-cut').addEventListener('click', e=>{ st.cut = !st.cut; e.currentTarget.setAttribute('aria-pressed', String(st.cut)); applyVisibility(); });
+$('b-cage').addEventListener('click', e=>{ st.cage = !st.cage; e.currentTarget.setAttribute('aria-pressed', String(st.cage)); applyVisibility(); });
+
+/* principle controls */
+function syncRun(){ $('b-run-t').textContent = st.running ? '暂停' : '播放'; }
+$('b-run').addEventListener('click', ()=>{ st.running = !st.running; st.stepTo = null; syncRun(); });
+$('b-step').addEventListener('click', ()=>{ st.running = false; syncRun(); const base = st.stepTo ?? st.thE; st.stepTo = 30*D2R*Math.floor(base/(30*D2R) + 1e-6) + 30*D2R; });
+$('b-seq').addEventListener('click', e=>{ st.seq = -st.seq; e.currentTarget.setAttribute('aria-pressed', String(st.seq < 0)); drawCharts(true); });
+$('r-sp').addEventListener('input', e=>{ st.speed = e.target.value/100; $('o-sp').textContent = st.speed.toFixed(1) + '×'; });
+syncRun();
+
+/* motor / generator controls */
+function syncGrid(){ for(const id of ['b-grid','b-grid2']){ const b = $(id); b.setAttribute('aria-pressed', String(st.grid)); b.textContent = st.grid ? '电网 通' : '电网 断'; } }
+$('b-grid').addEventListener('click', ()=>{ st.grid = !st.grid; syncGrid(); lastState = ''; });
+$('b-grid2').addEventListener('click', ()=>{ st.grid = !st.grid; if(st.grid && st.runaway){ st.n = 1.02; st.runaway = false; } syncGrid(); lastState = ''; });
+$('b-start').addEventListener('click', ()=>{ st.n = 0; st.grid = true; syncGrid(); lastState = ''; });
+$('r-load').addEventListener('input', e=>{ st.load = e.target.value/100; $('o-load').textContent = e.target.value + '%'; });
+$('r-drive').addEventListener('input', e=>{ st.drive = e.target.value/100; $('o-drive').textContent = e.target.value + '%'; if(st.runaway && st.drive < TMAX){ st.runaway = false; st.n = 1.05; } });
+
+/* ───────── loop ───────── */
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(.05, (now - last)/1000); last = now;
+  if(!model) return;
+  if(st.tTarget !== null){
+    const d = Math.sign(st.tTarget - st.t); st.t += d*dt*.45;
+    if((d > 0 && st.t >= st.tTarget) || (d < 0 && st.t <= st.tTarget) || d === 0){ st.t = st.tTarget; st.tTarget = null; }
+    syncEx();
+  }
+  orientRoot();
+  updateRun(prefersReduced && st.mode === 'principle' && st.stepTo === null && !st.running ? 0 : dt);
+  applyPose();
+  autoFrame(false);
+  root.updateMatrixWorld(true);
+  box.makeEmpty(); for(const m of meshes) if(visibleMesh(m) && !m.userData.item.cap) box.expandByObject(m);
+  ground.position.y = box.min.y - .0004;
+  ground.material.opacity = .38*(st.mode === 'struct' ? (1 - Math.min(1, st.t*1.5)) : 1);
+  controls.update();
+  renderer.render(scene, camera);
+  updateLabels();
+  drawOverlay();
+  drawCharts(false);
+}
+new ResizeObserver(resize).observe(canvas);
+// panels change size when their text changes: re-frame the model so nothing hides behind them
+let lastPanelH = '';
+new ResizeObserver(()=>{
+  const k = ['bom','pPanel','rPanel','info'].map(id=>$(id).hidden ? 0 : Math.round($(id).getBoundingClientRect().height)).join(',');
+  if(k !== lastPanelH){ lastPanelH = k; if(model && !st.moved) relayout(); }
+}).observe(document.body);
+for(const id of ['bom','pPanel','rPanel','info']) new ResizeObserver(()=>{ if(model && !st.moved){ const k = ['bom','pPanel','rPanel','info'].map(i=>$(i).hidden ? 0 : Math.round($(i).getBoundingClientRect().height)).join(','); if(k !== lastPanelH){ lastPanelH = k; relayout(); } } }).observe($(id));
+readColors(); syncEx();
+requestAnimationFrame(frame);
+load().then(g=>{ setup(g); resize(); }).catch(err=>{ $('ld-t').textContent = '模型加载失败：' + (err && err.message || err); console.error(err); });
+window.__motor = { st, setMode, camera, controls, ph, get DIR(){ return DIR; } };
+</script>
