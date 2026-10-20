@@ -386,20 +386,21 @@ def set_engine(kind):
 
 
 def make_materials():
-    # 金属度封顶 0.8、粗糙度至少 0.3：虚幻工作室里没有反射探针，金属度 1 的镜面铝会反射成黑块
+    # 金属度都压在 0.55 以下：虚幻工作室里没有反射探针，金属反射的是黑的环境，金属度 0.8 的铝在虚幻里已经发黑了（实测）。
+    # 所以铝用"亮灰 + 低金属度"来近似，Blender 里看起来稍微偏塑料一点
     return dict(
-        alu=principled('M_Alu', '#b8bdc4', .8, .34),
-        alu_dark=principled('M_Alu_Anodized', '#8e949c', .7, .4),
-        steel=principled('M_Steel', '#a3a8ae', .8, .3),
-        brass=principled('M_Brass', '#c9a24a', .8, .32),
-        copper=principled('M_Copper_Handle', '#b8743a', .8, .34),
-        black=principled('M_Black_Oxide', '#1e1f22', .3, .45),
+        alu=principled('M_Alu', '#c3c8ce', .35, .38),
+        alu_dark=principled('M_Alu_Anodized', '#8e949c', .35, .42),
+        steel=principled('M_Steel', '#a9aeb4', .5, .32),
+        brass=principled('M_Brass', '#d0a84e', .55, .35),
+        copper=principled('M_Copper_Handle', '#c07a3e', .55, .36),
+        black=principled('M_Black_Oxide', '#25272b', .2, .5),
         hole=principled('M_Hole', '#0b0b0c', 0, .8),
         rubber=principled('M_Rubber', '#141416', 0, .85),
-        motor=principled('M_Motor_Can', '#3b3f45', .6, .42),
+        motor=principled('M_Motor_Can', '#4a4f56', .3, .45),
         belt=principled('M_Belt', '#1b1b1b', 0, .8),
         cable=principled('M_Cable', '#121212', 0, .55),
-        tool=principled('M_HSS_Tool', '#6f757c', .8, .3),
+        tool=principled('M_HSS_Tool', '#7a8088', .5, .32),
     )
 
 
