@@ -56,20 +56,26 @@ if not exist "%~dp0output\drone.blend" (
 
 :menu
 echo.
-echo Done. output\drone.blend is ready.
+echo Done. output\drone.blend and the offline web viewer are ready.
 echo   Frames 1-449    flight demo     (take-off, figure-8 through two gates, landing)
 echo   Frames 450-894  thrust demo     (throttle, yaw, roll, pitch - bars show each motor)
 echo   Frames 895-1195 exploded view   (turntable: take apart, hold, put back)
 echo.
-echo   [1] Open in Blender  (press Space to play)
-echo   [2] Render MP4 video (EEVEE, 1280x720, 1195 frames, uses GPU, several minutes)
-echo   [3] Render 4 preview PNGs (Cycles)
-echo   [4] Quit
-choice /c 1234 /n /m "Choose 1-4: "
+echo   [1] Open the web viewer (offline html, works on phone too)
+echo   [2] Open in Blender  (press Space to play)
+echo   [3] Render MP4 video (EEVEE, 1280x720, 1195 frames, uses GPU, several minutes)
+echo   [4] Render 4 preview PNGs (Cycles)
+echo   [5] Quit
+choice /c 12345 /n /m "Choose 1-5: "
 set "PICK=%errorlevel%"
-if "%PICK%"=="1" goto blend
-if "%PICK%"=="2" goto video
-if "%PICK%"=="3" goto stills
+if "%PICK%"=="1" goto web
+if "%PICK%"=="2" goto blend
+if "%PICK%"=="3" goto video
+if "%PICK%"=="4" goto stills
+goto end
+
+:web
+for %%F in ("%~dp0output\*.html") do start "" "%%F"
 goto end
 
 :blend
