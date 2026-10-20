@@ -21,6 +21,8 @@
 
 兼容: Blender 4.2 ~ 5.x
 """
+import base64
+import json
 import math
 import os
 import sys
@@ -1309,21 +1311,27 @@ def build_hud(cam, tag, f0, f1, captions):
             bar.keyframe_insert('scale', index=1, frame=f)
 
 
+def captions():
+    """字幕：(起始帧, 结束帧, 中文, 英文)。Blender 画面和网页共用"""
+    return dict(
+        flight=[(F_CLIMB[0], F_LAND[1], '8 字航线：每次转弯、改方向的瞬间，四个电机的推力都不一样',
+                 'Figure-8: whenever the drone turns, the four motors push differently')],
+        demo=[(F_DEMO, D_YAW[0] - 8, '油门：四个电机一起加速 → 总推力大于重力 → 上升',
+               'Throttle: all four speed up -> thrust > weight -> climb'),
+              (D_YAW[0] - 8, D_ROLL[0] - 8, '偏航：顺时针桨和逆时针桨一快一慢 → 反扭矩不再抵消 → 机头转动',
+               'Yaw: CW pair vs CCW pair -> reaction torques no longer cancel -> nose turns'),
+              (D_ROLL[0] - 8, D_PITCH[0] - 8, '横滚：左右两侧一快一慢 → 机身侧倾 → 推力有了水平分量 → 横移',
+               'Roll: left vs right -> body banks -> thrust tilts -> slides sideways'),
+              (D_PITCH[0] - 8, D_DOWN[0], '俯仰：前后两组一快一慢 → 低头前进，抬头刹车',
+               'Pitch: front vs rear -> nose down to go, nose up to brake'),
+              (D_DOWN[0], F_CUT, '降落：四个电机一起减速', 'Land: all four slow down together')])
+
+
 def build_huds(chase, cam_d):
     load_font()
-    build_hud(chase, 'F', 1, F_DEMO, [
-        (F_CLIMB[0], F_LAND[1], '8 字航线：每次转弯、改方向的瞬间，四个电机的推力都不一样',
-         'Figure-8: whenever the drone turns, the four motors push differently')])
-    build_hud(cam_d, 'D', F_DEMO, F_CUT, [
-        (F_DEMO, D_YAW[0] - 8, '油门：四个电机一起加速 → 总推力大于重力 → 上升',
-         'Throttle: all four speed up -> thrust > weight -> climb'),
-        (D_YAW[0] - 8, D_ROLL[0] - 8, '偏航：顺时针桨和逆时针桨一快一慢 → 反扭矩不再抵消 → 机头转动',
-         'Yaw: CW pair vs CCW pair -> reaction torques no longer cancel -> nose turns'),
-        (D_ROLL[0] - 8, D_PITCH[0] - 8, '横滚：左右两侧一快一慢 → 机身侧倾 → 推力有了水平分量 → 横移',
-         'Roll: left vs right -> body banks -> thrust tilts -> slides sideways'),
-        (D_PITCH[0] - 8, D_DOWN[0], '俯仰：前后两组一快一慢 → 低头前进，抬头刹车',
-         'Pitch: front vs rear -> nose down to go, nose up to brake'),
-        (D_DOWN[0], F_CUT, '降落：四个电机一起减速', 'Land: all four slow down together')])
+    cap = captions()
+    build_hud(chase, 'F', 1, F_DEMO, cap['flight'])
+    build_hud(cam_d, 'D', F_DEMO, F_CUT, cap['demo'])
 
 
 def ease(x):
@@ -1554,6 +1562,88 @@ def render_video():
             print('[OK] video', dst)
 
 
+# ---------------------------------------------------------------- 网页查看器（glb + 运动数据）
+PART_INFO = {   # 对象名（去掉 _FR 这类后缀）→ (编号, 说明)
+    'P01_Frame': (1, '3 mm 碳板：中央板 + 四条臂 + 电机座。其他零件都装在它上面。'),
+    'P02_Standoffs': (2, '25.5 mm 孔距的尼龙立柱，把电调、飞控、图传三层板叠起来，中间留出走线和散热空间。'),
+    'P03_Foot': (3, '落地缓冲，也让涵道底面不直接蹭地。'),
+    'P04_Duct': (4, '保护桨。桨尖和内壁单边只留 1 mm，能减少桨尖涡流；外侧 8 条加强筋提高刚性。'),
+    'P05_Motor': (5, '外转子无刷电机：钟罩带着桨一起转。三根相线沿机臂焊到电调焊盘。'),
+    'P06_Prop': (6, '前橙后灰，一眼看出机头方向。正桨和反桨叶片是镜像的，装错位置会直接翻机。'),
+    'P07_ESC': (7, '每个电机 6 颗 MOS 管组成三相桥，按飞控的指令决定电机转多快。电源线上的电容吸收电压尖峰。'),
+    'P08_FC': (8, '读陀螺仪算姿态，再由混控器把“想要的力矩”分配给四个电机。左侧 USB-C 用来调参。'),
+    'P09_VTX': (9, '把相机画面发给眼镜。屏蔽罩上的铝散热片负责散热，两个 MMCX 座接天线。'),
+    'P10_Canopy': (10, 'TPU 机身罩：保护飞控塔，开有 USB 口、散热格栅和前后走线孔。'),
+    'P11_CamMount': (11, 'TPU 软支架吸收振动；两侧转轴可以调相机仰角。'),
+    'P12_Camera': (12, '上仰 15°：平飞时机身前倾，相机上仰才能拍到地平线。'),
+    'P13_Battery': (13, '4S 锂电池，标称 14.8 V。XT30 插头接电调的电源线。'),
+    'P14_Strap': (14, '从机架底面绕上来，把电池压在机身罩顶上。拆机第一步就是松开它。'),
+    'P15_Antennas': (15, '两根天线做分集接收，同轴线接到图传的 MMCX 座。'),
+}
+
+
+def export_web(glb_path):
+    """导出网页用的 glb（只含飞机零件）+ 运动数据，再填进网页模板"""
+    sc = bpy.context.scene
+    sc.frame_set(1)
+    for ob in sc.objects:
+        ob.select_set(False)
+    for d in OBJS:
+        ob = d['ob']
+        key = ob.name[:-3] if ob.name[-3:] in ('_FR', '_FL', '_RR', '_RL') else ob.name
+        no, desc = PART_INFO.get(key, (0, ''))
+        ob['part'] = key
+        ob['no'] = no
+        ob['desc'] = desc
+        ob['ex'] = json.dumps([[e[0], e[2], -e[1], e[3]] for e in d['ex']])   # glTF 坐标 (x, z, -y)，mm
+        ob.select_set(True)
+    kw = dict(filepath=glb_path, export_format='GLB', use_selection=True, export_apply=True, export_extras=True,
+              export_yup=True, export_animations=False, export_cameras=False, export_lights=False)
+    try:
+        bpy.ops.export_scene.gltf(**kw)
+    except TypeError:
+        for k in ('export_animations', 'export_cameras', 'export_lights'):
+            kw.pop(k, None)
+        bpy.ops.export_scene.gltf(**kw)
+    print('[OK] exported', glb_path)
+
+    p0 = MOTION[1]['p']
+    rows = []
+    for f in range(1, F_CUT):
+        m = MOTION[f]
+        p, q = m['p'] - p0, m['q']
+        rows.append([round(p.x, 4), round(p.z, 4), round(-p.y, 4),
+                     round(q.x, 5), round(q.z, 5), round(-q.y, 5), round(q.w, 5)]
+                    + [round(w, 2) for w in m['w']] + [round(v, 4) for v in m['dev']] + [round(m['col'], 4)])
+    cn = {'FR': '右前', 'FL': '左前', 'RR': '右后', 'RL': '左后'}
+    cap = captions()
+    data = dict(fps=FPS, p0=[p0.x, p0.z, -p0.y], frames=rows,
+                seg=dict(flight=[1, F_DEMO - 1], demo=[F_DEMO, F_CUT - 1]),
+                motors=[dict(tag=t, spin=s, cn=cn[t]) for t, _, s in MOTORS],
+                captions={k: [[a, b, zh] for (a, b, zh, en) in v] for k, v in cap.items()},
+                marks=dict(flight=[[F_CLIMB[0], '起飞'], [F_LOOP[0], '8 字'], [F_LAND[0], '降落']],
+                           demo=[[D_UP[0], '油门'], [D_YAW[0], '偏航'], [D_ROLL[0], '横滚'], [D_PITCH[0], '俯仰'],
+                                 [D_DOWN[0], '降落']]),
+                gates=[[-GATE_X, H, 0], [GATE_X, H, 0]], H=H, display=DISPLAY_Z,
+                params=dict(mass=MASS, kq=KQ, inertia=list(INERTIA), fmax=F_MAX))
+    with open(os.path.join(OUT, 'motion.json'), 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+    tpl = os.path.join(HERE, 'viewer_template.html')
+    if not os.path.exists(tpl):
+        print('[WARN] viewer_template.html not found, skip html')
+        return
+    with open(tpl, encoding='utf-8') as f:
+        html = f.read()
+    with open(glb_path, 'rb') as f:
+        b64 = base64.b64encode(f.read()).decode('ascii')
+    html = html.replace('"__GLB_BASE64__"', '"' + b64 + '"')
+    html = html.replace('"__DRONE_JSON__"', json.dumps(data, ensure_ascii=False, separators=(',', ':')))
+    dst = os.path.join(OUT, '涵道无人机_离线版.html')
+    with open(dst, 'w', encoding='utf-8') as f:
+        f.write(html)
+    print('[OK] wrote', dst)
+
+
 def main():
     global ROOT
     reset()
@@ -1579,6 +1669,7 @@ def main():
     animate_explode()
     build_huds(chase, cam_d)
     viewport_defaults()
+    export_web(os.path.join(OUT, 'drone.glb'))
     bpy.context.scene.frame_set(1)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, 'drone.blend'))
     print('[OK] saved drone.blend')

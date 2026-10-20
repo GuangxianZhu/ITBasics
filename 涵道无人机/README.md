@@ -3,6 +3,16 @@
 一架**原创**的 3 寸涵道穿越机（cinewhoop），全部零件由 `build_drone.py` 在 Blender 里用代码生成，不对应任何厂家的产品。
 同一个 `.blend` 里有三段动画：飞行演示、差速原理演示、爆炸图。
 
+- **网页版（手机可看）**：<https://claude.ai/artifact/GpBJNdB83s9xmy1DG6f9G3>（默认只有自己能打开，要给别人看需在页面的 Share 里开启分享）
+- **离线版**：运行一次 `启动.bat` 后，`output\` 里会有 `涵道无人机_离线版.html`，双击即可，不用联网
+
+网页有三个模式：
+- **结构**：拖“拆开”滑杆看爆炸图；点模型或零件表里的零件，看它是什么、起什么作用。
+- **飞行**：回放 8 字航线。虚线是航迹，右边是四个电机的推力条。
+- **差速**：回放油门 → 偏航 → 横滚 → 俯仰，字幕和推力条一起解释每一步。
+
+网页里的动作和推力数据，都是建模脚本算好后导出的，和 Blender 里的动画完全一致。
+
 | 飞行（弯道里侧倾约 37°） | 差速原理（偏航：顺/逆时针桨一快一慢） |
 |---|---|
 | ![飞行](preview/render_flight.jpg) | ![差速](preview/render_demo.jpg) |
@@ -17,9 +27,10 @@
 2. 找 Blender（`blender_path.txt` → PATH → `Program Files\Blender Foundation\Blender*` → Steam）
 3. 后台运行 `build_drone.py`，十几秒生成 `output\drone.blend`
 4. 让你选：
-   - **[1] 用 Blender 打开**：按空格播放。时间线上有标记，会自动切相机
-   - **[2] 渲染 MP4 视频**：EEVEE，1280×720，1195 帧（约 40 秒），用显卡，几分钟 → `output\drone_demo.mp4`
-   - **[3] 渲染 4 张预览图**：Cycles → `output\render_*.png`
+   - **[1] 打开网页查看器**：离线版 html
+   - **[2] 用 Blender 打开**：按空格播放。时间线上有标记，会自动切相机
+   - **[3] 渲染 MP4 视频**：EEVEE，1280×720，1195 帧（约 40 秒），用显卡，几分钟 → `output\drone_demo.mp4`
+   - **[4] 渲染 4 张预览图**：Cycles → `output\render_*.png`
 
 找不到 Blender 时，把 `blender.exe` 的完整路径写进同目录的 `blender_path.txt`（这个文件不会提交到 git）。
 支持 Blender 4.2 ~ 5.x。字幕用系统里的中文字体（微软雅黑 / 黑体 / 游ゴシック / Meiryo，按顺序找）；一个都找不到时自动换成英文字幕。
@@ -158,5 +169,8 @@
 | 文件 | 说明 |
 |---|---|
 | `启动.bat` | 一键启动（ASCII、CRLF） |
-| `build_drone.py` | Blender 建模 + 动画脚本（bmesh 建模，布尔用 EXACT 求解器） |
+| `build_drone.py` | Blender 建模 + 动画脚本（bmesh 建模，布尔用 EXACT 求解器）；同时导出 `drone.glb` 和 `motion.json` 给网页用 |
+| `viewer_src.html` | 网页查看器源码（three.js r170 走 CDN，claude.ai 上的网页版就是它） |
+| `viewer_template.html` | 离线网页模板（three.js 已打包在内，建模脚本把模型和运动数据填进去） |
+| `tools/make_template.mjs` | 把 `viewer_src.html` 打包成 `viewer_template.html`，只有改了网页才需要跑（要 Node） |
 | `preview/` | README 用的预览图 |
