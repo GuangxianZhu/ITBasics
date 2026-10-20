@@ -4,7 +4,7 @@
 
 照着一台常见的 8 合 1 迷你桌面车床（铝合金底板 + 直线导轨床身）的产品图建的，没有图纸，尺寸都是按比例估的：
     整机长约 37 cm（含两个手轮把手和 DC 插头），高约 13.5 cm；
-    卡盘 Φ64、中心高（主轴轴线离底板顶面）87 mm，手轮 Φ38（约为卡盘的 0.6 倍）。
+    卡盘 Φ50、中心高（主轴轴线离底板顶面）87 mm，手轮 Φ38。
 估算依据见 README.md。
 
 用法（一般不用手动跑，双击 启动.bat 即可）:
@@ -493,15 +493,15 @@ INFO = {
     4: ('直线导轨', 'GCr15 轴承钢，淬火磨削', '拖板和尾座都骑在这根导轨上左右滑动。一排沉孔是固定导轨的螺钉孔。'),
     5: ('丝杠', '45 钢，梯形螺纹 T8 × 2', '转动左端手轮，丝杠带着拖板下面的螺母左右走，就是"纵向进给"：车刀沿工件轴线走一刀。'),
     6: ('纵向进给手轮', '铝合金手轮 + 黄铜手柄', '装在丝杠左端。摇一圈拖板走 2 mm（一个螺距），手摇的快慢就是进给速度。'),
-    7: ('主轴箱', '6061 铝合金', '里面一对轴承撑住主轴，让主轴只能转、不能晃。主轴箱和床身的对中决定了车出来的是圆柱还是锥。'),
+    7: ('主轴箱', '6061 铝合金主轴套 + 立板', '里面一对轴承撑住主轴，让主轴只能转、不能晃。主轴箱和床身的对中决定了车出来的是圆柱还是锥。'),
     8: ('主轴', '40Cr 钢，调质', '左端装卡盘，右端装皮带轮。电机通过皮带带它转，工件跟着一起转。'),
-    9: ('三爪卡盘', '铝合金盘体 + 黑色钢背板', '拧卡盘侧面的方孔，三个卡爪同步向中心收紧，工件自动对中夹牢。'),
+    9: ('三爪卡盘', '钢制盘体 + 黑色连接盘', '拧卡盘侧面的方孔，三个卡爪同步向中心收紧，工件自动对中夹牢。'),
     10: ('卡爪', '45 钢，淬火', '三个卡爪由卡盘里的平面螺纹盘同时推动，所以总是一起进、一起退，自动定心。台阶面可以反夹大直径工件。'),
     11: ('工件（黄铜棒）', 'H59 黄铜 Φ18', '被卡盘夹住跟着主轴转，车刀从侧面切下一层层铜屑。黄铜软、切屑短，最适合小车床练手。'),
     12: ('拖板（大拖板）', '6061 铝合金', '骑在导轨上，由丝杠带着左右走。前面的方孔和两个小块是燕尾滑块的压板，顶上是安装十字滑台的螺孔。'),
     13: ('十字滑台（中拖板）', '6061 铝合金', '在拖板上前后移动，控制车刀切进工件多深（横向进给 = 吃刀深度）。'),
     14: ('横向刻度手轮', '铝合金 + 刻度环', '摇它让十字滑台前后走。刻度环一格 0.02 mm：车刀往里进 0.1 mm，工件直径就小 0.2 mm。'),
-    15: ('四方刀架', '45 钢，发黑', '四个面都能夹车刀，转 90° 就换一把刀，不用重新对刀。'),
+    15: ('四方刀架', '6061 铝合金 + 黑色内六角压紧螺钉', '四个面都能夹车刀，转 90° 就换一把刀，不用重新对刀。'),
     16: ('刀架压紧螺钉', '12.9 级内六角螺钉', '从上往下把车刀压在刀架里。车刀伸出越短越不容易振。'),
     17: ('车刀', '高速钢 HSS 8 × 8', '刀尖要对准主轴中心高：高了会顶、低了会啃。'),
     18: ('尾座', '6061 铝合金', '骑在导轨上，可以沿床身滑到任意位置再锁紧。里面的套筒能前后伸缩，用来顶住长工件或者钻孔。'),
@@ -566,7 +566,7 @@ EX = dict(
     handwheel_z=[(-40, 0, 0, .06)],
     toolpost=[(0, 0, 55, .10)],
     tool=[(0, 0, 55, .10), (0, -30, 0, .16)],
-    cross_wheel=[(0, -35, 0, .14)],
+    cross_wheel=[(0, 35, 0, .14)],
     cross_slide=[(0, 0, 30, .20)],
     work=[(0, -60, 0, .24)],
     carriage=[(0, 0, 10, .28)],
@@ -643,18 +643,14 @@ def build_leadscrew(M):
 
 
 def build_headstock(M):
+    """照片里的主轴箱：一个横放的铝圆筒（主轴套），坐在皮带罩前面的立板上"""
     mats = [M['alu'], M['hole'], M['steel']]
     bm = bmesh.new()
-    boxf(bm, (95, -25, BT), (150, 35, 130), 0)
-    rev(bm, [(16, 0), (23, 0), (23, 2.5), (16, 2.5)], 0, '-X', (95, 0, CZ), seg=48, closed=True)   # 轴承压盖
-    for k in range(4):
-        a = pi / 4 + k * pi / 2
-        disk(bm, 2, (92.5, 19.5 * cos(a), CZ + 19.5 * sin(a)), '-X', 1)
-    for y, z in ((-12, 30), (22, 30), (-12, 118), (22, 118)):     # 前面、顶面的螺钉
-        disk(bm, 2.8, (95, y, z), '-X', 1)
-    for x in (105, 140):
-        disk(bm, 2.8, (x, 5, 130), 'Z', 1)
-    finish('P07_Headstock', 7, bm, mats, ex=EX['headstock'], bevel=1.5)
+    rev(bm, [(0, 92), (27, 92), (28, 93), (28, 149), (27, 150), (0, 150)], 0, 'X', (0, 0, CZ), seg=64)   # 主轴套
+    boxf(bm, (100, 0, BT), (146, 26, CZ - 12), 0)                                                         # 立板
+    for k in range(4):                                                                                    # 后面的锁紧螺钉
+        disk(bm, 2.2, (104 + k * 12, 26, CZ - 30), 'Y', 1)
+    finish('P07_Headstock', 7, bm, mats, ex=EX['headstock'], bevel=1.0)
 
     bm = bmesh.new()
     rev(bm, [(0, 0), (7, 0), (8, 1), (8, 88), (0, 88)], 0, 'X', (70, 0, CZ), seg=32)
@@ -663,29 +659,29 @@ def build_headstock(M):
 
 def build_chuck(M):
     bm = bmesh.new()
-    rev(bm, [(0, 85), (33, 85), (33, 95), (0, 95)], 1, 'Z', seg=64)                 # 黑色背板
-    rev(bm, [(0, 64), (28, 64), (31.5, 65), (32, 67), (32, 85), (0, 85)], 0, 'Z', seg=64)   # 盘体
-    xform(bm, bm.faces, Matrix.Translation(Vector((0, 0, CZ))) @ ROT['X'] @ Matrix.Translation(Vector((0, 0, 0))))
+    rev(bm, [(0, 86), (27, 86), (27, 92), (0, 92)], 1, 'Z', seg=64)                  # 黑色连接盘
+    rev(bm, [(0, 68), (22, 68), (24.5, 69), (25, 71), (25, 86), (0, 86)], 0, 'Z', seg=64)   # 盘体
+    xform(bm, bm.faces, Matrix.Translation(Vector((0, 0, CZ))) @ ROT['X'])
     # ROT['X'] 把局部 Z 转成 X：上面两段沿轴坐标就是 X
-    disk(bm, 9.5, (63.7, 0, CZ), '-X', 2, h=.35)                                          # 中心孔
+    disk(bm, 8, (67.7, 0, CZ), '-X', 2, h=.35)                                            # 中心孔
     for k in range(3):                                                                    # 侧面 3 个扳手方孔
         a = pi / 3 + 2 * pi * k / 3
         d = Vector((0, cos(a), sin(a)))
-        c = Vector((76, 0, CZ)) + d * 31.8
-        fs = rod(bm, 2.6, 0, .5, 2, 'Z', (0, 0, 0), seg=4)
+        c = Vector((78, 0, CZ)) + d * 24.8
+        fs = rod(bm, 2.4, 0, .5, 2, 'Z', (0, 0, 0), seg=4)
         mt = Matrix.Translation(c) @ d.to_track_quat('Z', 'X').to_matrix().to_4x4()
         xform(bm, fs, mt)
-    finish('P09_Chuck', 9, bm, [M['alu'], M['black'], M['hole']], ex=EX['chuck'], bevel=.6)
+    finish('P09_Chuck', 9, bm, [M['steel'], M['black'], M['hole']], ex=EX['chuck'], bevel=.6)
 
     for k in range(3):
         a = pi / 2 + 2 * pi * k / 3
         d = Vector((0, cos(a), sin(a)))
         t = Vector((0, -sin(a), cos(a)))
         bm = bmesh.new()
-        # 局部坐标：x = 轴向（主轴 X），y = 径向，z = 切向
-        boxf(bm, (55, 9, -4), (64, 18, 4), 0)
-        boxf(bm, (58, 18, -4), (64, 25, 4), 0)
-        boxf(bm, (61, 25, -4), (64, 30, 4), 0)
+        # 局部坐标：x = 轴向（主轴 X），y = 径向，z = 切向。台阶爪：越往外越短
+        boxf(bm, (58, 9, -3.5), (68, 16, 3.5), 0)
+        boxf(bm, (61, 16, -3.5), (68, 20, 3.5), 0)
+        boxf(bm, (64, 20, -3.5), (68, 23.5, 3.5), 0)
         mt = Matrix(((1, 0, 0, 0), (0, d.y, t.y, 0), (0, d.z, t.z, CZ), (0, 0, 0, 1)))
         xform(bm, bm.faces, mt)
         ex = [(0, 18 * d.y, 18 * d.z, .30)] + EX['chuck']
@@ -718,8 +714,8 @@ def build_carriage(M):
     finish('P13_CrossSlide', 13, bm, mats, ex=EX['cross_slide'], bevel=.8)
 
     bm = bmesh.new()
-    rod(bm, 2.5, 0, 6, 1, '-Y', (10, -38, 85), seg=16)           # 轴
-    rev(bm, [(0, 0), (9, 0), (9, 5), (0, 5)], 2, '-Y', (10, -42, 85), seg=48)    # 刻度环
+    rod(bm, 2.5, 0, 6, 1, 'Y', (10, 30, 85), seg=16)           # 轴
+    rev(bm, [(0, 0), (9, 0), (9, 5), (0, 5)], 2, 'Y', (10, 34, 85), seg=48)    # 刻度环
     fs = []
     for k in range(25):                                          # 刻度线
         a = 2 * pi * k / 25
@@ -729,16 +725,16 @@ def build_carriage(M):
         bmesh.ops.scale(bm, vec=Vector((.35, 2.5, L)), verts=vs)
         bmesh.ops.translate(bm, vec=Vector((0, 0, 9 - L / 2 + .2)), verts=vs)
         bmesh.ops.rotate(bm, cent=Vector((0, 0, 0)), matrix=Matrix.Rotation(a, 3, 'Y'), verts=vs)
-        bmesh.ops.translate(bm, vec=Vector((10, -43.5, 85)), verts=vs)
+        bmesh.ops.translate(bm, vec=Vector((10, 36.5, 85)), verts=vs)
         for f in {f for v in vs for f in v.link_faces}:
             f.material_index = 1
-    handwheel(bm, 11, (10, -47, 85), '-Y', 0, 3, handle_len=12, handle_r=2.3)
+    handwheel(bm, 11, (10, 39, 85), 'Y', 0, 3, handle_len=12, handle_r=2.3)
     finish('P14_CrossWheel', 14, bm, [M['alu'], M['black'], M['alu_dark'], M['copper']], ex=EX['cross_wheel'], smooth=40)
 
     bm = bmesh.new()
     boxf(bm, (5, -45, 90), (35, -15, 116), 0)
     boxf(bm, (5.5, -45.3, 92), (34.5, -45, 101), 1)            # 正面夹刀槽
-    finish('P15_ToolPost', 15, bm, [M['black'], M['hole']], ex=EX['toolpost'], bevel=.8)
+    finish('P15_ToolPost', 15, bm, [M['alu'], M['hole']], ex=EX['toolpost'], bevel=.8)
 
     for i, (x, y) in enumerate(((12, -38), (28, -38), (12, -22), (28, -22))):
         bm = bmesh.new()
@@ -800,6 +796,7 @@ def build_drive(M):
     bm = bmesh.new()
     extrude(bm, [outer, inner[::-1]], 150, 161, 0, axis='X')
     extrude(bm, [outer], 161, 164, 0, axis='X')
+    extrude(bm, [outer], 148.5, 150, 0, axis='X')
     for y, z in ((0, CZ), (MOT[0], MOT[1])):
         disk(bm, 2.6, (164, y, z), 'X', 1)
     finish('P22_BeltCover', 22, bm, [M['alu'], M['hole']], ex=EX['cover'], bevel=1.0)
