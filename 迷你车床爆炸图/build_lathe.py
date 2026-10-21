@@ -344,10 +344,6 @@ def shade(me, ang):
         me.auto_smooth_angle = radians(ang)
 
 
-# ---------------------------------------------------------------- 零件登记
-ROOT = None         # 空物体 Drone（飞行动画只动它）
-OBJS = []           # dict(ob, base, ex)  base/ex 单位 mm（Drone 局部坐标）
-PROPS = []          # (prop_ob, disc_ob, spin)
 
 
 def set_engine(kind):
@@ -401,6 +397,11 @@ def make_materials():
         belt=principled('M_Belt', '#1b1b1b', 0, .8),
         cable=principled('M_Cable', '#121212', 0, .55),
         tool=principled('M_HSS_Tool', '#7a8088', .5, .32),
+        label=principled('M_Label', '#d9d4c3', 0, .6),
+        lamination=principled('M_Lamination', '#5b6068', .45, .4),
+        magnet_n=principled('M_Magnet_N', '#9a3b35', .1, .5),
+        magnet_s=principled('M_Magnet_S', '#35529a', .1, .5),
+        carbon=principled('M_Carbon_Brush', '#1d1d1f', 0, .7),
     )
 
 
@@ -472,12 +473,77 @@ def handwheel(bm, R, c, axis, mi_wheel, mi_handle, handle_len=22.0, handle_r=3.5
     fs = []
     fs += revolve(bm, [(0, 0), (7, 0), (7, 1), (R - 1.5, 1), (R, 2.5), (R, 7.5), (R - 1.5, 9), (R - 5, 9),
                        (R - 6.5, 6), (8.5, 6), (7.5, 12), (0, 12)], mi_wheel, seg=56, closed=False)
-    hx, hy = R * .68, 0.0
-    fs += revolve(bm, [(0, 9), (handle_r - 1, 9), (handle_r, 13), (handle_r, 9 + handle_len - 3),
-                       (handle_r - 1.2, 9 + handle_len), (0, 9 + handle_len)], mi_handle, seg=20, closed=False,
-                  cy=hx, cz=hy)
+    if mi_handle is not None:
+        fs += revolve(bm, [(0, 9), (handle_r - 1, 9), (handle_r, 13), (handle_r, 9 + handle_len - 3),
+                           (handle_r - 1.2, 9 + handle_len), (0, 9 + handle_len)], mi_handle, seg=20, closed=False,
+                      cy=R * .68, cz=0.0)
+    for k in range(3):                                          # 轮辐面上 3 个减重孔（深色）
+        a = 2 * pi * k / 3 + pi / 3
+        fs += revolve(bm, [(0, 6), (R * .17, 6), (R * .17, 6.25), (0, 6.25)], mi_wheel, seg=16, closed=False,
+                      cy=R * .45 * cos(a), cz=R * .45 * sin(a))
     xform(bm, fs, Matrix.Translation(Vector(c)) @ ROT[axis])
     return fs
+
+
+def handle(bm, R, c, axis, mi, handle_len=22.0, handle_r=3.5):
+    """手轮上的铜手柄（单独一个零件）。坐标约定和 handwheel 一样"""
+    fs = revolve(bm, [(0, 9), (handle_r - 1, 9), (handle_r, 13), (handle_r, 9 + handle_len - 3),
+                      (handle_r - 1.2, 9 + handle_len), (0, 9 + handle_len)], mi, seg=20, closed=False,
+                 cy=R * .68, cz=0.0)
+    xform(bm, fs, Matrix.Translation(Vector(c)) @ ROT[axis])
+    return fs
+
+
+def thread_rod(bm, r_core, depth, pitch, a0, a1, mi, axis='X', c=(0, 0, 0), seg=12, per_pitch=6):
+    """真正的螺旋螺纹（梯形牙）：每一圈顶点的半径按 (轴向位置 / 螺距 + 角度 / 2π) 的小数部分取牙形"""
+    n = max(2, int(round((a1 - a0) / pitch * per_pitch)))
+    rings = []
+    for i in range(n + 1):
+        z = a0 + (a1 - a0) * i / n
+        ring = []
+        for k in range(seg):
+            th = 2 * pi * k / seg
+            ph = (z / pitch + k / seg) % 1.0
+            t = abs(2 * ph - 1)                      # 0 = 牙顶中间，1 = 牙底中间
+            r = r_core + depth * min(1.0, max(0.0, (1 - t) * 1.8 - .2))
+            ring.append(bm.verts.new((r * cos(th), r * sin(th), z)))
+        rings.append(ring)
+    c0 = bm.verts.new((0, 0, a0))
+    c1 = bm.verts.new((0, 0, a1))
+    fs = _bridge(bm, [c0], rings[0])
+    for i in range(n):
+        fs += _bridge(bm, rings[i], rings[i + 1])
+    fs += _bridge(bm, rings[-1], [c1])
+    for f in fs:
+        f.material_index = mi
+    bmesh.ops.recalc_face_normals(bm, faces=fs)
+    xform(bm, fs, Matrix.Translation(Vector(c)) @ ROT[axis])
+    return fs
+
+
+def socket_screw(bm, r, head_h, shank, mi_head, mi_hole, axis, c):
+    """内六角圆柱头螺钉：c = 头部底面中心，局部 +Z = 头朝外的方向；螺杆往 -Z 伸 shank 长"""
+    fs = revolve(bm, [(0, -shank), (r * .55, -shank), (r * .55, 0), (r, 0), (r, head_h - .4), (r - .4, head_h),
+                      (0, head_h)], mi_head, seg=20, closed=False)
+    fs += revolve(bm, [(0, head_h), (r * .45, head_h), (r * .45, head_h + .15), (0, head_h + .15)], mi_hole,
+                  seg=6, closed=False)
+    xform(bm, fs, Matrix.Translation(Vector(c)) @ ROT[axis])
+    return fs
+
+
+def oriented(bm, faces, origin, x_dir, y_dir):
+    """把局部 (x, y, z) 的几何摆到 origin，局部 x → x_dir，y → y_dir，z → x_dir × y_dir"""
+    x, y = Vector(x_dir).normalized(), Vector(y_dir).normalized()
+    z = x.cross(y)
+    mt = Matrix(((x.x, y.x, z.x, origin[0]), (x.y, y.y, z.y, origin[1]), (x.z, y.z, z.z, origin[2]), (0, 0, 0, 1)))
+    xform(bm, faces, mt)
+
+
+def boxl(bm, lo, hi, mi):
+    """和 boxf 一样，但返回面（给 oriented 用）"""
+    before = set(bm.faces)
+    boxf(bm, lo, hi, mi)
+    return [f for f in bm.faces if f not in before]
 
 
 # ---------------------------------------------------------------- 零件登记
@@ -490,22 +556,23 @@ INFO = {
         '整台车床的地基。床身、主轴箱、电机座都用螺钉固定在它上面，底下 4 个橡胶脚垫防滑、减振。'),
     2: ('橡胶脚垫', '丁腈橡胶', '吸收切削振动，也防止车床在桌面上滑动。'),
     3: ('床身', '6061 铝合金型材', '一根长方铝块，顶上装直线导轨，前面装丝杠。床身的直和刚性决定了车出来的工件直不直。'),
-    4: ('直线导轨', 'GCr15 轴承钢，淬火磨削', '拖板和尾座都骑在这根导轨上左右滑动。一排沉孔是固定导轨的螺钉孔。'),
-    5: ('丝杠', '45 钢，梯形螺纹 T8 × 2', '转动左端手轮，丝杠带着拖板下面的螺母左右走，就是"纵向进给"：车刀沿工件轴线走一刀。'),
-    6: ('纵向进给手轮', '铝合金手轮 + 黄铜手柄', '装在丝杠左端。摇一圈拖板走 2 mm（一个螺距），手摇的快慢就是进给速度。'),
-    7: ('主轴箱', '6061 铝合金主轴套 + 立板', '里面一对轴承撑住主轴，让主轴只能转、不能晃。主轴箱和床身的对中决定了车出来的是圆柱还是锥。'),
-    8: ('主轴', '40Cr 钢，调质', '左端装卡盘，右端装皮带轮。电机通过皮带带它转，工件跟着一起转。'),
-    9: ('三爪卡盘', '钢制盘体 + 黑色连接盘', '拧卡盘侧面的方孔，三个卡爪同步向中心收紧，工件自动对中夹牢。'),
-    10: ('卡爪', '45 钢，淬火', '三个卡爪由卡盘里的平面螺纹盘同时推动，所以总是一起进、一起退，自动定心。台阶面可以反夹大直径工件。'),
+    4: ('直线导轨', 'GCr15 轴承钢，淬火磨削', '拖板和尾座的滑块骑在这根导轨上左右滑动。一排沉孔里是固定导轨的螺钉。'),
+    5: ('丝杠', '45 钢，梯形螺纹 T8 × 2', '转动左端手轮，丝杠带着拖板下面的铜螺母左右走，就是"纵向进给"：车刀沿工件轴线走一刀。'),
+    6: ('纵向进给手轮', '铝合金', '装在丝杠左端。摇一圈拖板走 2 mm（一个螺距），手摇的快慢就是进给速度。'),
+    7: ('主轴箱', '6061 铝合金主轴套 + 立板',
+        '主轴套里前后各压一个轴承，把主轴撑住，让它只能转、不能晃。主轴套的轴线和导轨平行，车出来的才是圆柱而不是锥。'),
+    8: ('主轴', '40Cr 钢，调质', '左端装卡盘，右端装皮带轮、用锁紧螺母压住。电机通过皮带带它转，工件跟着一起转。'),
+    9: ('三爪卡盘（盘体）', '钢制盘体 + 黑色连接盘', '盘面上三条径向导槽，卡爪就在槽里滑。侧面的方孔插卡盘扳手，转的是里面的平面螺纹盘。'),
+    10: ('卡爪', '45 钢，淬火', '背面一排弧形齿，啮合在平面螺纹盘的螺旋槽里。螺纹盘一转，三个卡爪同时往里或往外走，工件自动对中。'),
     11: ('工件（黄铜棒）', 'H59 黄铜 Φ18', '被卡盘夹住跟着主轴转，车刀从侧面切下一层层铜屑。黄铜软、切屑短，最适合小车床练手。'),
-    12: ('拖板（大拖板）', '6061 铝合金', '骑在导轨上，由丝杠带着左右走。前面的方孔和两个小块是燕尾滑块的压板，顶上是安装十字滑台的螺孔。'),
+    12: ('拖板（大拖板）', '6061 铝合金', '装在导轨滑块上，下面挂着丝杠螺母，跟着丝杠左右走。顶上是安装十字滑台的螺孔。'),
     13: ('十字滑台（中拖板）', '6061 铝合金', '在拖板上前后移动，控制车刀切进工件多深（横向进给 = 吃刀深度）。'),
-    14: ('横向刻度手轮', '铝合金 + 刻度环', '摇它让十字滑台前后走。刻度环一格 0.02 mm：车刀往里进 0.1 mm，工件直径就小 0.2 mm。'),
-    15: ('四方刀架', '6061 铝合金 + 黑色内六角压紧螺钉', '四个面都能夹车刀，转 90° 就换一把刀，不用重新对刀。'),
+    14: ('横向进给手轮', '铝合金', '摇它，通过横向丝杠让十字滑台前后走。'),
+    15: ('四方刀架', '6061 铝合金', '四个面都能夹车刀，松开中间的手柄螺母转 90° 就换一把刀，不用重新对刀。'),
     16: ('刀架压紧螺钉', '12.9 级内六角螺钉', '从上往下把车刀压在刀架里。车刀伸出越短越不容易振。'),
-    17: ('车刀', '高速钢 HSS 8 × 8', '刀尖要对准主轴中心高：高了会顶、低了会啃。'),
-    18: ('尾座', '6061 铝合金', '骑在导轨上，可以沿床身滑到任意位置再锁紧。里面的套筒能前后伸缩，用来顶住长工件或者钻孔。'),
-    19: ('尾座手轮', '铝合金手轮 + 黄铜手柄', '摇它让尾座套筒伸出 / 缩回：钻孔时就是靠它把钻头推进工件。'),
+    17: ('外圆车刀', '高速钢 HSS 8 × 8', '车外圆、车端面。刀尖要对准主轴中心高：高了会顶、低了会啃。'),
+    18: ('尾座', '6061 铝合金', '装在导轨滑块上，可以沿床身滑到任意位置再锁紧。里面的套筒能前后伸缩，用来顶住长工件或者钻孔。'),
+    19: ('尾座手轮', '铝合金', '摇它，丝杆推着套筒伸出 / 缩回：钻孔时就是靠它把钻头推进工件。'),
     20: ('钻夹头（含过渡套、顶尖）', '钢制钻夹头 + 黄铜过渡套（B10 锥）', '插在尾座套筒前端。夹钻头就能在工件端面中心钻孔；换成顶尖可以顶住细长工件的另一头。'),
     21: ('尾座锁紧螺钉', '滚花铝头 + M6 钢螺杆', '拧紧后套筒就不会被切削力推回去。'),
     22: ('皮带罩', '6061 铝合金', '罩住皮带和皮带轮，防止手指、头发、衣服卷进去。拆皮带前先拆它。'),
@@ -513,9 +580,34 @@ INFO = {
     24: ('主轴皮带轮', '铝合金', 'Φ48，和电机皮带轮的直径比约 2.7 : 1，所以主轴比电机慢 2.7 倍、扭力大 2.7 倍。'),
     25: ('电机皮带轮', '铝合金', 'Φ18，装在电机轴上。'),
     26: ('电机座', '铝合金座 + 两道抱箍', '把电机抱在床身前面，电机轴和主轴平行，皮带才能对齐。'),
-    27: ('直流电机', '775 直流电机 24 V · 铝端盖', '有刷直流电机：电压越高转得越快，调速器改电压就能无级调速。'),
+    27: ('直流电机外壳', '冷轧钢板机壳 · 喷塑', '机壳也是磁路的一部分：两块磁钢的磁力线从一块出来，穿过转子，再经机壳绕回另一块。'),
     28: ('电源线（DC 插头）', 'PVC 护套线 + DC 5.5 × 2.1 插头', '接 24 V 电源适配器，给电机供电。沿着床身前面走线，不挡拖板。'),
     29: ('底板锁紧螺丝', '滚花铝头 + M5 螺杆', '把床身锁在底板上。松开后床身可以微调对中。'),
+    30: ('主轴前轴承', '6202 深沟球轴承', '离卡盘近，承受切削力的大头。轴承间隙大了，车出来的工件表面就有振纹。'),
+    31: ('主轴后轴承', '6202 深沟球轴承', '和前轴承一起把主轴架成一根稳定的"两点支撑梁"。'),
+    32: ('主轴锁紧螺母', '45 钢，M14 × 1', '把皮带轮和轴承压紧在主轴上，防止主轴前后窜动。'),
+    33: ('油杯', '黄铜', '往主轴轴承里加润滑油的地方。'),
+    34: ('平面螺纹盘', '45 钢', '正面是一条阿基米德螺旋槽，三个卡爪背面的齿都啮合在槽里；背面一圈伞齿，被扳手插进去的小伞齿轮带着转。'),
+    35: ('卡盘扳手', '45 钢，发黑', '方头插进卡盘侧面的方孔，转一下三个卡爪就同时夹紧或松开。用完一定要拔下来，忘了就开机会把它甩出去。'),
+    36: ('导轨滑块', '轴承钢，内含滚珠', '骑在直线导轨上，里面一圈圈滚珠循环滚动，所以推起来又轻又没有间隙。'),
+    37: ('丝杠螺母', 'H62 黄铜', '挂在拖板下面，套在丝杠上。丝杠一转，螺母连同拖板一起沿轴线走。用铜做是因为铜和钢配对耐磨、不咬死。'),
+    38: ('横向丝杠', '45 钢，M6 × 1', '藏在十字滑台里面，横向手轮转一圈，滑台前后走 1 mm。'),
+    39: ('刀架中心螺柱', '45 钢', '四方刀架就套在这根螺柱上转，上面的手柄螺母把刀架压死在滑台上。'),
+    40: ('刀架手柄螺母', '45 钢 + 胶木球', '松开它，刀架就能转 90° 换刀；拧紧它，刀架就纹丝不动。'),
+    41: ('切断刀', '高速钢 HSS 刀片 3 mm', '很窄的刀片，从侧面切进去把工件切断。'),
+    42: ('尾座套筒', '45 钢，镀铬', '在尾座里前后伸缩，前端是莫氏锥孔，插钻夹头或顶尖。上面的长槽卡着导向键，所以套筒只能直着走、不能转。'),
+    43: ('尾座丝杆', '45 钢', '一头连手轮，一头拧在套筒尾部的螺母里：手轮转，套筒就直线伸缩。'),
+    44: ('电机端盖', '压铸铝', '装着电刷架，中间是轴承。端面上的散热孔让转子转起来时把热风甩出去。'),
+    45: ('电机转子（电枢）', '硅钢片铁芯 + 漆包铜线 + 铜换向器',
+         '电流经电刷、换向器流进绕组，绕组在磁钢的磁场里受力转起来；每转过一格，换向器就把电流方向倒一次，所以能一直朝一个方向转。'),
+    46: ('磁钢', '铁氧体永磁，一 N 一 S', '贴在机壳内壁上，给转子提供固定的磁场。'),
+    47: ('电刷', '碳刷 + 黄铜刷架', '碳刷被弹簧压在换向器上，转子转着它也一直接触，把电流送进去。用久了会磨短，要换。'),
+    48: ('端盖螺钉', 'M3 十字盘头螺钉', '把端盖固定在机壳上。'),
+    49: ('导轨固定螺钉', 'M4 内六角螺钉', '藏在导轨顶面的沉孔里，把导轨拉紧在床身上。沉孔让螺钉头低于导轨面，滑块才能从上面滑过去。'),
+    50: ('床身固定螺钉', 'M5 内六角螺钉', '从上往下把床身拉紧在底板上。'),
+    51: ('铜手柄', 'H62 黄铜', '套在手轮的销子上，手捏着它摇，手柄自己会转，所以手不会被磨。'),
+    52: ('刻度环', '铝合金，激光刻线', '一圈 50 格、一格 0.02 mm：车刀往里进 0.1 mm，工件直径就小 0.2 mm（两边都被车掉）。'),
+    53: ('皮带罩螺钉', 'M4 内六角螺钉', '把皮带罩固定在主轴箱立板上。'),
 }
 
 
@@ -557,32 +649,61 @@ BT = 13.0              # 底板顶面
 CZ = 100.0             # 主轴中心高（离脚垫底面）
 BED_TOP = 48.0         # 床身顶面
 RAIL_TOP = 58.0        # 导轨顶面
+SLIDE_TOP = 61.0       # 导轨滑块顶面（拖板、尾座底座的底面）
 LS = (-27.0, 32.0)     # 丝杠轴线 (y, z)
 MOT = (-50.0, 40.0)    # 电机轴线 (y, z)
 
 # 爆炸路线（毫米，Blender 坐标；最后一个数 = 出场时刻 0~1，按真实拆机顺序：先拆刀具和小件，最后抬起主轴箱）
+# 路线完全相同的零件在虚幻里会合成一个抓取单元，所以同一组件里的零件故意错开一点
+M50 = (0, -50, 0, .74)          # 电机整体先往前抽出来
 EX = dict(
+    chuck_key=[(0, 0, 25, .01)],
+    lever_nut=[(0, 0, 75, .02)],
     toolpost_screw=[(0, 0, 95, .04)],
     handwheel_z=[(-40, 0, 0, .06)],
+    handle_z=[(-40, 0, 0, .06), (-18, 0, 0, .09)],
     toolpost=[(0, 0, 55, .10)],
     tool=[(0, 0, 55, .10), (0, -30, 0, .16)],
+    parting=[(0, 0, 55, .10), (-25, 0, 0, .17)],
     cross_wheel=[(0, 35, 0, .14)],
+    cross_handle=[(0, 35, 0, .14), (0, 12, 0, .17)],
+    dial=[(0, 22, 0, .14)],
     cross_slide=[(0, 0, 30, .20)],
-    work=[(0, -60, 0, .24)],
+    stud=[(0, 0, 30, .20), (0, -25, 0, .23)],
+    cross_screw=[(0, 0, 18, .22)],
+    work=[(-20, -75, 0, .24)],
     carriage=[(0, 0, 10, .28)],
-    chuck=[(-20, 0, 0, .36)],
+    nut=[(0, 0, 10, .28), (0, -28, 0, .32)],
+    car_block=[(0, 0, 6, .31)],
+    chuck=[(-25, 0, 0, .36)],
+    scroll=[(-25, 0, 0, .36), (0, -55, 0, .40)],
     lock=[(0, 0, 60, .42)],
-    drill=[(25, 0, 0, .44)],
+    drill=[(25, 0, 40, .40)],
+    quill=[(35, 0, 0, .48), (0, -45, 0, .52)],
     tail_wheel=[(-35, 0, 0, .48)],
+    tail_handle=[(-35, 0, 0, .48), (-18, 0, 0, .51)],
+    tail_screw=[(-20, 0, 0, .50)],
     tailstock=[(-20, 0, 40, .52)],
+    tail_block=[(0, 0, 8, .55)],
+    cover_screw=[(100, 0, 0, .55)],
     cover=[(70, 0, 0, .58)],
     belt=[(40, 0, 0, .64)],
+    spindle_nut=[(26, 0, 0, .67)],
     pulley_s=[(22, 0, 0, .70)],
     pulley_m=[(20, 0, 0, .70)],
-    motor=[(0, -50, 0, .76)],
+    motor=[M50],
+    end_screw=[M50, (-30, 0, 0, .80)],
+    end_cap=[M50, (-20, 0, 0, .82), (0, 0, 45, .86)],
+    rotor=[M50, (-110, 0, 0, .90)],
     leadscrew=[(0, -30, 0, .82)],
     knob=[(0, 0, 30, .86)],
-    headstock=[(0, 0, 60, .92)],
+    oil_cup=[(0, 0, 75, .88)],
+    headstock=[(0, 0, 60, .90)],
+    spindle=[(0, 0, 25, .94)],
+    bearing_f=[(0, 0, 25, .94), (-25, 0, 0, .97)],
+    bearing_r=[(0, 0, 25, .94), (20, 0, 0, .97)],
+    rail_screw=[(0, 0, 22, .96)],
+    bed_screw=[(0, 0, 20, .98)],
 )
 
 
@@ -591,14 +712,24 @@ def build_base(M):
     mats = [M['alu'], M['hole']]
     bm = bmesh.new()
     extrude(bm, [rrect(180, 70, 6, cx=-10, cy=-10)], 5, BT, 0)
-    for x in (-180, 160):            # 四角的安装孔
+    for x in (-180, 160):            # 四角的安装沉孔
         for y in (-72, 52):
-            disk(bm, 3.2, (x, y, BT), 'Z', 1)
+            disk(bm, 3.6, (x, y, BT), 'Z', 1)
+            disk(bm, 2.0, (x, y, BT + .3), 'Z', 1, h=.2, seg=6)
     finish('P01_BasePlate', 1, bm, mats, bevel=.8)
     for i, (x, y) in enumerate(((-170, -62), (150, -62), (-170, 42), (150, 42))):
         bm = bmesh.new()
         rev(bm, [(0, 0), (7.5, 0), (9, 1.2), (9, 5), (0, 5)], 0, 'Z', (x, y, 0), seg=28)
         finish(f'P02_Foot_{i + 1}', 2, bm, [M['rubber']])
+
+    # 卡盘扳手：平放在底板后面（T 字：方头 + 杆 + 横柄）
+    bm = bmesh.new()
+    zc = BT + 3.5
+    boxf(bm, (-102, 38.2, zc - 2.3), (-92, 42.8, zc + 2.3), 0)
+    rod(bm, 3.5, -92, -52, 0, 'X', (0, 40.5, zc), seg=20)
+    rod(bm, 3, 22, 59, 0, 'Y', (-50, 0, zc), seg=20)
+    rod(bm, 4.5, -56, -46, 0, 'X', (0, 40.5, zc), seg=20)
+    finish('P35_ChuckKey', 35, bm, [M['black']], ex=EX['chuck_key'], bevel=.4)
 
 
 def build_bed(M):
@@ -609,7 +740,7 @@ def build_bed(M):
     for x0, x1 in ((-178, -168), (78, 88)):
         boxf(bm, (x0, -34, 20), (x1, -20, 44), 0)
         disk(bm, 5, (x0 if x0 < 0 else x1, LS[0], LS[1]), '-X' if x0 < 0 else 'X', 1)
-    # 床身前面固定螺钉
+    # 床身前面的工艺孔
     for x in (-140, -60, 20):
         disk(bm, 3, (x, -20, 26), '-Y', 1)
     finish('P03_Bed', 3, bm, mats, bevel=1.0)
@@ -618,43 +749,69 @@ def build_bed(M):
     boxf(bm, (-170, -8, BED_TOP), (90, 8, RAIL_TOP), 0)
     for y in (-8, 8):                 # 导轨两侧的滚道槽
         boxf(bm, (-170, y - .4, RAIL_TOP - 5), (90, y + .4, RAIL_TOP - 3), 1)
-    for k in range(13):               # 一排沉孔
-        x = -160 + k * 20
-        disk(bm, 3.2, (x, 0, RAIL_TOP), 'Z', 1)
-        disk(bm, 1.8, (x, 0, RAIL_TOP + .2), 'Z', 1, h=.25)
+    for k in range(13):               # 一排沉孔（螺钉头在下面，P49）
+        disk(bm, 3.2, (-160 + k * 20, 0, RAIL_TOP), 'Z', 1)
     finish('P04_Rail', 4, bm, [M['steel'], M['hole']], bevel=.5)
+
+    # 导轨固定螺钉：9 颗一组。拖板正下方那 4 个沉孔（X -20 / 0 / 20 / 40）没放螺钉：
+    # 拖板拆开只抬起 10mm，螺钉往上拔会顶进拖板里；装配状态下那几个孔本来就被拖板盖住
+    for i, x in enumerate((-160, -140, -120, -100, -80, -60, -40, 60, 80)):
+        bm = bmesh.new()
+        socket_screw(bm, 2.8, 3.0, 9, 0, 1, 'Z', (x, 0, RAIL_TOP - 3.2))
+        finish(f'P49_RailScrew_{i + 1}', 49, bm, [M['black'], M['hole']], ex=EX['rail_screw'])
+
+    for i, (x, y) in enumerate(((-165, -14), (-60, -14), (70, -14), (-165, 14), (-60, 14), (70, 14))):
+        bm = bmesh.new()
+        socket_screw(bm, 3.2, 3.5, 12, 0, 1, 'Z', (x, y, BED_TOP))
+        finish(f'P50_BedScrew_{i + 1}', 50, bm, [M['black'], M['hole']], ex=EX['bed_screw'])
 
 
 def build_leadscrew(M):
     bm = bmesh.new()
-    prof = [(0, -184), (3.4, -184)]
-    x = -182.0
-    while x < 84:                    # 梯形螺纹：一圈圈牙
-        prof += [(3.4, x), (4.2, x + .6), (4.2, x + 1.4), (3.4, x + 2)]
-        x += 2
-    prof += [(3.4, 86), (0, 86)]
-    rev(bm, prof, 0, 'Z', (0, 0, 0), seg=14)
-    xform(bm, bm.faces, Matrix.Translation(Vector((0, LS[0], LS[1]))) @ ROT['X'])
+    rod(bm, 3.4, -184, -176, 0, 'X', (0, LS[0], LS[1]), seg=16)        # 光轴端（装手轮）
+    thread_rod(bm, 3.3, 1.0, 2.0, -176, 80, 0, 'X', (0, LS[0], LS[1]))
+    rod(bm, 3.4, 80, 86, 0, 'X', (0, LS[0], LS[1]), seg=16)
     finish('P05_LeadScrew', 5, bm, [M['steel']], ex=EX['leadscrew'])
 
     bm = bmesh.new()
-    handwheel(bm, 19, (-182, LS[0], LS[1]), '-X', 0, 1)
-    finish('P06_HandwheelZ', 6, bm, [M['alu'], M['copper']], ex=EX['handwheel_z'], smooth=40)
+    handwheel(bm, 19, (-182, LS[0], LS[1]), '-X', 0, None)
+    finish('P06_HandwheelZ', 6, bm, [M['alu']], ex=EX['handwheel_z'], smooth=40)
+    bm = bmesh.new()
+    handle(bm, 19, (-182, LS[0], LS[1]), '-X', 0)
+    finish('P51_Handle_Z', 51, bm, [M['copper']], ex=EX['handle_z'], smooth=40)
 
 
 def build_headstock(M):
-    """照片里的主轴箱：一个横放的铝圆筒（主轴套），坐在皮带罩前面的立板上"""
+    """照片里的主轴箱：一个横放的铝圆筒（主轴套），坐在皮带罩前面的立板上；里面前后两个轴承"""
     mats = [M['alu'], M['hole'], M['steel']]
     bm = bmesh.new()
     rev(bm, [(0, 92), (27, 92), (28, 93), (28, 149), (27, 150), (0, 150)], 0, 'X', (0, 0, CZ), seg=64)   # 主轴套
+    rev(bm, [(15, 0), (20, 0), (20, .3), (15, .3)], 1, '-X', (92, 0, CZ), seg=48, closed=True)            # 前端轴承孔的暗圈
     boxf(bm, (100, 0, BT), (146, 26, CZ - 12), 0)                                                         # 立板
-    for k in range(4):                                                                                    # 后面的锁紧螺钉
+    for k in range(4):                                                                                    # 后面的锁紧螺钉孔
         disk(bm, 2.2, (104 + k * 12, 26, CZ - 30), 'Y', 1)
+    disk(bm, 3.4, (120, 0, CZ + 28), 'Z', 1, h=.2)                                                        # 油杯座
     finish('P07_Headstock', 7, bm, mats, ex=EX['headstock'], bevel=1.0)
 
     bm = bmesh.new()
-    rev(bm, [(0, 0), (7, 0), (8, 1), (8, 88), (0, 88)], 0, 'X', (70, 0, CZ), seg=32)
-    finish('P08_Spindle', 8, bm, [M['steel']], ex=EX['headstock'])
+    rev(bm, [(0, 0), (7, 0), (8, 1), (8, 82), (7, 82), (7, 90), (0, 90)], 0, 'X', (70, 0, CZ), seg=32)
+    boxf(bm, (128, -2, CZ + 6.6), (148, 2, CZ + 8.2), 1)                                                  # 键槽
+    finish('P08_Spindle', 8, bm, [M['steel'], M['hole']], ex=EX['spindle'])
+
+    for name, no, x0, ex in (('P30_BearingFront', 30, 93, EX['bearing_f']), ('P31_BearingRear', 31, 141, EX['bearing_r'])):
+        bm = bmesh.new()
+        rev(bm, [(8, 0), (14, 0), (14, 8), (8, 8)], 0, 'X', (x0, 0, CZ), seg=40, closed=True)             # 内外圈（看成一体）
+        rev(bm, [(10, -.2), (12, -.2), (12, 8.2), (10, 8.2)], 1, 'X', (x0, 0, CZ), seg=40, closed=True)   # 黑色密封圈
+        finish(name, no, bm, [M['steel'], M['black']], ex=ex)
+
+    bm = bmesh.new()
+    rev(bm, [(7, 0), (11, 0), (11, 2.5), (7, 2.5)], 0, 'X', (159, 0, CZ), seg=6, closed=True)                # 六角锁紧螺母
+    finish('P32_SpindleNut', 32, bm, [M['steel']], ex=EX['spindle_nut'], bevel=.3)
+
+    bm = bmesh.new()
+    rod(bm, 2.6, CZ + 27, CZ + 32, 0, 'Z', (120, 0, 0), seg=6)
+    rev(bm, [(0, CZ + 32), (4.5, CZ + 32), (4.5, CZ + 35), (3, CZ + 37), (0, CZ + 37)], 0, 'Z', (120, 0, 0), seg=24)
+    finish('P33_OilCup', 33, bm, [M['brass']], ex=EX['oil_cup'])
 
 
 def build_chuck(M):
@@ -662,30 +819,46 @@ def build_chuck(M):
     rev(bm, [(0, 86), (27, 86), (27, 92), (0, 92)], 1, 'Z', seg=64)                  # 黑色连接盘
     rev(bm, [(0, 68), (22, 68), (24.5, 69), (25, 71), (25, 86), (0, 86)], 0, 'Z', seg=64)   # 盘体
     xform(bm, bm.faces, Matrix.Translation(Vector((0, 0, CZ))) @ ROT['X'])
-    # ROT['X'] 把局部 Z 转成 X：上面两段沿轴坐标就是 X
     disk(bm, 8, (67.7, 0, CZ), '-X', 2, h=.35)                                            # 中心孔
-    for k in range(3):                                                                    # 侧面 3 个扳手方孔
-        a = pi / 3 + 2 * pi * k / 3
-        d = Vector((0, cos(a), sin(a)))
-        c = Vector((78, 0, CZ)) + d * 24.8
-        fs = rod(bm, 2.4, 0, .5, 2, 'Z', (0, 0, 0), seg=4)
-        mt = Matrix.Translation(c) @ d.to_track_quat('Z', 'X').to_matrix().to_4x4()
-        xform(bm, fs, mt)
-    finish('P09_Chuck', 9, bm, [M['steel'], M['black'], M['hole']], ex=EX['chuck'], bevel=.6)
-
     for k in range(3):
         a = pi / 2 + 2 * pi * k / 3
         d = Vector((0, cos(a), sin(a)))
         t = Vector((0, -sin(a), cos(a)))
+        fs = boxl(bm, (-.4, 8, -3.8), (0, 24.6, 3.8), 2)                                 # 盘面上的卡爪导槽
+        oriented(bm, fs, (68, 0, CZ), (1, 0, 0), d)
+        a2 = pi / 3 + 2 * pi * k / 3                                                      # 侧面 3 个扳手方孔
+        d2 = Vector((0, cos(a2), sin(a2)))
+        c = Vector((78, 0, CZ)) + d2 * 24.8
+        fs = rod(bm, 2.4, 0, .5, 2, 'Z', (0, 0, 0), seg=4)
+        xform(bm, fs, Matrix.Translation(c) @ d2.to_track_quat('Z', 'X').to_matrix().to_4x4())
+    finish('P09_Chuck', 9, bm, [M['steel'], M['black'], M['hole']], ex=EX['chuck'], bevel=.6)
+
+    # 平面螺纹盘：正面一条阿基米德螺旋凸棱，背面一圈伞齿
+    bm = bmesh.new()
+    rod(bm, 21, 75, 81, 0, 'X', (0, 0, CZ), seg=56)
+    rev(bm, [(0, 74), (9, 74), (9, 75), (0, 75)], 1, 'X', (0, 0, CZ), seg=32)
+    spiral = [Vector((74.6, (9.5 + 11 * u) * cos(6 * pi * u), CZ + (9.5 + 11 * u) * sin(6 * pi * u))) for u in
+              [i / 180 for i in range(181)]]
+    sweep(bm, spiral, .7, 0, sides=6)
+    for k in range(36):
+        a = 2 * pi * k / 36
+        fs = boxl(bm, (0, 16, -1), (2.2, 20.5, 1), 0)
+        oriented(bm, fs, (81, 0, CZ), (1, 0, 0), (0, cos(a), sin(a)))
+    finish('P34_Scroll', 34, bm, [M['steel'], M['black']], ex=EX['scroll'])
+
+    for k in range(3):
+        a = pi / 2 + 2 * pi * k / 3
+        d = (0, cos(a), sin(a))
         bm = bmesh.new()
-        # 局部坐标：x = 轴向（主轴 X），y = 径向，z = 切向。台阶爪：越往外越短
-        boxf(bm, (58, 9, -3.5), (68, 16, 3.5), 0)
-        boxf(bm, (61, 16, -3.5), (68, 20, 3.5), 0)
-        boxf(bm, (64, 20, -3.5), (68, 23.5, 3.5), 0)
-        mt = Matrix(((1, 0, 0, 0), (0, d.y, t.y, 0), (0, d.z, t.z, CZ), (0, 0, 0, 1)))
-        xform(bm, bm.faces, mt)
-        ex = [(0, 18 * d.y, 18 * d.z, .30)] + EX['chuck']
-        finish(f'P10_Jaw_{k + 1}', 10, bm, [M['steel']], ex=ex, bevel=.4)
+        # 局部坐标：x = 轴向（主轴 X），y = 径向，z = 切向。台阶爪：越往外越短；背面（+x）一排弧形齿
+        fs = boxl(bm, (58, 9, -3.5), (68, 16, 3.5), 0)
+        fs += boxl(bm, (61, 16, -3.5), (68, 20, 3.5), 0)
+        fs += boxl(bm, (64, 20, -3.5), (68, 23.5, 3.5), 0)
+        for r0 in (10, 13, 16, 19):
+            fs += boxl(bm, (68, r0, -3.2), (70.2, r0 + 1.6, 3.2), 0)
+        oriented(bm, fs, (0, 0, CZ), (1, 0, 0), d)
+        ex = [(0, 18 * d[1], 18 * d[2], .30)] + EX['chuck']
+        finish(f'P10_Jaw_{k + 1}', 10, bm, [M['steel']], ex=ex, bevel=.3)
 
     bm = bmesh.new()
     rev(bm, [(0, 0), (8.5, 0), (9, .5), (9, 54), (0, 54)], 0, 'X', (10, 0, CZ), seg=40)
@@ -695,16 +868,33 @@ def build_chuck(M):
 def build_carriage(M):
     mats = [M['alu'], M['hole']]
     bm = bmesh.new()
-    boxf(bm, (-20, -40, RAIL_TOP), (40, 40, 80), 0)
-    boxf(bm, (0, -36, 40), (20, -20, RAIL_TOP), 0)          # 前面下垂的丝杠螺母座
-    boxf(bm, (3, -40.3, 62), (17, -40, 76), 1)               # 正面方孔
+    boxf(bm, (-20, -40, SLIDE_TOP), (40, 40, 80), 0)
+    boxf(bm, (0, -36, 40), (20, -20, SLIDE_TOP), 0)          # 前面下垂的丝杠螺母座
+    boxf(bm, (3, -40.3, 64), (17, -40, 77), 1)               # 正面方孔
     for x in (-12, 28):                                     # 两个燕尾压板小块
-        boxf(bm, (x - 4, -44, 64), (x + 4, -40, 74), 0)
-        disk(bm, 1.6, (x, -44, 69), '-Y', 1)
+        boxf(bm, (x - 4, -44, 65), (x + 4, -40, 75), 0)
+        disk(bm, 1.6, (x, -44, 70), '-Y', 1)
     for x in (-15, 35):                                     # 顶面螺孔
         for y in (-34, -10, 14, 34):
             disk(bm, 2.4, (x, y, 80), 'Z', 1)
     finish('P12_Carriage', 12, bm, mats, ex=EX['carriage'], bevel=1.0)
+
+    # 两个导轨滑块：U 形，骑在导轨上
+    for name, (x0, x1), ex in (('P36_RailBlock_Carriage', (-15, 35), EX['car_block']),
+                               ('P36_RailBlock_Tailstock', (-145, -110), EX['tail_block'])):
+        bm = bmesh.new()
+        boxf(bm, (x0, -13, RAIL_TOP), (x1, 13, SLIDE_TOP), 0)
+        for y0, y1 in ((-13, -8.4), (8.4, 13)):
+            boxf(bm, (x0, y0, RAIL_TOP - 7), (x1, y1, RAIL_TOP), 0)
+        for xe in (x0 - 2, x1):                             # 两头的黑色防尘端盖
+            boxf(bm, (xe, -13, RAIL_TOP - 7), (xe + 2, 13, SLIDE_TOP - .5), 1)
+        finish(name, 36, bm, [M['steel'], M['black']], ex=ex, bevel=.4)
+
+    bm = bmesh.new()                                        # 黄铜丝杠螺母
+    boxf(bm, (2, -34, 26), (18, -20, 40), 0)
+    for x in (5, 15):
+        disk(bm, 1.6, (x, -34, 36), '-Y', 1)
+    finish('P37_LeadNut', 37, bm, [M['brass'], M['hole']], ex=EX['nut'], bevel=.4)
 
     bm = bmesh.new()
     boxf(bm, (-12, -38, 80), (32, 30, 90), 0)
@@ -713,35 +903,54 @@ def build_carriage(M):
             disk(bm, 2.2, (x, y, 90), 'Z', 1)
     finish('P13_CrossSlide', 13, bm, mats, ex=EX['cross_slide'], bevel=.8)
 
+    bm = bmesh.new()                                        # 横向丝杠（藏在滑台里）
+    thread_rod(bm, 2.5, .7, 1.0, -32, 30, 0, 'Y', (10, 0, 85), seg=10, per_pitch=5)
+    finish('P38_CrossScrew', 38, bm, [M['steel']], ex=EX['cross_screw'])
+
     bm = bmesh.new()
     rod(bm, 2.5, 0, 6, 1, 'Y', (10, 30, 85), seg=16)           # 轴
-    rev(bm, [(0, 0), (9, 0), (9, 5), (0, 5)], 2, 'Y', (10, 34, 85), seg=48)    # 刻度环
-    fs = []
-    for k in range(25):                                          # 刻度线
-        a = 2 * pi * k / 25
+    handwheel(bm, 11, (10, 39, 85), 'Y', 0, None)
+    finish('P14_CrossWheel', 14, bm, [M['alu'], M['black']], ex=EX['cross_wheel'], smooth=40)
+    bm = bmesh.new()
+    handle(bm, 11, (10, 39, 85), 'Y', 0, handle_len=12, handle_r=2.3)
+    finish('P51_Handle_Cross', 51, bm, [M['copper']], ex=EX['cross_handle'], smooth=40)
+
+    bm = bmesh.new()                                        # 刻度环 + 50 格刻线
+    rev(bm, [(3, 0), (9, 0), (9, 5), (3, 5)], 0, 'Y', (10, 34, 85), seg=50, closed=True)
+    for k in range(50):
+        a = 2 * pi * k / 50
         L = 2.2 if k % 5 == 0 else 1.2
         bmt = bmesh.ops.create_cube(bm, size=1.0)
         vs = bmt['verts']
-        bmesh.ops.scale(bm, vec=Vector((.35, 2.5, L)), verts=vs)
+        bmesh.ops.scale(bm, vec=Vector((.3, 2.5, L)), verts=vs)
         bmesh.ops.translate(bm, vec=Vector((0, 0, 9 - L / 2 + .2)), verts=vs)
         bmesh.ops.rotate(bm, cent=Vector((0, 0, 0)), matrix=Matrix.Rotation(a, 3, 'Y'), verts=vs)
         bmesh.ops.translate(bm, vec=Vector((10, 36.5, 85)), verts=vs)
         for f in {f for v in vs for f in v.link_faces}:
             f.material_index = 1
-    handwheel(bm, 11, (10, 39, 85), 'Y', 0, 3, handle_len=12, handle_r=2.3)
-    finish('P14_CrossWheel', 14, bm, [M['alu'], M['black'], M['alu_dark'], M['copper']], ex=EX['cross_wheel'], smooth=40)
+    finish('P52_Dial', 52, bm, [M['alu_dark'], M['black']], ex=EX['dial'], smooth=40)
 
     bm = bmesh.new()
     boxf(bm, (5, -45, 90), (35, -15, 116), 0)
     boxf(bm, (5.5, -45.3, 92), (34.5, -45, 101), 1)            # 正面夹刀槽
+    boxf(bm, (4.7, -44.5, 92), (5, -15.5, 101), 1)             # 左面夹刀槽（切断刀）
+    disk(bm, 4.4, (20, -30, 116), 'Z', 1, h=.2)                # 中心孔
     finish('P15_ToolPost', 15, bm, [M['alu'], M['hole']], ex=EX['toolpost'], bevel=.8)
 
     for i, (x, y) in enumerate(((12, -38), (28, -38), (12, -22), (28, -22))):
         bm = bmesh.new()
-        rod(bm, 2, 110, 116, 0, 'Z', (x, y, 0), seg=16)
-        rev(bm, [(0, 116), (3.6, 116), (3.6, 120.5), (3.2, 121), (0, 121)], 0, 'Z', (x, y, 0), seg=24)
-        disk(bm, 1.6, (x, y, 121), 'Z', 1, h=.2, seg=6)
+        socket_screw(bm, 3.6, 4.5, 6, 0, 1, 'Z', (x, y, 116))
         finish(f'P16_ToolScrew_{i + 1}', 16, bm, [M['black'], M['hole']], ex=EX['toolpost_screw'])
+
+    bm = bmesh.new()                                        # 中心螺柱（下端拧在滑台里）
+    thread_rod(bm, 3.4, .6, 1.25, 84, 115, 0, 'Z', (20, -30, 0), seg=10, per_pitch=4)
+    finish('P39_PostStud', 39, bm, [M['steel']], ex=EX['stud'])
+
+    bm = bmesh.new()                                        # 手柄螺母：六角 + 杆 + 胶木球
+    rev(bm, [(0, 116), (6.5, 116), (6.5, 122), (0, 122)], 0, 'Z', (20, -30, 0), seg=6)
+    rod(bm, 2.2, -30, -4, 0, 'Y', (20, 0, 119), seg=12)
+    rev(bm, [(0, -6), (3, -5.2), (4.2, -3), (4.5, 0), (4.2, 3), (3, 5.2), (0, 6)], 1, 'Y', (20, -1, 119), seg=20)
+    finish('P40_LeverNut', 40, bm, [M['steel'], M['black']], ex=EX['lever_nut'], bevel=.3)
 
     bm = bmesh.new()
     boxf(bm, (18, -52, 93), (25, -12, 100), 0)
@@ -754,24 +963,44 @@ def build_carriage(M):
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     finish('P17_ToolBit', 17, bm, [M['tool']], ex=EX['tool'])
 
+    bm = bmesh.new()                                        # 切断刀：刀柄 + 窄刀片
+    boxf(bm, (-6, -34, 93), (14, -26, 100), 0)
+    boxf(bm, (-16, -31.5, 93.5), (-6, -28.5, 102), 1)
+    finish('P41_PartingTool', 41, bm, [M['tool'], M['steel']], ex=EX['parting'], bevel=.3)
+
 
 def build_tailstock(M):
     mats = [M['alu'], M['hole'], M['steel']]
     bm = bmesh.new()
-    boxf(bm, (-150, -30, RAIL_TOP), (-105, 30, 80), 0)            # 方底座
+    boxf(bm, (-150, -30, SLIDE_TOP), (-105, 30, 80), 0)           # 方底座（装在滑块上）
     for x in (-140, -115):                                       # 底座正面两个孔
-        disk(bm, 3.5, (x, -30, 69), '-Y', 1)
+        disk(bm, 3.5, (x, -30, 70), '-Y', 1)
     boxf(bm, (-145, -14, 80), (-110, 14, 86), 0)                  # 立柱
     rev(bm, [(0, -160), (17, -160), (18, -159), (18, -101), (17, -100), (0, -100)], 0, 'X', (0, 0, CZ), seg=56)  # 套筒座
     rev(bm, [(0, -169), (9, -169), (10, -168), (10, -160), (0, -160)], 0, 'X', (0, 0, CZ), seg=32)
-    rev(bm, [(0, -100), (11, -100), (11, -87), (10.5, -86), (0, -86)], 2, 'X', (0, 0, CZ), seg=40)              # 伸出的套筒
+    rev(bm, [(11, 0), (13.5, 0), (13.5, .3), (11, .3)], 1, 'X', (-100, 0, CZ), seg=40, closed=True)   # 套筒孔口的暗圈
     for k in range(2):
         disk(bm, 2.2, (-150 + 20 * k + 15, 0, CZ + 18), 'Z', 1)
     finish('P18_Tailstock', 18, bm, mats, ex=EX['tailstock'], bevel=1.0)
 
+    bm = bmesh.new()                                             # 套筒：镀铬钢管，顶上一条导向键槽
+    rev(bm, [(0, -158), (10.6, -158), (11, -157.5), (11, -87), (10.5, -86), (0, -86)], 0, 'X', (0, 0, CZ), seg=40)
+    boxf(bm, (-150, -1.5, CZ + 10.7), (-104, 1.5, CZ + 11.1), 1)
+    for k in range(6):                                           # 刻度
+        boxf(bm, (-99 + k * 2.5, -.3, CZ + 10.95), (-98.4 + k * 2.5, .3, CZ + 11.15), 1)
+    finish('P42_Quill', 42, bm, [M['steel'], M['black']], ex=EX['quill'])
+
     bm = bmesh.new()
-    handwheel(bm, 19, (-169, 0, CZ), '-X', 0, 1)
-    finish('P19_TailWheel', 19, bm, [M['alu'], M['copper']], ex=EX['tail_wheel'], smooth=40)
+    rod(bm, 4, -176, -150, 0, 'X', (0, 0, CZ), seg=16)
+    thread_rod(bm, 3.4, .8, 1.5, -150, -112, 0, 'X', (0, 0, CZ), seg=12, per_pitch=5)
+    finish('P43_TailScrew', 43, bm, [M['steel']], ex=EX['tail_screw'])
+
+    bm = bmesh.new()
+    handwheel(bm, 19, (-169, 0, CZ), '-X', 0, None)
+    finish('P19_TailWheel', 19, bm, [M['alu']], ex=EX['tail_wheel'], smooth=40)
+    bm = bmesh.new()
+    handle(bm, 19, (-169, 0, CZ), '-X', 0)
+    finish('P51_Handle_Tail', 51, bm, [M['copper']], ex=EX['tail_handle'], smooth=40)
 
     bm = bmesh.new()
     rev(bm, [(0, 0), (8.5, 0), (9, 1), (9, 8), (0, 8)], 1, '-X', (-78, 0, CZ), seg=40)          # 黄铜过渡套 X -86..-78
@@ -780,8 +1009,14 @@ def build_tailstock(M):
         a = 2 * pi * k / 24
         c = Vector((-72, 14 * cos(a), CZ + 14 * sin(a)))
         boxf(bm, (c.x - 4, c.y - .5, c.z - .5), (c.x + 4, c.y + .5, c.z + .5), 0)
+    for k in range(3):                                           # 扳手孔
+        a = 2 * pi * k / 3
+        c = Vector((-62.5, 13 * cos(a), CZ + 13 * sin(a)))
+        fs = rod(bm, 1.3, 0, .4, 3, 'Z', (0, 0, 0), seg=10)
+        d = Vector((0, cos(a), sin(a)))
+        xform(bm, fs, Matrix.Translation(c) @ d.to_track_quat('Z', 'X').to_matrix().to_4x4())
     rev(bm, [(0, 28), (4, 28), (0, 40)], 2, 'X', (-78, 0, CZ), seg=24)                       # 顶尖
-    finish('P20_DrillChuck', 20, bm, [M['steel'], M['brass'], M['steel']], ex=EX['drill'])
+    finish('P20_DrillChuck', 20, bm, [M['steel'], M['brass'], M['steel'], M['hole']], ex=EX['drill'])
 
     bm = bmesh.new()
     rod(bm, 3, 116, 124, 1, 'Z', (-128, 0, 0), seg=16)
@@ -790,16 +1025,19 @@ def build_tailstock(M):
 
 
 def build_drive(M):
-    """皮带罩、皮带、两个皮带轮"""
+    """皮带罩（3 颗螺钉）、皮带、两个皮带轮"""
     outer = hull(circle(0, CZ, 34, 48) + circle(MOT[0], MOT[1], 24, 32) + [(-80, BT), (36, BT)])
     inner = hull(circle(0, CZ, 31, 48) + circle(MOT[0], MOT[1], 21, 32) + [(-77, BT + 3), (33, BT + 3)])
     bm = bmesh.new()
     extrude(bm, [outer, inner[::-1]], 150, 161, 0, axis='X')
     extrude(bm, [outer], 161, 164, 0, axis='X')
     extrude(bm, [outer], 148.5, 150, 0, axis='X')
-    for y, z in ((0, CZ), (MOT[0], MOT[1])):
-        disk(bm, 2.6, (164, y, z), 'X', 1)
     finish('P22_BeltCover', 22, bm, [M['alu'], M['hole']], ex=EX['cover'], bevel=1.0)
+
+    for i, (y, z) in enumerate(((0, CZ + 22), (-62, 24), (24, 24))):
+        bm = bmesh.new()
+        socket_screw(bm, 2.8, 3, 8, 0, 1, 'X', (164, y, z))
+        finish(f'P53_CoverScrew_{i + 1}', 53, bm, [M['black'], M['hole']], ex=EX['cover_screw'])
 
     pts = hull(circle(0, CZ, 22.5, 64) + circle(MOT[0], MOT[1], 7.5, 32))
     path = [Vector((155.5, p[0], p[1])) for p in pts]
@@ -811,7 +1049,12 @@ def build_drive(M):
                                     ('P25_MotorPulley', 25, 9, MOT, EX['pulley_m'])):
         bm = bmesh.new()
         rev(bm, [(0, 0), (r, 0), (r, 1.5), (r - 2.5, 3.5), (r, 5.5), (r, 7), (0, 7)], 0, 'X', (152, y, z), seg=56)
-        finish(name, no, bm, [M['alu_dark']], ex=ex)
+        if r > 15:                                                   # 大轮上的 4 个减重孔
+            for k in range(4):
+                a = pi / 4 + k * pi / 2
+                disk(bm, 4, (151.7, y + 14 * cos(a), z + 14 * sin(a)), '-X', 1, h=.35)
+        disk(bm, 1.2, (158.2, y, z + r), 'Z', 1, h=.2, seg=6)        # 顶丝孔
+        finish(name, no, bm, [M['alu_dark'], M['hole']], ex=ex)
 
 
 def build_motor(M):
@@ -823,25 +1066,77 @@ def build_motor(M):
         rod(bm, 2, 0, 4, 1, 'Z', (x + 4, MOT[0] - 27, BT + 4), seg=12)
     finish('P26_MotorMount', 26, bm, mats, bevel=.5)
 
+    my, mz = MOT
+    # 机壳：空心，右端封口带轴承座；中间一圈标签
     bm = bmesh.new()
-    rev(bm, [(0, 0), (22, 0), (24, 2), (24, 104), (22, 106), (0, 106)], 0, 'X', (40, MOT[0], MOT[1]), seg=56)
-    for x in (50, 136):                                                   # 机壳两道压痕
-        rev(bm, [(24, 0), (24.4, 0), (24.4, 1.2), (24, 1.2)], 3, 'X', (x, MOT[0], MOT[1]), seg=56, closed=True)
-    rev(bm, [(0, 0), (23, 0), (25, 2), (25, 10), (0, 10)], 1, 'X', (30, MOT[0], MOT[1]), seg=56)   # 铝端盖
-    for k in range(4):
-        a = pi / 4 + k * pi / 2
-        disk(bm, 1.8, (29.7, MOT[0] + 17 * cos(a), MOT[1] + 17 * sin(a)), '-X', 2)
-    for k in range(6):                                                    # 端盖散热孔
-        a = k * pi / 3
-        disk(bm, 2.6, (29.7, MOT[0] + 9 * cos(a), MOT[1] + 9 * sin(a)), '-X', 2)
-    rod(bm, 2.5, 146, 159, 4, 'X', (0, MOT[0], MOT[1]), seg=16)            # 电机轴
-    finish('P27_Motor', 27, bm, [M['motor'], M['alu'], M['hole'], M['black'], M['steel']], ex=EX['motor'])
+    rev(bm, [(0, 144.5), (22.5, 144.5), (22.5, 41.5), (24, 40), (24, 144), (22, 146), (7, 146), (7, 149), (0, 149)],
+        0, 'X', (0, my, mz), seg=56)
+    rev(bm, [(24, 70), (24.15, 70), (24.15, 112), (24, 112)], 1, 'X', (0, my, mz), seg=56, closed=True)
+    rev(bm, [(24.15, 74), (24.25, 74), (24.25, 80), (24.15, 80)], 2, 'X', (0, my, mz), seg=56, closed=True)
+    finish('P27_Motor', 27, bm, [M['motor'], M['label'], M['black']], ex=EX['motor'])
 
-    ctrl = [Vector(p) for p in ((32, MOT[0] - 12, MOT[1] - 8), (28, -68, 26), (18, -73, 17), (-20, -74, 16),
+    # 端盖：卡进机壳口，端面散热孔 + 中间轴承
+    bm = bmesh.new()
+    rev(bm, [(0, 30), (23, 30), (25, 32), (25, 40), (22.4, 40), (22.4, 42), (0, 42)], 0, 'X', (0, my, mz), seg=56)
+    for k in range(6):
+        a = k * pi / 3
+        disk(bm, 2.6, (29.7, my + 11 * cos(a), mz + 11 * sin(a)), '-X', 1)
+    rev(bm, [(0, 29.4), (5, 29.4), (5, 30), (0, 30)], 2, 'X', (0, my, mz), seg=24)
+    finish('P44_MotorEndCap', 44, bm, [M['alu'], M['hole'], M['steel']], ex=EX['end_cap'], bevel=.5)
+
+    for i, a in enumerate((pi / 2, -pi / 2)):
+        bm = bmesh.new()
+        socket_screw(bm, 2, 1.6, 8, 0, 1, '-X', (30, my + 18 * cos(a), mz + 18 * sin(a)))
+        finish(f'P48_EndCapScrew_{i + 1}', 48, bm, [M['steel'], M['hole']], ex=EX['end_screw'])
+
+    # 转子：轴 + 12 槽铁芯 + 两头绕组 + 铜换向器
+    bm = bmesh.new()
+    rod(bm, 2.5, 34, 159, 0, 'X', (0, my, mz), seg=16)
+    star = []
+    for k in range(24):
+        a = 2 * pi * k / 24
+        r = 15 if k % 2 == 0 else 9.5
+        star.append((my + r * cos(a), mz + r * sin(a)))
+    extrude(bm, [star], 58, 122, 1, axis='X')
+    for x0 in (52, 122):
+        rev(bm, [(5, 0), (13, 0), (14, 3), (13, 6), (5, 6)], 2, 'X', (x0, my, mz), seg=24, closed=True)
+    rev(bm, [(2.5, 0), (6, 0), (6, 8), (2.5, 8)], 2, 'X', (43, my, mz), seg=24, closed=True)
+    for k in range(12):
+        a = 2 * pi * k / 12
+        fs = boxl(bm, (0, 5.5, -.35), (8, 6.15, .35), 3)
+        oriented(bm, fs, (43, my, mz), (1, 0, 0), (0, cos(a), sin(a)))
+    finish('P45_Rotor', 45, bm, [M['steel'], M['lamination'], M['copper'], M['black']], ex=EX['rotor'])
+
+    # 两块磁钢：瓦片形，左右各一块（±Y）
+    for i, sgn in enumerate((1, -1)):
+        bm = bmesh.new()
+        arc = []
+        for k in range(17):
+            a = (-50 + 100 * k / 16) * pi / 180 + (0 if sgn > 0 else pi)
+            arc.append((my + 22.3 * cos(a), mz + 22.3 * sin(a)))
+        for k in range(16, -1, -1):
+            a = (-50 + 100 * k / 16) * pi / 180 + (0 if sgn > 0 else pi)
+            arc.append((my + 16.5 * cos(a), mz + 16.5 * sin(a)))
+        extrude(bm, [arc], 58, 122, 0, axis='X')
+        ex = [M50, (-70, 0, 0, .94), (0, 14 * sgn, 0, .97)]
+        finish(f'P46_Magnet_{i + 1}', 46, bm, [M['magnet_n'] if sgn > 0 else M['magnet_s']], ex=ex, bevel=.3)
+
+    # 两个电刷：上下各一，碳刷压在换向器上，刷架装在端盖里
+    for i, sgn in enumerate((1, -1)):
+        bm = bmesh.new()
+        fs = boxl(bm, (44, 6.1, -2.5), (50, 11, 2.5), 0)
+        fs += boxl(bm, (41.5, 11, -3.5), (50.5, 16, 3.5), 1)
+        oriented(bm, fs, (0, my, mz), (1, 0, 0), (0, 0, sgn))
+        ex = EX['end_cap'] + [(0, 0, 12 * sgn, .91)]
+        finish(f'P47_Brush_{i + 1}', 47, bm, [M['carbon'], M['brass']], ex=ex, bevel=.2)
+
+    ctrl = [Vector(p) for p in ((32, my - 12, mz - 8), (28, -68, 26), (18, -73, 17), (-20, -74, 16),
                                 (-100, -74, 16), (-170, -73, 16), (-196, -70, 16))]
     bm = bmesh.new()
     sweep(bm, catmull(ctrl, per=10), 2.2, 0, sides=10)
     rev(bm, [(0, 0), (4.5, 0), (4.5, 12), (3, 14), (0, 14)], 0, '-X', (-196, -70, 16), seg=24)   # DC 插头
+    for k in range(5):                                                                          # 插头尾巴的防折纹
+        rev(bm, [(4.5, 0), (4.9, 0), (4.9, 1), (4.5, 1)], 0, '-X', (-185 + k * 2.2, -70.5, 16), seg=20, closed=True)
     rev(bm, [(0, 0), (2.8, 0), (2.8, 8), (0, 8)], 1, '-X', (-210, -70, 16), seg=20)
     finish('P28_PowerCord', 28, bm, [M['cable'], M['steel']], ex=EX['motor'])
 
@@ -851,6 +1146,7 @@ def build_knobs(M):
         bm = bmesh.new()
         rod(bm, 2.5, BT, BT + 3, 1, 'Z', (x, -48, 0), seg=16)
         knurl(bm, 7, BT + 3, BT + 11, 0, 'Z', (x, -48, 0))
+        rev(bm, [(0, BT + 11), (5.5, BT + 11), (5, BT + 11.6), (0, BT + 11.6)], 0, 'Z', (x, -48, 0), seg=30)
         finish(f'P29_LockKnob_{i + 1}', 29, bm, [M['alu'], M['steel']], ex=EX['knob'])
 
 
