@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>气动蝶阀爆炸图</title>
+<style>{{CSS}}</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="c" aria-label="气动蝶阀三维爆炸图，可拖动旋转"></canvas>
+  <svg id="leaders" aria-hidden="true"></svg>
+  <div id="balloons"></div>
+
+  <div class="hud left">
+    <div class="tb" role="group" aria-label="图纸标题栏">
+      <div class="name"><h1>气动蝶阀</h1><span class="en">Pneumatic butterfly valve · exploded</span></div>
+      <div><span class="k">规格</span><span class="v">DN80 · PN16 · 对夹式</span></div>
+      <div><span class="k">执行器</span><span class="v">齿轮齿条 · 单作用</span></div>
+      <div class="hide-sm"><span class="k">安装法兰</span><span class="v">ISO 5211 F05</span></div>
+      <div class="hide-sm"><span class="k">图号 / 单位</span><span class="v">DBV-80-EX · mm</span></div>
+    </div>
+
+    <div id="info" class="card" hidden aria-live="polite">
+      <div class="card-head">
+        <div class="card-no" id="i-no">1</div>
+        <div style="min-width:0"><h2 id="i-cn">阀体</h2><div class="jp" id="i-jp">ボデー</div><div class="en2" id="i-en">BODY</div></div>
+        <button class="x" id="i-close" aria-label="关闭说明">×</button>
+      </div>
+      <dl><dt>材料</dt><dd id="i-mat">—</dd><dt>数量</dt><dd id="i-qty">—</dd></dl>
+      <p id="i-desc"></p>
+    </div>
+
+    <div class="hint" id="hint">拖动旋转，滚轮或双指缩放。点零件或编号看说明。</div>
+  </div>
+
+  <section class="hud bom" id="bom" hidden aria-label="零件表">
+    <div class="bom-head"><h3>零件表<small id="bom-count"></small></h3><button class="btn" id="bom-close">收起</button></div>
+    <div class="bom-list" id="bom-list"></div>
+  </section>
+
+  <div class="hud ctrl" id="ctrl">
+    <div class="bar">
+      <div class="bar-row">
+        <button class="btn primary" id="b-play"><svg viewBox="0 0 16 16"><path d="M3 2l11 6-11 6z"/></svg><span id="b-play-t">装配</span></button>
+        <div class="slider"><label for="r-ex">爆炸</label><input id="r-ex" type="range" min="0" max="100" value="100"><output id="o-ex">100%</output></div>
+        <button class="btn" id="b-act"><span id="b-act-t">开阀</span><span class="lbl-long">动作演示</span></button>
+        <span class="chip closed" id="chip">全关</span>
+        <span class="spacer"></span>
+        <button class="btn" id="b-lbl" aria-pressed="true">编号</button>
+        <button class="btn" id="b-bom" aria-pressed="false">零件表</button>
+        <button class="btn" id="b-view">复位视角</button>
+      </div>
+      <div class="cap" id="cap"></div>
+    </div>
+  </div>
+</div>
+<script>{{VENDOR}}</script>
+<script>{{APP}}</script>
+</body>
+</html>
