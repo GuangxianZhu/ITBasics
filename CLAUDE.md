@@ -13,6 +13,7 @@
 | 气动阀门爆炸图（three.js 网页：DN80 气动蝶阀 + 气动球阀原稿；蝶阀也导进了 VR 玩具箱） | `气动阀门爆炸图/README.md` |
 | 万用表爆炸图（数字万用表，外观参考 SATA DO5054：Blender 脚本建模 + 原理爆炸图，导进 MyVRToyBox） | `万用表爆炸图/README.md` |
 | AI 服务器爆炸图（8U 八卡 HGX 训练服务器，180 个零件：Blender 脚本建模 + 原理爆炸图，导进 MyVRToyBox） | `AI服务器爆炸图/README.md` |
+| 球形漂浮机器人爆炸图（科幻原创 ORB-1：燃料涡轮发电 + 共轴涵道，96 个零件：Blender 脚本建模 + 原理爆炸图，导进 MyVRToyBox） | `球形漂浮机器人爆炸图/README.md` |
 
 通用约定：
 - 回答用中文；改完 push 到 `main`。
