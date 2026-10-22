@@ -792,7 +792,7 @@ PSU_Y = (240.0, 425.0)
 #   1 掀顶盖（往上）  2 拔前面的风扇墙、硬盘（往前）  3 电源组从后面拔出再往上抬
 #   4 GPU 托盘先抬高、再整个往前抽出（到桌子左边），8 块 GPU 再往上提、左右分开，一块一块看得清
 #   5 主板托盘从后面抽出（到桌子右边）再往远处让，CPU、内存、网卡往上浮
-# 建模时零件拆得很细（芯片、HBM、散热器……），最后 merge_units() 按"一块 GPU"这一级合并成 24 个抓取单元
+# 建模时零件拆得很细（芯片、HBM、散热器……），最后 merge_units() 按"一块 GPU"这一级合并成 32 个抓取单元（GPU 和它的散热器各算一个）
 # 虚幻里服务器转 180°：前面板朝左手边、后面朝右手边、+X 那一侧朝着玩家（-X 往远处）
 LID_UP = 520.0
 GPU_TRAY = [(0, 0, 220, .18), (0, -500, 0, .40)]   # 抬 220：托盘底 394，刚好越过拔出来的风扇墙顶（352）
@@ -806,17 +806,20 @@ def gpu_route(*more):
 # 8 块 GPU 拆出来后在托盘上方摆成"两层看台"：每层 4 块从左到右一字排开（沿服务器长度方向，玩家看过去是左右），
 # 靠玩家那层（+X）低、远处那层高，玩家从前上方看过去 8 块都不挡。
 # 原来的排法是 4 块沿 X 排成一列，正好顺着玩家视线前后重叠，看上去只有两大块。
-# 分三段走、互不穿插：先往上提（两层高差 180 > 模组高 150），再沿 Y 分成 4 列（列距 205 > 散热器长 158），最后沿 X 归到各自那层。
+# 每块 GPU 的散热器单独拆：比 GPU 多抬 HS_FLOAT，玩家从前上方能看进缝里，看到芯片和 6 颗 HBM。
+# 分三段走、互不穿插：先往上提（近层整摞 = 模组 150 + 散热器浮起 80，远层底比它高 10），再沿 Y 分成 4 列
+# （列距 205 > 散热器长 158），最后沿 X 归到各自那层。
 GPU_DISPLAY_X = (85.0, -85.0)        # 近层 / 远层
-GPU_DISPLAY_LIFT = (120.0, 300.0)    # 近层 / 远层往上提多少（远层顶 860，低于停在上方的顶盖 872）
+GPU_DISPLAY_LIFT = (100.0, 340.0)    # 近层 / 远层的 GPU 往上提多少（近层 GPU 底 510，高过托盘上的 NVSwitch 散热器 487）
+HS_FLOAT = 80.0                      # 散热器比自己的 GPU 多抬多少
 GPU_DISPLAY_PITCH = 205.0
 GPU_DISPLAY_CY = -48.0               # 托盘长度方向的中点
 
 
-def gpu_display_steps(i, gx, gy):
+def gpu_display_steps(i, gx, gy, extra_lift=0.0):
     tier, col = divmod(i, 4)         # GPU0~3（前排）→ 近层，GPU4~7（后排）→ 远层；列按原来的 X 顺序
     ty = GPU_DISPLAY_CY + (col - 1.5) * GPU_DISPLAY_PITCH
-    return [(0, 0, GPU_DISPLAY_LIFT[tier], .30), (0, ty - gy, 0, .65), (GPU_DISPLAY_X[tier] - gx, 0, 0, 1.0)]
+    return [(0, 0, GPU_DISPLAY_LIFT[tier] + extra_lift, .30), (0, ty - gy, 0, .65), (GPU_DISPLAY_X[tier] - gx, 0, 0, 1.0)]
 
 
 def mb_route(*more):
@@ -1625,10 +1628,10 @@ UNIT_INFO = {
     9: ('GPU 托盘（HGX 基板 + 4 颗 NVSwitch）', '钢板托盘 + 20 层以上高速 PCB + NVSwitch × 4（带散热器）',
          '8 块 GPU 都插在这块基板上。中间一排 4 颗 NVSwitch 是 GPU 之间的"交换机"：每块 GPU 拉 18 条 NVLink 到 4 颗 NVSwitch，'
          '任意两块之间 900 GB/s，8 块卡用起来像一块大 GPU，训练时每一步同步梯度就靠它。整个托盘从机箱前面抽出来维修。'),
-    11: ('GPU 模组（H100 SXM5 + 散热器）', 'GH100 芯片（800 亿晶体管）+ 6 颗 HBM3（80 GB）· 700 W · 铜底均热板 + 热管 + 铝鳍片',
-         'AI 训练真正干活的地方：芯片里的 Tensor Core 专做矩阵乘法，神经网络 90% 以上的计算都是它。芯片两边贴着 6 颗 HBM 显存'
-         '（8 层内存芯片叠起来，带宽 3.35 TB/s），载板两端是把 54 V 降到 1 V 左右、700 A 以上的供电模块。上面的大散热器负责把 700 W 的热量带走。'
-         '整块模组压在基板的两个连接器上（SXM 接口），比 PCIe 显卡供电更足、互连更快。'),
+    11: ('GPU 模组（H100 SXM5）', 'GH100 芯片（800 亿晶体管）+ 6 颗 HBM3（80 GB）· 700 W · SXM5 载板 + 供电模块',
+         'AI 训练真正干活的地方：中间那颗大芯片里的 Tensor Core 专做矩阵乘法，神经网络 90% 以上的计算都是它。芯片两边贴着 6 颗 HBM 显存'
+         '（8 层内存芯片叠起来，带宽 3.35 TB/s），载板两端是把 54 V 降到 1 V 左右、700 A 以上的供电模块。'
+         '整块模组压在基板的两个连接器上（SXM 接口），比 PCIe 显卡供电更足、互连更快。上面浮着的是它的散热器。'),
     21: ('主板托盘（主板 + PCIe 交换芯片 + 管理芯片）', '钢板托盘 + 双路主板 · PCIe 交换芯片 × 4 · BMC · OCP 网卡 · M.2 启动盘',
          '下层整块主板从机箱后面抽出来。板上 4 颗带散热片的 PCIe 交换芯片让网卡、硬盘和 GPU 之间直接传数据，不绕 CPU；'
          'BMC 是服务器里的"小电脑"，主机关机也能远程开关机、看温度；两块 M.2 盘装操作系统，OCP 网卡连存储和管理网络。'),
@@ -1651,8 +1654,8 @@ def unit_groups():
         return [n for n in names if any(n == p or n.startswith(p + '_') for p in prefixes)]
     G = [
         ('P01_Chassis', 1, ['P01_Chassis', 'P06_FrontPanel'], []),
-        # 顶盖往上再往后挪一点，停在电源组上方，不挡左边那排 GPU
-        ('P02_Lid', 2, ['P02_Lid'], [(0, 0, LID_UP, .00), (0, 300, 0, .06)]),
+        # 顶盖往上再往后挪，停在电源组上方，给左边远层 GPU 的散热器让开（两者高度重叠，前后留 50 mm）
+        ('P02_Lid', 2, ['P02_Lid'], [(0, 0, LID_UP, .00), (0, 350, 0, .06)]),
         ('P03_GpuFanWall', 3, pick('P03_GpuFan'), [(0, -130, 0, .04)]),
         ('P04_CpuFans', 4, pick('P04_CpuFan'), [(0, -120, 0, .08)]),
         ('P05_Drives', 5, pick('P05_Drive') + ['P35_Backplane'], [(0, -150, 0, .12)]),
@@ -1661,9 +1664,11 @@ def unit_groups():
     ]
     for i, (gx, gy) in enumerate(gpu_index_xy()):
         n = i + 1
-        members = [f'P11_SXM_{n}', f'P12_GPU_{n}', f'P14_VRM_{n}', f'P15_GpuHeatsink_{n}']
+        members = [f'P11_SXM_{n}', f'P12_GPU_{n}', f'P14_VRM_{n}']
         members += [x for x in names if x.startswith(f'P13_HBM_G{n}')]
         G.append((f'P11_GPU_{n}', 11, members, gpu_route(*gpu_display_steps(i, gx, gy))))
+        # 散热器单独一个部件：跟着自己那块 GPU 走，多抬 HS_FLOAT，露出底下的芯片和 HBM
+        G.append((f'P15_GpuHeatsink_{n}', 15, [f'P15_GpuHeatsink_{n}'], gpu_route(*gpu_display_steps(i, gx, gy, HS_FLOAT))))
     G.append(('P21_MbTray', 21, ['P21_MbTray', 'P22_Motherboard', 'P27_OCPNic', 'P29_BMC', 'P30_CMOS', 'P31_TPM', 'P33_PCH']
               + pick('P19_PCIeSwitch', 'P28_M2'), mb_route()))
     for i in range(2):
