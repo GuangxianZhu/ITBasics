@@ -795,12 +795,28 @@ PSU_Y = (240.0, 425.0)
 # 建模时零件拆得很细（芯片、HBM、散热器……），最后 merge_units() 按"一块 GPU"这一级合并成 24 个抓取单元
 # 虚幻里服务器转 180°：前面板朝左手边、后面朝右手边、+X 那一侧朝着玩家（-X 往远处）
 LID_UP = 520.0
-GPU_TRAY = [(0, 0, 280, .18), (0, -500, 0, .40)]
+GPU_TRAY = [(0, 0, 220, .18), (0, -500, 0, .40)]   # 抬 220：托盘底 394，刚好越过拔出来的风扇墙顶（352）
 MB_TRAY = [(0, 690, 0, .46), (-320, 0, 0, .90)]
 
 
 def gpu_route(*more):
     return GPU_TRAY + list(more)
+
+
+# 8 块 GPU 拆出来后在托盘上方摆成"两层看台"：每层 4 块从左到右一字排开（沿服务器长度方向，玩家看过去是左右），
+# 靠玩家那层（+X）低、远处那层高，玩家从前上方看过去 8 块都不挡。
+# 原来的排法是 4 块沿 X 排成一列，正好顺着玩家视线前后重叠，看上去只有两大块。
+# 分三段走、互不穿插：先往上提（两层高差 180 > 模组高 150），再沿 Y 分成 4 列（列距 205 > 散热器长 158），最后沿 X 归到各自那层。
+GPU_DISPLAY_X = (85.0, -85.0)        # 近层 / 远层
+GPU_DISPLAY_LIFT = (120.0, 300.0)    # 近层 / 远层往上提多少（远层顶 860，低于停在上方的顶盖 872）
+GPU_DISPLAY_PITCH = 205.0
+GPU_DISPLAY_CY = -48.0               # 托盘长度方向的中点
+
+
+def gpu_display_steps(i, gx, gy):
+    tier, col = divmod(i, 4)         # GPU0~3（前排）→ 近层，GPU4~7（后排）→ 远层；列按原来的 X 顺序
+    ty = GPU_DISPLAY_CY + (col - 1.5) * GPU_DISPLAY_PITCH
+    return [(0, 0, GPU_DISPLAY_LIFT[tier], .30), (0, ty - gy, 0, .65), (GPU_DISPLAY_X[tier] - gx, 0, 0, 1.0)]
 
 
 def mb_route(*more):
@@ -1647,8 +1663,7 @@ def unit_groups():
         n = i + 1
         members = [f'P11_SXM_{n}', f'P12_GPU_{n}', f'P14_VRM_{n}', f'P15_GpuHeatsink_{n}']
         members += [x for x in names if x.startswith(f'P13_HBM_G{n}')]
-        # 往上提 200，再按列往左右分开（列距 105 → 160），8 块之间留出 6 cm 空隙
-        G.append((f'P11_GPU_{n}', 11, members, gpu_route((gx * .52, 0, 200, .46 + .01 * i))))
+        G.append((f'P11_GPU_{n}', 11, members, gpu_route(*gpu_display_steps(i, gx, gy))))
     G.append(('P21_MbTray', 21, ['P21_MbTray', 'P22_Motherboard', 'P27_OCPNic', 'P29_BMC', 'P30_CMOS', 'P31_TPM', 'P33_PCH']
               + pick('P19_PCIeSwitch', 'P28_M2'), mb_route()))
     for i in range(2):
