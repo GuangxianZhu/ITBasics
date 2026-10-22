@@ -789,9 +789,10 @@ PSU_Z = (190.0, 231.0)  # 两层电源的底面
 PSU_Y = (240.0, 425.0)
 
 # 爆炸路线（毫米，Blender 坐标；最后一个数 = 出场时刻 0~1）。拆机顺序和摆法：
-#   1 掀顶盖（往上）  2 拔前面的风扇、硬盘、面板（往前）  3 电源从后面拔出再往上抬，配电板跟着往上
-#   4 GPU 托盘先抬高、再整个往前抽出（到桌子左边），上面的散热器、GPU 模组、芯片、HBM 一层层往上浮
-#   5 主板托盘从后面抽出（到桌子右边）再往里让一点，CPU 散热器、CPU、内存、网卡、各种小芯片往上浮
+#   1 掀顶盖（往上）  2 拔前面的风扇墙、硬盘（往前）  3 电源组从后面拔出再往上抬
+#   4 GPU 托盘先抬高、再整个往前抽出（到桌子左边），8 块 GPU 再往上提、左右分开，一块一块看得清
+#   5 主板托盘从后面抽出（到桌子右边）再往远处让，CPU、内存、网卡往上浮
+# 建模时零件拆得很细（芯片、HBM、散热器……），最后 merge_units() 按"一块 GPU"这一级合并成 24 个抓取单元
 # 虚幻里服务器转 180°：前面板朝左手边、后面朝右手边、+X 那一侧朝着玩家（-X 往远处）
 LID_UP = 520.0
 GPU_TRAY = [(0, 0, 280, .18), (0, -500, 0, .40)]
@@ -1087,8 +1088,8 @@ def build_pdb(M):
             boxf(bm, (x - 5, PSU_Y[0] - 20, z0 + 2.4), (x + 5, YR - 20, z0 + 5.4), 1)
             for yy in (PSU_Y[0] + 20, YR - 30):
                 cyl(bm, 3.2, z0 + 5.4, z0 + 7, 3, seg=12, cx=x, cy=yy)
-    smd_caps(bm, [(-100 + 20 * i, 330) for i in range(11)], z0 + 2.4, 5, 12, 4, 5)
-    smd_caps(bm, [(-90 + 20 * i, 360) for i in range(10)], z0 + 2.4, 5, 12, 4, 5)
+    smd_caps(bm, [(-100 + 20 * i, 330) for i in range(11)], z0 + 2.4, 5, 8, 4, 5)   # 8 mm 高，顶到电源底面前留 1 mm
+    smd_caps(bm, [(-90 + 20 * i, 360) for i in range(10)], z0 + 2.4, 5, 8, 4, 5)
 
     def post(b):
         text(b, 'PDB  54V / 12V', 9, 0, 400, z0 + 2.4, 6)
@@ -1586,6 +1587,109 @@ def build_small_parts(M):
     finish('P31_TPM', 31, bm, mats, ex=mb_route((0, 0, 40, .94)))
 
 
+# ---------------------------------------------------------------- 合并成抓取单元（最小到"一块 GPU"这一级）
+# 合并后每个单元的信息牌（零件号 → 中文名、材料 / 规格、作用），覆盖上面细零件的 INFO
+UNIT_INFO = {
+    1: ('机箱（含前控制面板）', '镀锌钢板冲压 · 8U（355.6 mm 高）· 19 英寸机架挂耳',
+        '整台服务器的骨架：前面是风扇墙和硬盘笼，后面上方是电源插槽和出风网孔，两侧有托盘导轨；前面板上有电源键、状态灯、USB。'
+        '拆机时它不动，其他部件都从它上面拿走。一个 42U 机柜一般只放 4 台这样的机器（散热和供电跟不上）。'),
+    2: ('顶盖', '镀锌钢板 · 顶面贴维修示意图',
+        '除了防尘，更重要的是把风"关"在里面：冷风必须穿过散热片才能从后面出去。开着盖子跑，风从上面漏掉，GPU 几分钟就过热降频。'),
+    3: ('GPU 区风扇墙（10 个）', '80 mm 双转子对旋风扇 × 10 · 热插拔',
+        '把冷风从前面吸进来、压过 8 块 GPU 的散热片。8 块 GPU 满载约 5.6 kW，热量几乎全靠这面风扇墙带走。'
+        '坏一个其他风扇自动提速，绿色把手一拉就能带电更换。'),
+    4: ('CPU 区风扇（4 个）', '80 mm 风扇 × 4 · 热插拔',
+        '给下层的 CPU、内存和网卡吹风，和 GPU 区是两个风道，互不抢风。'),
+    5: ('NVMe 硬盘 × 8（含背板）', 'U.2 2.5 英寸 · 7.68 TB × 8 · PCIe 5.0',
+        '放训练数据和模型检查点：训练时每隔一段时间把几百 GB 的模型状态存一份，出错能从这里接着训。'
+        'NVMe 直接走 PCIe，一块盘约 10 GB/s，8 块一起喂数据才跟得上 GPU。后面的背板让硬盘插上就通电通信号，能从前面直接拔插。'),
+    7: ('电源 × 6（含配电板）', 'CRPS 3000 W × 6 · 钛金级 96 % · 4+2 冗余',
+        '整机满载约 10 kW，相当于 5 台家用空调。平时 4 个电源就够，另外 2 个冗余：任意两个坏了照常跑。'
+        '6 个电源插在下面的配电板上，输出并在一起，经铜排送到 GPU 基板和主板。'),
+    9: ('GPU 托盘（HGX 基板 + 4 颗 NVSwitch）', '钢板托盘 + 20 层以上高速 PCB + NVSwitch × 4（带散热器）',
+         '8 块 GPU 都插在这块基板上。中间一排 4 颗 NVSwitch 是 GPU 之间的"交换机"：每块 GPU 拉 18 条 NVLink 到 4 颗 NVSwitch，'
+         '任意两块之间 900 GB/s，8 块卡用起来像一块大 GPU，训练时每一步同步梯度就靠它。整个托盘从机箱前面抽出来维修。'),
+    11: ('GPU 模组（H100 SXM5 + 散热器）', 'GH100 芯片（800 亿晶体管）+ 6 颗 HBM3（80 GB）· 700 W · 铜底均热板 + 热管 + 铝鳍片',
+         'AI 训练真正干活的地方：芯片里的 Tensor Core 专做矩阵乘法，神经网络 90% 以上的计算都是它。芯片两边贴着 6 颗 HBM 显存'
+         '（8 层内存芯片叠起来，带宽 3.35 TB/s），载板两端是把 54 V 降到 1 V 左右、700 A 以上的供电模块。上面的大散热器负责把 700 W 的热量带走。'
+         '整块模组压在基板的两个连接器上（SXM 接口），比 PCIe 显卡供电更足、互连更快。'),
+    21: ('主板托盘（主板 + PCIe 交换芯片 + 管理芯片）', '钢板托盘 + 双路主板 · PCIe 交换芯片 × 4 · BMC · OCP 网卡 · M.2 启动盘',
+         '下层整块主板从机箱后面抽出来。板上 4 颗带散热片的 PCIe 交换芯片让网卡、硬盘和 GPU 之间直接传数据，不绕 CPU；'
+         'BMC 是服务器里的"小电脑"，主机关机也能远程开关机、看温度；两块 M.2 盘装操作系统，OCP 网卡连存储和管理网络。'),
+    23: ('CPU + 散热器', '56 核服务器 CPU · LGA4677 封装 77.5 × 56.5 mm · 350 W · 热管散热器',
+         'GPU 负责算，CPU 负责"打杂"：读硬盘、解码和预处理训练数据、调度任务、管网络。两颗一共 112 核，'
+         '数据预处理跟不上的话 GPU 就要空等。散热器把 350 W 的热量经 4 根热管送上鳍片，被 CPU 区风扇吹走。'),
+    25: ('DDR5 内存（一排 8 根）', 'DDR5-4800 RDIMM · 64 GB/根 · 带 ECC · 133 × 31 mm',
+         '每颗 CPU 两边各一排 8 根，一共 32 根 2 TB。训练数据先读进内存、预处理好再送进 GPU。'
+         '服务器内存带 ECC：每 64 位数据多存 8 位校验，偶尔的位翻转能自动纠正，几周不停的训练不会因为一个比特出错而崩掉。'),
+    26: ('400G 网卡（4 张）', 'ConnectX-7 · PCIe 5.0 x16 · OSFP 400 Gb/s × 4',
+         '每块 GPU 配一张网卡，8 张合计 3.2 Tb/s。几十上百台服务器一起训练时，每一步都要和其他机器交换梯度，'
+         '网卡用 RDMA 直接读写对方 GPU 的显存，CPU 不用插手。'),
+}
+
+# (合并后的对象名, 零件号, 成员对象名, 爆炸路线)
+def unit_groups():
+    names = [d['ob'].name for d in OBJS]
+
+    def pick(*prefixes):
+        return [n for n in names if any(n == p or n.startswith(p + '_') for p in prefixes)]
+    G = [
+        ('P01_Chassis', 1, ['P01_Chassis', 'P06_FrontPanel'], []),
+        # 顶盖往上再往后挪一点，停在电源组上方，不挡左边那排 GPU
+        ('P02_Lid', 2, ['P02_Lid'], [(0, 0, LID_UP, .00), (0, 300, 0, .06)]),
+        ('P03_GpuFanWall', 3, pick('P03_GpuFan'), [(0, -130, 0, .04)]),
+        ('P04_CpuFans', 4, pick('P04_CpuFan'), [(0, -120, 0, .08)]),
+        ('P05_Drives', 5, pick('P05_Drive') + ['P35_Backplane'], [(0, -150, 0, .12)]),
+        ('P07_PSUs', 7, pick('P07_PSU') + ['P08_PDB'], [(0, 110, 0, .10), (0, 0, 220, .17)]),
+        ('P09_GpuTray', 9, ['P09_GpuTray', 'P10_HGXBaseboard'] + pick('P16_NVSwitch', 'P17_NVSHeatsink'), gpu_route()),
+    ]
+    for i, (gx, gy) in enumerate(gpu_index_xy()):
+        n = i + 1
+        members = [f'P11_SXM_{n}', f'P12_GPU_{n}', f'P14_VRM_{n}', f'P15_GpuHeatsink_{n}']
+        members += [x for x in names if x.startswith(f'P13_HBM_G{n}')]
+        # 往上提 200，再按列往左右分开（列距 105 → 160），8 块之间留出 6 cm 空隙
+        G.append((f'P11_GPU_{n}', 11, members, gpu_route((gx * .52, 0, 200, .46 + .01 * i))))
+    G.append(('P21_MbTray', 21, ['P21_MbTray', 'P22_Motherboard', 'P27_OCPNic', 'P29_BMC', 'P30_CMOS', 'P31_TPM', 'P33_PCH']
+              + pick('P19_PCIeSwitch', 'P28_M2'), mb_route()))
+    for i in range(2):
+        G.append((f'P23_CPU_{i + 1}', 23, [f'P23_CPU_{i + 1}', f'P24_CpuHeatsink_{i + 1}'], mb_route((0, 0, 120, .64 + .02 * i))))
+    for b in range(4):
+        G.append((f'P25_DIMM_{"ABCD"[b]}', 25, [x for x in names if x.startswith(f'P25_DIMM_{"ABCD"[b]}')],
+                  mb_route((0, 0, 60, .74 + .012 * b))))
+    G.append(('P26_NIC_L', 26, [f'P26_NIC_{k}' for k in range(1, 5)], mb_route((0, 0, 100, .80))))
+    G.append(('P26_NIC_R', 26, [f'P26_NIC_{k}' for k in range(5, 9)], mb_route((0, 0, 100, .82))))
+    return G
+
+
+def merge_units():
+    by_name = {d['ob'].name: d['ob'] for d in OBJS}
+    groups = unit_groups()
+    used = [m for g in groups for m in g[2]]
+    missing = set(by_name) - set(used)
+    dup = {m for m in used if used.count(m) > 1}
+    assert not missing and not dup, f'没分到单元的零件：{sorted(missing)}，重复的：{sorted(dup)}'
+    out = []
+    for name, no, members, ex in groups:
+        obs = [by_name[m] for m in members]
+        for ob in bpy.context.view_layer.objects:
+            ob.select_set(False)
+        for ob in obs:
+            ob.select_set(True)
+        bpy.context.view_layer.objects.active = obs[0]
+        if len(obs) > 1:
+            bpy.ops.object.join()
+        ob = obs[0]
+        ob.name = name
+        ob.data.name = name
+        out.append(dict(ob=ob, ex=[tuple(e) for e in ex], no=no))
+    OBJS[:] = out
+    INFO.update(UNIT_INFO)
+    for d in OBJS:
+        d['ob']['name_cn'] = INFO[d['no']][0]
+    print(f'[OK] merged into {len(OBJS)} units')
+
+
+
 # ---------------------------------------------------------------- 爆炸动画（和网页 / 虚幻同一个公式）
 def ease(x):
     return 4 * x * x * x if x < .5 else 1 - (-2 * x + 2) ** 3 / 2
@@ -1752,6 +1856,7 @@ def main():
     build_dimms(M)
     build_nics(M)
     build_small_parts(M)
+    merge_units()
     setup_world_and_cam(M)
     animate_explode()
     viewport_defaults()
