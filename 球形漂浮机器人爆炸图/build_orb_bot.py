@@ -892,7 +892,7 @@ def along(v, d, s):
     return (v.x, v.y, v.z, s)
 
 
-TURB = [(230, 0, 0, .32)]
+TURB = [(170, 110, 0, .32)]      # 往右再往后让：右手边靠前是虚幻工作室的触屏
 ELEC = [(-220, 0, 0, .34)]
 
 
@@ -985,7 +985,7 @@ def build_petals(M):
             sph_grid(bm, R_IN, R_OUT, lat0, lat1, lon0, lon1, fn, step=1.5)
             c = 60 * k + 30
             if upper:
-                ex = [along(sdir(55, c), 300, .09)]
+                ex = [along(sdir(45, c), 270, .09)]
                 finish(f'P05_UpperPetal_{k + 1}', 5, bm, mats, ex=ex)
             else:
                 ex = [radial(c, 270, -120, .12)]
@@ -1010,7 +1010,7 @@ def build_grilles(M):
     mats = [M['alu'], M['orange']]
     bm = bmesh.new()
     sph_grid(bm, R_IN, R_OUT, 70.6, 90, 0, 360, grille_fn(1), step=3.0, lat_step=.5)
-    finish('P07_TopGrille', 7, bm, mats, ex=[(0, 0, 300, .04)])
+    finish('P07_TopGrille', 7, bm, mats, ex=[(0, 0, 220, .04)])
     bm = bmesh.new()
     sph_grid(bm, R_IN, R_OUT, -90, -70.6, 0, 360, grille_fn(-1), step=3.0, lat_step=.5)
     finish('P08_BottomGrille', 8, bm, mats, ex=[(0, 0, -140, .1)])
@@ -1021,7 +1021,7 @@ def build_lidar(M):
     bm = bmesh.new()
     sph_grid(bm, 172, 180, 63.8, 70.4, 0, 360,
              lambda la, lo: 1 if 65.6 < la < 68.4 else (2 if la < 64.6 else 0), step=3.0, lat_step=.6)
-    finish('P09_LidarRing', 9, bm, mats, ex=[(0, 0, 215, .07)])
+    finish('P09_LidarRing', 9, bm, mats, ex=[(0, 0, 160, .07)])
 
 
 def build_halo(M):
@@ -1039,7 +1039,7 @@ def build_halo(M):
         bmesh.ops.transform(b, verts=b.verts,
                             matrix=tilt @ Matrix.Translation((218 * cos(a), 218 * sin(a), 0)) @ Matrix.Rotation(a, 4, 'Z'))
         to_bm(bm, b)
-    finish('P10_Halo', 10, bm, mats, ex=[(0, 0, 90, 0.0)])
+    finish('P10_Halo', 10, bm, mats, ex=[(0, 0, 60, 0.0)])
 
 
 def build_light_strips(M):
@@ -1057,7 +1057,7 @@ ZL = -75.0           # 下半球油路的高度（相对球心）
 
 
 def tank_route(c):
-    return [radial(c, 90, 200, .72)]
+    return [radial(c, 100, 140, .72)]
 
 
 def build_tanks(M):
@@ -1086,7 +1086,7 @@ def build_filler(M):
     mid = Vector((a.x * .9 + b.x * .1, a.y * .9 + b.y * .1, (a.z + b.z) * .5 + 10))
     sweep(bm, catmull([a, mid, b], 8), 9.0, 0, sides=16)
     rev_d(bm, [(9, 0), (14, 0), (14, 3), (9, 3)], 1, d, b - d * 8, seg=24, closed=True)
-    finish('P13_FillerNeck', 13, bm, mats, ex=tank_route(90.0) + [(0, 0, 70, .8)])
+    finish('P13_FillerNeck', 13, bm, mats, ex=tank_route(90.0) + [(0, 0, 45, .8)])
     bm = bmesh.new()
     rev_d(bm, [(0, 0), (13.5, 0), (13.5, 4), (11.5, 6.5), (0, 6.5)], 2, d, CEN + d * 175.5, seg=32)
     rev_d(bm, [(9, -3), (12, -3), (12, 0), (9, 0)], 3, d, CEN + d * 175.5, seg=24, closed=True)
@@ -1101,7 +1101,7 @@ def build_level_sensor(M):
     rod(bm, 5.5, p.z, p.z + 16, 0, 'Z', (p.x, p.y, 0), seg=20)
     boxf(bm, (p.x - 8, p.y - 6, p.z + 16), (p.x + 8, p.y + 6, p.z + 26), 1)
     boxf(bm, (p.x - 8.2, p.y - 6.2, p.z + 20), (p.x + 8.2, p.y + 6.2, p.z + 22), 2)
-    finish('P15_LevelSensor', 15, bm, mats, bevel=.6, ex=tank_route(180.0) + [(0, 0, 60, .82)])
+    finish('P15_LevelSensor', 15, bm, mats, bevel=.6, ex=tank_route(180.0) + [(0, 0, 40, .82)])
 
 
 def lower_route(lon):
@@ -1162,9 +1162,9 @@ def build_lines(M):
         ([pol(104, 32, ZL + 32), pol(92, 25, ZL + 44), pol(77, 15, -20), pol(77, 8, 30),
           Vector((86, -2, ZC + 40)), Vector((97, -6, T.z - 28))], [(0, 0, -200, .28), radial(15, 220, 0, .5)]),
         ([pol(118, 30, 27), pol(118, 38, 40), pol(118, 45, 44), pol(118, 52, 40), pol(118, 60, 27)],
-         [radial(45, 90, 240, .74)]),
+         [radial(45, 100, 175, .74)]),
         ([pol(118, 120, 27), pol(118, 128, 40), pol(118, 135, 44), pol(118, 142, 40), pol(118, 150, 27)],
-         [radial(135, 90, 240, .74)]),
+         [radial(135, 100, 175, .74)]),
     ]
     for k, (pts, ex) in enumerate(runs):
         bm = bmesh.new()
@@ -1377,11 +1377,11 @@ def fan(bm, z, nb, tilt, r_tip, mats_idx=(0, 1)):
 def build_propulsion(M):
     bm = bmesh.new()
     fan(bm, ZC + 67, 7, 24, 58)
-    finish('P34_UpperFan', 34, bm, [M['graphite'], M['shell']], ex=[(0, 0, 260, .4)])
+    finish('P34_UpperFan', 34, bm, [M['graphite'], M['shell']], ex=[(0, 0, 200, .4)])
     bm = bmesh.new()
     rev(bm, [(0, 40), (20, 40), (20, 58), (17, 62), (0, 62)], 0, 'Z', (0, 0, ZC), seg=40)
     rev(bm, [(20, 49), (20.6, 49), (20.6, 53), (20, 53)], 1, 'Z', (0, 0, ZC), seg=40, closed=True)
-    finish('P35_UpperMotor', 35, bm, [M['steel'], M['orange']], ex=[(0, 0, 200, .46)])
+    finish('P35_UpperMotor', 35, bm, [M['steel'], M['orange']], ex=[(0, 0, 150, .46)])
     bm = bmesh.new()
     rod(bm, 13, ZC - 18, ZC + 40, 0, 'Z', (0, 0, 0), seg=32)
     for k in range(4):
@@ -1389,7 +1389,7 @@ def build_propulsion(M):
         boxf(b, (13, -2.5, ZC + 4), (62, 2.5, ZC + 14), 0)
         bmesh.ops.rotate(b, verts=b.verts, cent=(0, 0, 0), matrix=Matrix.Rotation(pi / 2 * k, 3, 'Z'))
         to_bm(bm, b)
-    finish('P36_MotorMount', 36, bm, [M['alu']], bevel=.6, ex=[(0, 0, 150, .52)])
+    finish('P36_MotorMount', 36, bm, [M['alu']], bevel=.6, ex=[(0, 0, 105, .52)])
     bm = bmesh.new()
     rev(bm, [(0, -40), (17, -40), (20, -36), (20, -18), (0, -18)], 0, 'Z', (0, 0, ZC), seg=40)
     rev(bm, [(20, -31), (20.6, -31), (20.6, -27), (20, -27)], 1, 'Z', (0, 0, ZC), seg=40, closed=True)
