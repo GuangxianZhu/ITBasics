@@ -48,6 +48,7 @@
 | `build_hand.py` | 逐件建模 + 装配 + 动画 + 导出网页。每类零件一个函数（`build_motor`、`build_finger`、`build_body`…），建模时把每个零件登记到零件树 |
 | `check.py` | 干涉自查：每个手势下，把所有零件（含倒角）变成三角网格，用 BVH 找互相穿插的三角形 |
 | `render.py` | 渲染静帧和动画帧 |
+| `export_ue.py` | 给虚幻工程 MyVRToyBox 导出 `hand_ue.glb`：放松手势、按零件树合并成 50 个部件（每个电机模组 / 每节指骨 / 指尖各一个，掌骨架是底座）、沿父链把分层爆炸偏移换成世界坐标的几步平移。由 MyVRToyBox 的 `导入灵巧手模型.bat` 调用：`blender -b --factory-startup --python export_ue.py -- <输出目录>` |
 | `tools/solve_poses.py` | 重新求解各手势的关节角（避开穿模），写回 `params.json` 的 `poses`。改了尺寸后跑一次 |
 | `viewer_src.html` / `viewer_template.html` | 网页查看器源码 / 内嵌 three.js 的离线模板（改了源码后用 `tools/make_template.mjs` 重新打包） |
 | `output\part_tree.md`、`output\bom.csv` | 每次建模自动生成的零件树和零件清单（180 个网格零件） |
