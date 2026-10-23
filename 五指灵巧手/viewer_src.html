@@ -1,0 +1,419 @@
+<title>五指灵巧手</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+/* Layout: full-bleed 3D stage (same family as the other ITBasics viewers). Drawing-style title block top-left,
+   side panel right with two tabs (零件树 / 关节角), one control dock along the bottom. */
+:root{
+  --stage:#dfe4e8; --stage2:#f0f3f5;
+  --panel:rgba(246,248,249,.93); --panel-solid:#f6f8f9;
+  --fg:#141a20; --muted:#5a6672; --line:#c3cbd2;
+  --accent:#cf5f1c; --accent-ink:#ffffff; --hl:#d6860b;
+  --meter:#2f7f8a; --meter-bg:rgba(20,26,32,.07);
+  --f-cn:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --f-num:"Barlow Condensed","Arial Narrow","Roboto Condensed",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --stage:#0f1317; --stage2:#1b2229;
+  --panel:rgba(19,24,30,.93); --panel-solid:#141a20;
+  --fg:#e2e7ec; --muted:#95a1ad; --line:#2c353f;
+  --accent:#f08a45; --accent-ink:#1b0e05; --hl:#f2b13d;
+  --meter:#4fb8c2; --meter-bg:rgba(226,231,236,.08); color-scheme:dark }}
+:root[data-theme="dark"]{
+  --stage:#0f1317; --stage2:#1b2229;
+  --panel:rgba(19,24,30,.93); --panel-solid:#141a20;
+  --fg:#e2e7ec; --muted:#95a1ad; --line:#2c353f;
+  --accent:#f08a45; --accent-ink:#1b0e05; --hl:#f2b13d;
+  --meter:#4fb8c2; --meter-bg:rgba(226,231,236,.08); color-scheme:dark }
+
+html,body{height:100%}
+body{overflow:hidden;background:var(--stage);color:var(--fg);font-family:var(--f-cn);-webkit-font-smoothing:antialiased}
+#app{position:relative;height:100%;overflow:hidden;background:radial-gradient(120% 90% at 40% 35%,var(--stage2),var(--stage) 70%)}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;backdrop-filter:blur(6px)}
+
+/* title block */
+#tb{position:absolute;top:12px;left:max(16px,env(safe-area-inset-left,0px));display:grid;grid-template-columns:repeat(3,auto);
+  font-size:12px;line-height:1.25;max-width:calc(100% - 32px)}
+#tb .name{grid-column:1/-1;padding:8px 12px 6px;border-bottom:1px solid var(--line)}
+#tb h1{margin:0;font-size:18px;font-weight:700;letter-spacing:.02em;text-wrap:balance}
+#tb .sub{font:500 12px/1.2 var(--f-num);letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin-top:2px}
+#tb .cell{padding:5px 12px;border-right:1px solid var(--line);font-family:var(--f-mono);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#tb .cell:last-child{border-right:0}
+#tb .cell b{display:block;font:500 10px/1.2 var(--f-cn);color:var(--muted)}
+
+/* side panel */
+#side{position:absolute;top:12px;right:max(16px,env(safe-area-inset-right,0px));bottom:84px;width:310px;display:flex;flex-direction:column}
+.ph{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px 6px 12px;border-bottom:1px solid var(--line)}
+.ph h2{margin:0;font-size:13px;font-weight:700;letter-spacing:.04em}
+.mini{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.mini button{all:unset;cursor:pointer;padding:3px 10px;font-size:12px}
+.mini button+button{border-left:1px solid var(--line)}
+.mini button[aria-selected="true"]{background:var(--fg);color:var(--panel-solid)}
+.mini button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#treeBox,#jointBox{overflow:auto;min-height:0;flex:1 1 auto}
+#tree{list-style:none;margin:0;padding:4px 0}
+#tree details>summary{list-style:none;cursor:pointer;padding:6px 12px;font-size:13px;font-weight:700;display:flex;justify-content:space-between}
+#tree details>summary::-webkit-details-marker{display:none}
+#tree details>summary::after{content:"＋";font-weight:400;color:var(--muted)}
+#tree details[open]>summary::after{content:"－"}
+#tree button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;width:100%;
+  padding:4px 12px 4px 22px;font-size:13px;cursor:pointer}
+#tree li.top>button{padding-left:12px;font-weight:500}
+#tree button:hover{background:color-mix(in srgb,var(--fg) 6%,transparent)}
+#tree button:focus-visible,#tree summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#tree button[aria-pressed="true"]{background:color-mix(in srgb,var(--hl) 24%,transparent)}
+#tree .q{font:400 11px var(--f-mono);color:var(--muted)}
+#card{padding:10px 12px;font-size:13px;line-height:1.6;border-top:1px solid var(--line);flex:0 0 auto}
+#card h3{margin:0 0 4px;font-size:14px}
+#card p{margin:0;color:var(--muted)}
+#card .meta{margin-top:4px;font:400 11px/1.4 var(--f-mono);color:var(--muted)}
+
+/* joint table */
+#jt{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+#jt th{font:500 11px var(--f-num);letter-spacing:.08em;color:var(--muted);text-align:left;padding:8px 6px 4px;border-bottom:1px solid var(--line)}
+#jt th:first-child{padding-left:12px}
+#jt td{padding:6px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+#jt td:first-child{padding-left:12px;font-size:13px;white-space:nowrap}
+#jt .v{font:500 12px var(--f-mono);display:block;text-align:right}
+#jt .m{position:relative;height:4px;border-radius:2px;background:var(--meter-bg);margin-top:3px}
+#jt .m i{position:absolute;top:0;bottom:0;background:var(--meter);border-radius:2px}
+#jt .m s{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--muted)}
+.jnote{margin:8px 12px 10px;font-size:12px;line-height:1.55;color:var(--muted)}
+
+/* dock */
+#dock{position:absolute;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));
+  bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:10px 12px}
+.tabs{display:flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;flex:0 1 auto;min-width:0}
+.tabs button{all:unset;cursor:pointer;padding:7px 12px;font-size:14px;font-weight:500;white-space:nowrap}
+.tabs button+button{border-left:1px solid var(--line)}
+.tabs button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.tabs button:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ctl{display:flex;align-items:center;gap:10px;flex:1 1 260px;min-width:0}
+.btn{all:unset;cursor:pointer;display:grid;place-items:center;min-width:34px;height:34px;padding:0 10px;border:1px solid var(--line);
+  border-radius:5px;font:500 14px var(--f-cn);white-space:nowrap}
+.btn[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 18%,transparent);border-color:var(--accent)}
+input[type=range]{flex:1 1 auto;min-width:0;accent-color:var(--accent);margin:0}
+.lab{font-size:13px;color:var(--muted);white-space:nowrap}
+.read{font:500 13px var(--f-mono);font-variant-numeric:tabular-nums;color:var(--muted);min-width:40px;text-align:right}
+#loading{position:absolute;inset:0;display:grid;place-items:center;font-size:14px;color:var(--muted)}
+
+@media (max-width:760px){
+  #tb{top:8px}
+  #tb .cell{display:none}
+  #tb h1{font-size:16px}
+  #side{top:auto;left:max(16px,env(safe-area-inset-left,0px));width:auto;bottom:calc(150px + env(safe-area-inset-bottom,0px));max-height:34%}
+  #card{padding:8px 12px;font-size:12px}
+  #card p{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .jnote{display:none}
+  .tabs{flex:1 1 100%}
+  .tabs button{flex:1 1 0;text-align:center;padding:7px 4px;font-size:13px}
+}
+</style>
+
+<div id="app">
+  <canvas id="c" tabindex="0" aria-label="五指灵巧手三维模型，可拖动旋转、双指或滚轮缩放"></canvas>
+  <div id="loading">正在载入模型…</div>
+
+  <header id="tb" class="panel">
+    <div class="name"><h1>五指灵巧手</h1><div class="sub">20-DOF direct-drive hand · right</div></div>
+    <div class="cell"><b>自由度</b><span id="sDof">20</span></div>
+    <div class="cell"><b>长 × 宽 × 厚</b><span id="sSize">—</span> mm</div>
+    <div class="cell"><b>零件</b><span id="sParts">—</span></div>
+  </header>
+
+  <aside id="side" class="panel">
+    <div class="ph">
+      <h2 id="sideT">零件树</h2>
+      <div class="mini" role="tablist">
+        <button role="tab" id="tabTree" aria-selected="true">零件</button>
+        <button role="tab" id="tabJoint" aria-selected="false">关节角</button>
+      </div>
+    </div>
+    <div id="treeBox"><ul id="tree"></ul></div>
+    <div id="jointBox" hidden>
+      <table id="jt"><thead><tr><th>手指</th><th>J1 屈伸</th><th>J2 侧摆</th><th>J3</th><th>J4</th></tr></thead><tbody></tbody></table>
+      <p class="jnote">每根手指 4 个关节、各一个电机，一共 20 个。条形是当前角度在行程里的位置，竖线是 0°。正值表示向手心弯。</p>
+    </div>
+    <div id="card"><h3 id="cardT">点零件看说明</h3><p id="cardP">在模型上或零件树里点一个零件。下面可以切换手势、拖“拆开”看爆炸图。</p><div class="meta" id="cardM"></div></div>
+  </aside>
+
+  <nav id="dock" class="panel" aria-label="手势和视图控制">
+    <div class="tabs" id="poses"></div>
+    <div class="ctl">
+      <button class="btn" id="play" aria-pressed="true">演示</button>
+      <span class="lab">拆开</span>
+      <input type="range" id="explode" min="0" max="1000" value="0" aria-label="拆开程度">
+      <button class="btn" id="spin" aria-pressed="false">转台</button>
+    </div>
+  </nav>
+</div>
+
+<script>window.__GLB_B64="__GLB_BASE64__";window.__HAND="__HAND_JSON__";</script>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const D = window.__HAND;
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const DEG = Math.PI / 180;
+const FN = D.fingers.map(f => f[0]);
+const CNF = Object.fromEntries(D.fingers);
+
+$('sSize').textContent = D.stats.size.join(' × ');
+$('sParts').textContent = D.stats.parts;
+
+// ---------- renderer / scene
+const canvas = $('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), .04).texture;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, .5));
+const key = new THREE.DirectionalLight(0xfff4e8, 1.7); key.position.set(-1.5, 2.5, 2.2); scene.add(key);
+const rim = new THREE.DirectionalLight(0xdfeeff, 1.1); rim.position.set(1.2, 1.5, -2.5); scene.add(rim);
+const camera = new THREE.PerspectiveCamera(32, 1, .005, 50);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = .08;
+controls.minDistance = .14; controls.maxDistance = 1.6;
+const TGT = new THREE.Vector3(0, .112, 0);
+controls.target.copy(TGT);
+
+// 展示台：一块浅色圆盘
+const stand = new THREE.Mesh(new THREE.CylinderGeometry(.075, .085, .012, 64), new THREE.MeshStandardMaterial({ roughness: .55, metalness: .1 }));
+stand.position.y = -.008; scene.add(stand);
+function applyTheme() { stand.material.color.set(css('--line')); }
+applyTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// ---------- hand
+const outer = new THREE.Group(); scene.add(outer);
+const exNodes = [];            // {obj, base, ex}
+const joints = {};             // f -> [ {obj, q0, axis} ×4 ]
+const meshesByKey = new Map(); // group key -> [mesh]
+const groupInfo = new Map(D.groups.map(g => [g.key, g]));
+const cur = {}, tgt = {};
+for (const f of FN) { cur[f] = [...D.poses.rest[f]]; tgt[f] = [...D.poses.rest[f]]; }
+
+function b64ToBuf(b64) {
+  const s = atob(b64), u = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+  return u.buffer;
+}
+new GLTFLoader().parse(b64ToBuf(window.__GLB_B64), '', gltf => {
+  outer.add(gltf.scene);
+  gltf.scene.traverse(o => {
+    const ud = o.userData || {};
+    if (ud.ex) exNodes.push({ obj: o, base: o.position.clone(), ex: JSON.parse(ud.ex) });
+    if (ud.joint) {
+      const j = JSON.parse(ud.joint);
+      (joints[j.f] ??= [])[j.k] = { obj: o, q0: o.quaternion.clone(), axis: new THREE.Vector3(...j.axis) };
+    }
+    if (o.isMesh && ud.part_path) {
+      o.material = o.material.clone();
+      if (!meshesByKey.has(ud.part_path)) meshesByKey.set(ud.part_path, []);
+      meshesByKey.get(ud.part_path).push(o);
+    }
+  });
+  buildTree(); buildJointTable(); buildPoses();
+  applyJoints();
+  $('loading').hidden = true;
+}, err => { $('loading').textContent = '模型载入失败：' + (err && err.message || err); });
+
+// ---------- part tree
+let selected = null;
+function buildTree() {
+  const ul = $('tree');
+  const tops = [], byFinger = new Map();
+  for (const g of D.groups) {
+    const parts = g.key.split('/');
+    const finger = FN.find(f => parts[1] === CNF[f]);
+    if (finger) { if (!byFinger.has(finger)) byFinger.set(finger, []); byFinger.get(finger).push(g); }
+    else tops.push(g);
+  }
+  const mk = (g, label) => {
+    const b = document.createElement('button');
+    b.dataset.key = g.key; b.setAttribute('aria-pressed', 'false');
+    b.innerHTML = '<span></span><span class="q"></span>';
+    b.children[0].textContent = label;
+    b.children[1].textContent = g.n > 1 ? g.n + ' 件' : '';
+    b.addEventListener('click', () => select(selected === g.key ? null : g.key));
+    return b;
+  };
+  for (const g of tops) {
+    const li = document.createElement('li'); li.className = 'top';
+    const depth = g.key.split('/').length - 2;
+    const b = mk(g, (depth > 0 ? '　' : '') + g.name);
+    li.appendChild(b); ul.appendChild(li);
+  }
+  for (const f of FN) {
+    const li = document.createElement('li');
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+    const n = byFinger.get(f).reduce((a, g) => a + g.n, 0);
+    sum.innerHTML = `<span>${CNF[f]}</span>`;
+    sum.title = n + ' 件';
+    det.appendChild(sum);
+    for (const g of byFinger.get(f)) det.appendChild(mk(g, g.name));
+    if (f === 'index') det.open = true;
+    li.appendChild(det); ul.appendChild(li);
+  }
+}
+function select(key) {
+  selected = key;
+  for (const b of document.querySelectorAll('#tree button')) b.setAttribute('aria-pressed', String(b.dataset.key === key));
+  const hl = new THREE.Color(css('--hl'));
+  for (const [k, list] of meshesByKey) for (const m of list) {
+    if (!m.material.emissive) continue;
+    const on = key && k === key;
+    m.material.emissive.copy(on ? hl : new THREE.Color(0));
+    m.material.emissiveIntensity = on ? .5 : 1;
+  }
+  if (key) {
+    const g = groupInfo.get(key);
+    $('cardT').textContent = g.key.split('/').slice(1).join(' · ');
+    $('cardP').textContent = g.info || g.items.join('、');
+    $('cardM').textContent = g.items.join(' / ') + (g.n > 1 ? `　共 ${g.n} 件` : '');
+    const btn = document.querySelector(`#tree button[data-key="${CSS.escape(key)}"]`);
+    if (btn) { const d = btn.closest('details'); if (d) d.open = true; btn.scrollIntoView({ block: 'nearest' }); }
+  } else {
+    $('cardT').textContent = '点零件看说明';
+    $('cardP').textContent = '在模型上或零件树里点一个零件。下面可以切换手势、拖“拆开”看爆炸图。';
+    $('cardM').textContent = '';
+  }
+}
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let downAt = null;
+canvas.addEventListener('pointerdown', e => { downAt = [e.clientX, e.clientY]; });
+canvas.addEventListener('pointerup', e => {
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
+  const r = canvas.getBoundingClientRect();
+  ndc.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObject(outer, true).find(h => h.object.userData.part_path);
+  select(hit ? hit.object.userData.part_path : null);
+  if (hit) showTab('tree');
+});
+
+// ---------- side tabs
+function showTab(t) {
+  $('tabTree').setAttribute('aria-selected', String(t === 'tree'));
+  $('tabJoint').setAttribute('aria-selected', String(t === 'joint'));
+  $('treeBox').hidden = t !== 'tree'; $('jointBox').hidden = t !== 'joint';
+  $('sideT').textContent = t === 'tree' ? '零件树' : '关节角 °';
+}
+$('tabTree').addEventListener('click', () => showTab('tree'));
+$('tabJoint').addEventListener('click', () => showTab('joint'));
+
+// ---------- joint table
+const cells = {};
+function buildJointTable() {
+  const tb = document.querySelector('#jt tbody');
+  for (const f of FN) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${CNF[f]}</td>` + [0, 1, 2, 3].map(() => '<td><span class="v">0</span><div class="m"><s></s><i></i></div></td>').join('');
+    tb.appendChild(tr);
+    cells[f] = [...tr.querySelectorAll('td')].slice(1).map(td => ({ v: td.querySelector('.v'), i: td.querySelector('i'), s: td.querySelector('s') }));
+    const lim = D.limits[f === 'thumb' ? 'thumb' : 'finger'];
+    cells[f].forEach((c, k) => {
+      const [lo, hi] = lim['J' + (k + 1)];
+      c.lo = lo; c.hi = hi; c.s.style.left = ((0 - lo) / (hi - lo) * 100) + '%';
+    });
+  }
+}
+function updateJointTable() {
+  for (const f of FN) if (cells[f]) cells[f].forEach((c, k) => {
+    const a = cur[f][k];
+    c.v.textContent = (a >= 0 ? '' : '−') + Math.abs(a).toFixed(0);
+    const z = (0 - c.lo) / (c.hi - c.lo), p = (a - c.lo) / (c.hi - c.lo);
+    c.i.style.left = Math.min(z, p) * 100 + '%'; c.i.style.width = Math.abs(p - z) * 100 + '%';
+  });
+}
+
+// ---------- poses / demo
+let playing = true, seqIdx = 0, seqT = 0, poseNow = 'rest';
+function buildPoses() {
+  const host = $('poses');
+  for (const [k, label] of D.poseNames) {
+    const b = document.createElement('button');
+    b.textContent = label; b.dataset.pose = k; b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', () => { setPlaying(false); setPose(k); });
+    host.appendChild(b);
+  }
+}
+function setPose(k) {
+  poseNow = k;
+  for (const f of FN) tgt[f] = [...D.poses[k][f]];
+  for (const b of document.querySelectorAll('#poses button')) b.setAttribute('aria-pressed', String(b.dataset.pose === k));
+}
+function setPlaying(p) {
+  playing = p; $('play').setAttribute('aria-pressed', String(p));
+  if (p) { seqIdx = 0; seqT = 0; setPose(D.seq[0][0]); }
+}
+$('play').addEventListener('click', () => setPlaying(!playing));
+setPose('rest');
+
+function applyJoints() {
+  const q = new THREE.Quaternion();
+  for (const f of FN) {
+    const js = joints[f]; if (!js) continue;
+    js.forEach((j, k) => { q.setFromAxisAngle(j.axis, cur[f][k] * DEG); j.obj.quaternion.copy(j.q0).multiply(q); });
+  }
+}
+
+// ---------- explode / spin
+let explode = 0, explodeTarget = 0, spinOn = false;
+$('explode').addEventListener('input', e => { explodeTarget = e.target.value / 1000; });
+$('spin').addEventListener('click', () => { spinOn = !spinOn; $('spin').setAttribute('aria-pressed', String(spinOn)); });
+function applyExplode(t) {
+  for (const n of exNodes) n.obj.position.set(n.base.x + n.ex[0] * t, n.base.y + n.ex[1] * t, n.base.z + n.ex[2] * t);
+}
+
+// ---------- camera / loop
+function frameCamera() {
+  const narrow = innerWidth < 760;
+  camera.position.set(.2, narrow ? .19 : .17, narrow ? .58 : .46);
+  controls.target.set(0, narrow ? .085 : .112, 0);
+}
+frameCamera();
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+const clock = new THREE.Clock();
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), .1);
+  if (exNodes.length) {
+    if (playing) {
+      seqT += dt;
+      if (seqT > .9 + D.seq[seqIdx][1]) { seqIdx = (seqIdx + 1) % D.seq.length; seqT = 0; setPose(D.seq[seqIdx][0]); }
+    }
+    const k = reduce ? 1 : Math.min(1, dt * 6);
+    for (const f of FN) for (let i = 0; i < 4; i++) cur[f][i] += (tgt[f][i] - cur[f][i]) * k;
+    applyJoints(); updateJointTable();
+    explode += (explodeTarget - explode) * (reduce ? 1 : Math.min(1, dt * 8));
+    applyExplode(explode);
+    if (spinOn && !reduce) outer.rotation.y += dt * .3;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
