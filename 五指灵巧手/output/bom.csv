@@ -1,0 +1,181 @@
+﻿层级路径,对象名,说明,材质
+手/法兰,flange,法兰盘 Ø52（接机械臂）,motor
+手/法兰,flange_pilot,定位止口,motor
+手/法兰,flange_bolt0,M4 螺钉头,sensor
+手/法兰,flange_bolt1,M4 螺钉头,sensor
+手/法兰,flange_bolt2,M4 螺钉头,sensor
+手/法兰,flange_bolt3,M4 螺钉头,sensor
+手/腕部模块,wrist,腕部壳体（驱动板、IMU）,cover
+手/腕部模块,wrist_port,以太网/电源接口,motor
+手/腕部模块,wrist_port_in,接口插芯,sensor
+手/腕部模块,wrist_led,状态灯,led
+手/掌骨架,palm_frame,掌骨架（铝合金）,skeleton
+手/掌骨架/背盖,back_cover,背盖,cover
+手/掌骨架/背盖,back_slot0,散热槽,sensor
+手/掌骨架/背盖,back_slot1,散热槽,sensor
+手/掌骨架/背盖,back_slot2,散热槽,sensor
+手/掌骨架/背盖,back_ledbar,状态灯条,led
+手/掌骨架/掌心硅胶,palm_skin,掌心硅胶皮,silicone
+手/掌骨架/掌心硅胶,palm_pad_thenar,大鱼际垫,silicone
+手/掌骨架/掌心硅胶,palm_pad_hypothenar,小鱼际垫,silicone
+手/拇指/J1 根部屈伸电机,thumb_M1_stator,定子壳 Ø18×11.8,motor
+手/拇指/J1 根部屈伸电机,thumb_M1_ringR,输出环,ring
+手/拇指/J1 根部屈伸电机,thumb_M1_hubR,端盖轮毂,sensor
+手/拇指/J1 根部屈伸电机,thumb_M1_ringL,输出环,ring
+手/拇指/J1 根部屈伸电机,thumb_M1_hubL,端盖轮毂,sensor
+手/拇指/J1 根部屈伸电机,thumb_root,拇指根座,skeleton
+手/拇指/指根轭架,thumb_yoke,指根轭架（J1 转子 → J2 定子）,skeleton
+手/拇指/J2 侧摆电机,thumb_M2_stator,定子壳 Ø12×10.0,motor
+手/拇指/J2 侧摆电机,thumb_M2_ringR,输出环,ring
+手/拇指/J2 侧摆电机,thumb_M2_hubR,端盖轮毂,sensor
+手/拇指/J2 侧摆电机,thumb_M2_ringL,输出环,ring
+手/拇指/J2 侧摆电机,thumb_M2_hubL,端盖轮毂,sensor
+手/拇指/近节指骨,thumb_proximal,近节指骨 L=32.5,skeleton
+手/拇指/近节指骨,thumb_pad1,硅胶指节垫,silicone
+手/拇指/近节指骨,thumb_s1_cover,指背盖板,cover
+手/拇指/近节指骨,thumb_s1_screws,M1.6 螺钉 ×4,motor
+手/拇指/J3 中节屈伸电机,thumb_M3_stator,定子壳 Ø13×12.2,motor
+手/拇指/J3 中节屈伸电机,thumb_M3_ringR,输出环,ring
+手/拇指/J3 中节屈伸电机,thumb_M3_hubR,端盖轮毂,sensor
+手/拇指/J3 中节屈伸电机,thumb_M3_ringL,输出环,ring
+手/拇指/J3 中节屈伸电机,thumb_M3_hubL,端盖轮毂,sensor
+手/拇指/中节指骨,thumb_middle,中节指骨 L=35.0,skeleton
+手/拇指/中节指骨,thumb_pad2,硅胶指节垫,silicone
+手/拇指/中节指骨,thumb_s2_cover,指背盖板,cover
+手/拇指/中节指骨,thumb_s2_screws,M1.6 螺钉 ×4,motor
+手/拇指/J4 远节屈伸电机,thumb_M4_stator,定子壳 Ø11×11.6,motor
+手/拇指/J4 远节屈伸电机,thumb_M4_ringR,输出环,ring
+手/拇指/J4 远节屈伸电机,thumb_M4_hubR,端盖轮毂,sensor
+手/拇指/J4 远节屈伸电机,thumb_M4_ringL,输出环,ring
+手/拇指/J4 远节屈伸电机,thumb_M4_hubL,端盖轮毂,sensor
+手/拇指/远节指骨,thumb_distal,远节指骨 L=29.9,skeleton
+手/拇指/指尖力传感器,thumb_tipsensor,多轴指尖力传感器,sensor
+手/拇指/指尖力传感器,thumb_tippad,硅胶指尖套,silicone
+手/食指/J1 根部屈伸电机,index_M1_stator,定子壳 Ø18×10.3,motor
+手/食指/J1 根部屈伸电机,index_M1_ringR,输出环,ring
+手/食指/J1 根部屈伸电机,index_M1_hubR,端盖轮毂,sensor
+手/食指/J1 根部屈伸电机,index_M1_ringL,输出环,ring
+手/食指/J1 根部屈伸电机,index_M1_hubL,端盖轮毂,sensor
+手/食指/指根轭架,index_yoke,指根轭架（J1 转子 → J2 定子）,skeleton
+手/食指/J2 侧摆电机,index_M2_stator,定子壳 Ø12×9.0,motor
+手/食指/J2 侧摆电机,index_M2_ringR,输出环,ring
+手/食指/J2 侧摆电机,index_M2_hubR,端盖轮毂,sensor
+手/食指/J2 侧摆电机,index_M2_ringL,输出环,ring
+手/食指/J2 侧摆电机,index_M2_hubL,端盖轮毂,sensor
+手/食指/近节指骨,index_proximal,近节指骨 L=37.6,skeleton
+手/食指/近节指骨,index_pad1,硅胶指节垫,silicone
+手/食指/近节指骨,index_s1_cover,指背盖板,cover
+手/食指/近节指骨,index_s1_screws,M1.6 螺钉 ×4,motor
+手/食指/J3 中节屈伸电机,index_M3_stator,定子壳 Ø13×10.7,motor
+手/食指/J3 中节屈伸电机,index_M3_ringR,输出环,ring
+手/食指/J3 中节屈伸电机,index_M3_hubR,端盖轮毂,sensor
+手/食指/J3 中节屈伸电机,index_M3_ringL,输出环,ring
+手/食指/J3 中节屈伸电机,index_M3_hubL,端盖轮毂,sensor
+手/食指/中节指骨,index_middle,中节指骨 L=29.5,skeleton
+手/食指/中节指骨,index_pad2,硅胶指节垫,silicone
+手/食指/中节指骨,index_s2_cover,指背盖板,cover
+手/食指/中节指骨,index_s2_screws,M1.6 螺钉 ×4,motor
+手/食指/J4 远节屈伸电机,index_M4_stator,定子壳 Ø11×10.2,motor
+手/食指/J4 远节屈伸电机,index_M4_ringR,输出环,ring
+手/食指/J4 远节屈伸电机,index_M4_hubR,端盖轮毂,sensor
+手/食指/J4 远节屈伸电机,index_M4_ringL,输出环,ring
+手/食指/J4 远节屈伸电机,index_M4_hubL,端盖轮毂,sensor
+手/食指/远节指骨,index_distal,远节指骨 L=24.6,skeleton
+手/食指/指尖力传感器,index_tipsensor,多轴指尖力传感器,sensor
+手/食指/指尖力传感器,index_tippad,硅胶指尖套,silicone
+手/中指/J1 根部屈伸电机,middle_M1_stator,定子壳 Ø18×10.3,motor
+手/中指/J1 根部屈伸电机,middle_M1_ringR,输出环,ring
+手/中指/J1 根部屈伸电机,middle_M1_hubR,端盖轮毂,sensor
+手/中指/J1 根部屈伸电机,middle_M1_ringL,输出环,ring
+手/中指/J1 根部屈伸电机,middle_M1_hubL,端盖轮毂,sensor
+手/中指/指根轭架,middle_yoke,指根轭架（J1 转子 → J2 定子）,skeleton
+手/中指/J2 侧摆电机,middle_M2_stator,定子壳 Ø12×9.0,motor
+手/中指/J2 侧摆电机,middle_M2_ringR,输出环,ring
+手/中指/J2 侧摆电机,middle_M2_hubR,端盖轮毂,sensor
+手/中指/J2 侧摆电机,middle_M2_ringL,输出环,ring
+手/中指/J2 侧摆电机,middle_M2_hubL,端盖轮毂,sensor
+手/中指/近节指骨,middle_proximal,近节指骨 L=37.6,skeleton
+手/中指/近节指骨,middle_pad1,硅胶指节垫,silicone
+手/中指/近节指骨,middle_s1_cover,指背盖板,cover
+手/中指/近节指骨,middle_s1_screws,M1.6 螺钉 ×4,motor
+手/中指/J3 中节屈伸电机,middle_M3_stator,定子壳 Ø13×10.7,motor
+手/中指/J3 中节屈伸电机,middle_M3_ringR,输出环,ring
+手/中指/J3 中节屈伸电机,middle_M3_hubR,端盖轮毂,sensor
+手/中指/J3 中节屈伸电机,middle_M3_ringL,输出环,ring
+手/中指/J3 中节屈伸电机,middle_M3_hubL,端盖轮毂,sensor
+手/中指/中节指骨,middle_middle,中节指骨 L=29.5,skeleton
+手/中指/中节指骨,middle_pad2,硅胶指节垫,silicone
+手/中指/中节指骨,middle_s2_cover,指背盖板,cover
+手/中指/中节指骨,middle_s2_screws,M1.6 螺钉 ×4,motor
+手/中指/J4 远节屈伸电机,middle_M4_stator,定子壳 Ø11×10.2,motor
+手/中指/J4 远节屈伸电机,middle_M4_ringR,输出环,ring
+手/中指/J4 远节屈伸电机,middle_M4_hubR,端盖轮毂,sensor
+手/中指/J4 远节屈伸电机,middle_M4_ringL,输出环,ring
+手/中指/J4 远节屈伸电机,middle_M4_hubL,端盖轮毂,sensor
+手/中指/远节指骨,middle_distal,远节指骨 L=24.6,skeleton
+手/中指/指尖力传感器,middle_tipsensor,多轴指尖力传感器,sensor
+手/中指/指尖力传感器,middle_tippad,硅胶指尖套,silicone
+手/无名指/J1 根部屈伸电机,ring_M1_stator,定子壳 Ø18×9.8,motor
+手/无名指/J1 根部屈伸电机,ring_M1_ringR,输出环,ring
+手/无名指/J1 根部屈伸电机,ring_M1_hubR,端盖轮毂,sensor
+手/无名指/J1 根部屈伸电机,ring_M1_ringL,输出环,ring
+手/无名指/J1 根部屈伸电机,ring_M1_hubL,端盖轮毂,sensor
+手/无名指/指根轭架,ring_yoke,指根轭架（J1 转子 → J2 定子）,skeleton
+手/无名指/J2 侧摆电机,ring_M2_stator,定子壳 Ø12×8.6,motor
+手/无名指/J2 侧摆电机,ring_M2_ringR,输出环,ring
+手/无名指/J2 侧摆电机,ring_M2_hubR,端盖轮毂,sensor
+手/无名指/J2 侧摆电机,ring_M2_ringL,输出环,ring
+手/无名指/J2 侧摆电机,ring_M2_hubL,端盖轮毂,sensor
+手/无名指/近节指骨,ring_proximal,近节指骨 L=37.6,skeleton
+手/无名指/近节指骨,ring_pad1,硅胶指节垫,silicone
+手/无名指/近节指骨,ring_s1_cover,指背盖板,cover
+手/无名指/近节指骨,ring_s1_screws,M1.6 螺钉 ×4,motor
+手/无名指/J3 中节屈伸电机,ring_M3_stator,定子壳 Ø13×10.2,motor
+手/无名指/J3 中节屈伸电机,ring_M3_ringR,输出环,ring
+手/无名指/J3 中节屈伸电机,ring_M3_hubR,端盖轮毂,sensor
+手/无名指/J3 中节屈伸电机,ring_M3_ringL,输出环,ring
+手/无名指/J3 中节屈伸电机,ring_M3_hubL,端盖轮毂,sensor
+手/无名指/中节指骨,ring_middle,中节指骨 L=29.5,skeleton
+手/无名指/中节指骨,ring_pad2,硅胶指节垫,silicone
+手/无名指/中节指骨,ring_s2_cover,指背盖板,cover
+手/无名指/中节指骨,ring_s2_screws,M1.6 螺钉 ×4,motor
+手/无名指/J4 远节屈伸电机,ring_M4_stator,定子壳 Ø11×9.8,motor
+手/无名指/J4 远节屈伸电机,ring_M4_ringR,输出环,ring
+手/无名指/J4 远节屈伸电机,ring_M4_hubR,端盖轮毂,sensor
+手/无名指/J4 远节屈伸电机,ring_M4_ringL,输出环,ring
+手/无名指/J4 远节屈伸电机,ring_M4_hubL,端盖轮毂,sensor
+手/无名指/远节指骨,ring_distal,远节指骨 L=24.6,skeleton
+手/无名指/指尖力传感器,ring_tipsensor,多轴指尖力传感器,sensor
+手/无名指/指尖力传感器,ring_tippad,硅胶指尖套,silicone
+手/小指/J1 根部屈伸电机,little_M1_stator,定子壳 Ø18×8.8,motor
+手/小指/J1 根部屈伸电机,little_M1_ringR,输出环,ring
+手/小指/J1 根部屈伸电机,little_M1_hubR,端盖轮毂,sensor
+手/小指/J1 根部屈伸电机,little_M1_ringL,输出环,ring
+手/小指/J1 根部屈伸电机,little_M1_hubL,端盖轮毂,sensor
+手/小指/指根轭架,little_yoke,指根轭架（J1 转子 → J2 定子）,skeleton
+手/小指/J2 侧摆电机,little_M2_stator,定子壳 Ø12×8.1,motor
+手/小指/J2 侧摆电机,little_M2_ringR,输出环,ring
+手/小指/J2 侧摆电机,little_M2_hubR,端盖轮毂,sensor
+手/小指/J2 侧摆电机,little_M2_ringL,输出环,ring
+手/小指/J2 侧摆电机,little_M2_hubL,端盖轮毂,sensor
+手/小指/近节指骨,little_proximal,近节指骨 L=33.6,skeleton
+手/小指/近节指骨,little_pad1,硅胶指节垫,silicone
+手/小指/近节指骨,little_s1_cover,指背盖板,cover
+手/小指/近节指骨,little_s1_screws,M1.6 螺钉 ×4,motor
+手/小指/J3 中节屈伸电机,little_M3_stator,定子壳 Ø13×9.2,motor
+手/小指/J3 中节屈伸电机,little_M3_ringR,输出环,ring
+手/小指/J3 中节屈伸电机,little_M3_hubR,端盖轮毂,sensor
+手/小指/J3 中节屈伸电机,little_M3_ringL,输出环,ring
+手/小指/J3 中节屈伸电机,little_M3_hubL,端盖轮毂,sensor
+手/小指/中节指骨,little_middle,中节指骨 L=27.5,skeleton
+手/小指/中节指骨,little_pad2,硅胶指节垫,silicone
+手/小指/中节指骨,little_s2_cover,指背盖板,cover
+手/小指/中节指骨,little_s2_screws,M1.6 螺钉 ×4,motor
+手/小指/J4 远节屈伸电机,little_M4_stator,定子壳 Ø11×8.8,motor
+手/小指/J4 远节屈伸电机,little_M4_ringR,输出环,ring
+手/小指/J4 远节屈伸电机,little_M4_hubR,端盖轮毂,sensor
+手/小指/J4 远节屈伸电机,little_M4_ringL,输出环,ring
+手/小指/J4 远节屈伸电机,little_M4_hubL,端盖轮毂,sensor
+手/小指/远节指骨,little_distal,远节指骨 L=24.6,skeleton
+手/小指/指尖力传感器,little_tipsensor,多轴指尖力传感器,sensor
+手/小指/指尖力传感器,little_tippad,硅胶指尖套,silicone

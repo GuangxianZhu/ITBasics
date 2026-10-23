@@ -13,6 +13,7 @@
 | 气动阀门爆炸图（three.js 网页：DN80 气动蝶阀 + 气动球阀原稿；蝶阀也导进了 VR 玩具箱） | `气动阀门爆炸图/README.md` |
 | 万用表爆炸图（数字万用表，外观参考 SATA DO5054：Blender 脚本建模 + 原理爆炸图，导进 MyVRToyBox） | `万用表爆炸图/README.md` |
 | AI 服务器爆炸图（8U 八卡 HGX 训练服务器，按 GPU 一级合并成 32 个部件（GPU 和散热器分开）：Blender 脚本建模 + 原理爆炸图，导进 MyVRToyBox） | `AI服务器爆炸图/README.md` |
+| 五指灵巧手（20 自由度直驱手，关节布局参考 Wuji Hand 2 公开 URDF：零件树 + 共享参数表 params.json + 逐件建模，手势由求解器避开穿模，网页查看器） | `五指灵巧手/README.md` |
 
 通用约定：
 - 回答用中文；改完 push 到 `main`。
