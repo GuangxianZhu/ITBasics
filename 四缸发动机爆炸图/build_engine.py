@@ -128,6 +128,136 @@ def principled(name, hexc, metal=0.0, rough=0.5, coat=0.0, alpha=1.0, trans=0.0)
     return m
 
 
+# ---------------------------------------------------------------- 表面贴图（可平铺的噪声，numpy 现算）
+# 真实零件的表面不是一个颜色、一个粗糙度：砂铸铝有颗粒，加工面有刀纹，抛光面有手印。全身一个值 = "刚出模的塑料玩具"。
+# 做法：每一类表面（铸造、锻造、加工、光面、注塑、锈）生成一套灰度贴图，材质再乘上自己的颜色和粗糙度。
+# glTF 也是"贴图 × 系数"（baseColorFactor、roughnessFactor、metallicFactor），所以同一套贴图能给很多材质共用，
+# 导出时 Blender 认得 Mix(相乘) / Math(相乘) 这两种节点，自动换成系数。
+TEX_N = 512            # 贴图边长（像素）
+TEX_MM = 128.0         # 一张贴图铺多大（毫米），0.25 mm / 像素。UV 用盒式投影（box_uv），所有零件纹理大小一致
+TEX = {}               # 类别 → (底色图, 粗糙度图, 法线图或 None, 底色均值, 粗糙度均值)
+
+
+def _noise(n, beta, seed, stretch=1.0):
+    """可平铺的 1/f^beta 噪声：白噪声在频域里按频率衰减再变回来。FFT 天生是周期的，所以贴图四边接得上。
+    beta 大 = 大块斑驳，beta 小 = 细颗粒；stretch > 1 时沿 u 方向拉长（刀纹）。均值 0、标准差 1"""
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    F = np.fft.fft2(rng.standard_normal((n, n)))
+    fu = np.fft.fftfreq(n)[None, :] * stretch
+    fv = np.fft.fftfreq(n)[:, None]
+    f = np.sqrt(fu * fu + fv * fv)
+    f[0, 0] = 1.0
+    F *= f ** -beta
+    F[0, 0] = 0
+    a = np.real(np.fft.ifft2(F))
+    return (a - a.mean()) / a.std()
+
+
+# 类别：底色乘数 = 1 - 斑驳 - 颗粒，粗糙度乘数 = 基准 + 斑驳 + 颗粒；blot / grain 是两层噪声的 beta（越小越细）。
+# bump = 法线图强度：只给铸造、锻造、锈这三种"摸得出颗粒"的表面，而且压得很低（法面平均只偏 3° ~ 5°）——
+# 砂铸的颗粒不到 0.5 mm，太强就成了水泥墙；VR 里细碎的法线还会在高光上闪（镜面走样），所以加工面、注塑件只靠粗糙度变化
+SURFACES = dict(
+    cast=dict(base=(.035, .03), rough=(.07, .08), bump=.12, blot=1.8, grain=.3),        # 砂铸铝：细颗粒 + 大块明暗
+    forged=dict(base=(.06, .03), rough=(.09, .05), bump=.1, blot=1.6, grain=.5),        # 锻件、铸铁：氧化皮，斑驳更明显
+    machined=dict(base=(.02, .015), rough=(.03, .09), bump=0, blot=1.6, grain=.8, stretch=14),   # 车 / 磨削面：一道道刀纹
+    smooth=dict(base=(.015, .005), rough=(.12, .02), bump=0, blot=2.0, grain=.6),       # 抛光钢、喷漆面：只有淡淡的手印
+    molded=dict(base=(.02, .01), rough=(.05, .05), bump=0, blot=1.8, grain=.3),         # 注塑件、橡胶：细皮纹（只在粗糙度上）
+    rust=dict(base=(.14, .06), rough=(.1, .05), bump=.18, blot=1.5, grain=.6),          # 排气歧管：烧过的铸铁，颜色斑驳
+)
+
+
+def _image(name, rgb, srgb):
+    import numpy as np
+    n = rgb.shape[0]
+    img = bpy.data.images.new(name, n, n, alpha=False)
+    img.colorspace_settings.name = 'sRGB' if srgb else 'Non-Color'    # 先设色彩空间：之后再改会把生成的图重置成黑的
+    px = np.ones((n, n, 4), dtype=np.float32)
+    px[..., :3] = rgb
+    img.pixels.foreach_set(px.ravel())
+    img.update()
+    img.file_format = 'PNG'
+    img.pack()                      # 打进 .blend，glb 导出时也按 PNG 嵌进去
+    return img
+
+
+def surface_tex(kind):
+    """生成（第一次用到时）一类表面的贴图"""
+    if kind in TEX:
+        return TEX[kind]
+    import numpy as np
+    s = SURFACES[kind]
+    seed = sorted(SURFACES).index(kind) * 10
+    blot = _noise(TEX_N, s['blot'], seed)
+    grain = _noise(TEX_N, s['grain'], seed + 1, s.get('stretch', 1.0))
+    base = np.clip(1 - .05 - s['base'][0] * blot - s['base'][1] * grain, 0, 1)
+    rough = np.clip(.8 + s['rough'][0] * blot + s['rough'][1] * grain, 0, 1)
+    srgb = np.where(base <= .0031308, base * 12.92, 1.055 * base ** (1 / 2.4) - .055)    # 存的是 sRGB，乘的时候按线性
+    base_img = _image(f'T_{kind}_Base', np.repeat(srgb[..., None], 3, 2), True)
+    orm = np.stack([np.ones_like(rough), rough, np.ones_like(rough)], -1)                 # R 不用、G 粗糙度、B 金属度（glTF 约定）
+    orm_img = _image(f'T_{kind}_ORM', orm, False)
+    nrm_img = None
+    if s['bump'] > 0:
+        h = grain + blot * .2
+        dx = np.roll(h, -1, 1) - np.roll(h, 1, 1)                  # roll = 周期边界，法线图也能平铺
+        dy = np.roll(h, -1, 0) - np.roll(h, 1, 0)
+        k = .5 / np.sqrt((dx * dx + dy * dy).mean())               # 斜率归一化：图里法线平均偏 ~27°，材质里再乘 bump
+        dx, dy = dx * k, dy * k
+        nv = np.stack([-dx, -dy, np.ones_like(h)], -1)
+        nv /= np.linalg.norm(nv, axis=-1, keepdims=True)
+        nrm_img = _image(f'T_{kind}_Normal', nv * .5 + .5, False)
+    TEX[kind] = (base_img, orm_img, nrm_img, float(base.mean()), float(rough.mean()))
+    return TEX[kind]
+
+
+def pbr(name, hexc, metal, rough, kind):
+    """贴图材质：底色 = 贴图 × 颜色，粗糙度 = 贴图 G × 系数，金属度 = 贴图 B（全白）× 系数，法线图按类别给强度"""
+    base_img, orm_img, nrm_img, base_mean, rough_mean = surface_tex(kind)
+    m = principled(name, hexc, metal, rough)
+    nt, b = _bsdf(m)
+    N, L = nt.nodes, nt.links
+    col = hexcol(hexc)
+    tb = N.new('ShaderNodeTexImage')
+    tb.image = base_img
+    mix = N.new('ShaderNodeMix')
+    mix.data_type, mix.blend_type = 'RGBA', 'MULTIPLY'
+    mix.inputs['Factor'].default_value = 1.0
+    mix.inputs[7].default_value = (*[min(1.0, c / base_mean) for c in col], 1.0)      # B（颜色）
+    L.new(tb.outputs['Color'], mix.inputs[6])                                         # A（贴图）
+    L.new(mix.outputs[2], b.inputs['Base Color'])
+    to = N.new('ShaderNodeTexImage')
+    to.image = orm_img
+    sep = N.new('ShaderNodeSeparateColor')
+    L.new(to.outputs['Color'], sep.inputs[0])
+    for ch, val, sock in ((1, min(1.0, rough / rough_mean), 'Roughness'), (2, metal, 'Metallic')):
+        mul = N.new('ShaderNodeMath')
+        mul.operation = 'MULTIPLY'
+        mul.inputs[1].default_value = val
+        L.new(sep.outputs[ch], mul.inputs[0])
+        L.new(mul.outputs[0], b.inputs[sock])
+    if nrm_img is not None:
+        tn = N.new('ShaderNodeTexImage')
+        tn.image = nrm_img
+        nm = N.new('ShaderNodeNormalMap')
+        nm.inputs['Strength'].default_value = SURFACES[kind]['bump']
+        L.new(tn.outputs['Color'], nm.inputs['Color'])
+        L.new(nm.outputs['Normal'], b.inputs['Normal'])
+    return m
+
+
+def box_uv(bm):
+    """盒式投影 UV：每个面按法线最接近的那根轴，取另外两个坐标（毫米）÷ TEX_MM。
+    所有零件同一个纹理密度；圆柱面上换轴的地方有接缝，纹理对比很淡，看不太出来"""
+    uv = bm.loops.layers.uv.new('UVMap')
+    bm.normal_update()
+    for f in bm.faces:
+        n = f.normal
+        ax = max(range(3), key=lambda k: abs(n[k]))
+        a, c = ((1, 2), (0, 2), (0, 1))[ax]
+        for lp in f.loops:
+            lp[uv].uv = (lp.vert.co[a] / TEX_MM, lp.vert.co[c] / TEX_MM)
+
+
 # ---------------------------------------------------------------- 几何工具（bmesh）
 def chamfer(pts, b, closed):
     """把折线的每个拐角切成 45° 倒角"""
@@ -639,33 +769,36 @@ def piston_pin_z(i):
 
 
 def make_materials():
-    # 金属度都压在 0.55 以下：虚幻工作室里没有反射探针，金属度太高在虚幻里发黑（车床实测）
+    # 金属的金属度给 1。金属没有漫反射，颜色全靠反射周围的环境；0.3 ~ 0.5 这种"半金属"一半按漆面算，看起来像喷了灰漆的塑料。
+    # 以前压在 0.55 以下，是因为虚幻工作室里没有东西可反射（金属发黑，车床实测）；现在 MyVRToyBox 的工作室加了天光
+    # （开局抓一次房间当环境），金属有东西可照了。金属的底色就是它的反射率：铝最亮，钢铁暗一些，铸造 / 锻造表面再暗一点。
+    # 漆、塑料、橡胶、陶瓷、涂层（缸垫、弹簧漆）是非金属，金属度 0
     return dict(
-        alu=principled('M_Alu_Cast', '#8e9399', .35, .55),
-        alu_lt=principled('M_Alu_Head', '#a2a7ad', .35, .45),
-        alu_mach=principled('M_Alu_Machined', '#d3d6da', .45, .3),
-        iron=principled('M_Iron_Dark', '#55595f', .45, .5),
-        forged=principled('M_Steel_Forged', '#6b7077', .5, .45),
-        steel=principled('M_Steel_Polished', '#c4c8cd', .5, .25),
-        bearing=principled('M_Bearing_Shell', '#c9a24a', .5, .35),
+        alu=pbr('M_Alu_Cast', '#c3c7cb', 1, .55, 'cast'),
+        alu_lt=pbr('M_Alu_Head', '#ccd0d4', 1, .5, 'cast'),
+        alu_mach=pbr('M_Alu_Machined', '#e0e3e6', 1, .28, 'machined'),
+        iron=pbr('M_Iron_Dark', '#8b8f94', 1, .55, 'forged'),
+        forged=pbr('M_Steel_Forged', '#9a9ea3', 1, .45, 'forged'),
+        steel=pbr('M_Steel_Polished', '#c8cbce', 1, .22, 'smooth'),
+        bearing=pbr('M_Bearing_Shell', '#c2a678', 1, .35, 'machined'),
         hole=principled('M_Hole', '#0b0b0c', 0, .85),
-        pan=principled('M_Pan_Black', '#2a2c30', .2, .45),
-        plastic=principled('M_Plastic_Black', '#1f2023', 0, .55),
-        rubber=principled('M_Rubber', '#131415', 0, .85),
-        rust=principled('M_Iron_Exhaust', '#6a4b3c', .3, .75),
-        shield=principled('M_Heat_Shield', '#c9ccd0', .5, .35),
-        piston=principled('M_Piston_Alu', '#cdd0d4', .4, .4),
-        piston_dk=principled('M_Piston_Relief', '#aeb2b7', .4, .45),
-        ring=principled('M_Ring_Dark', '#34363a', .4, .4),
-        gasket=principled('M_Gasket_MLS', '#3c4a43', .3, .5),
-        orange=principled('M_Guide_Orange', '#e07a1a', 0, .5),
-        spring=principled('M_Spring_Green', '#3a8a78', .3, .4),
-        ceramic=principled('M_Ceramic', '#ece8df', 0, .45),
-        yellow=principled('M_Yellow', '#f2c316', 0, .45),
-        blue=principled('M_Filter_Blue', '#1f4fa6', 0, .35),
-        copper=principled('M_Copper', '#c4743c', .5, .35),
-        red=principled('M_Red', '#c8231e', 0, .45),
-        chain=principled('M_Chain', '#8b9097', .5, .4),
+        pan=pbr('M_Pan_Black', '#2a2c30', 0, .42, 'smooth'),
+        plastic=pbr('M_Plastic_Black', '#1f2023', 0, .55, 'molded'),
+        rubber=pbr('M_Rubber', '#141516', 0, .85, 'molded'),
+        rust=pbr('M_Iron_Exhaust', '#6a4b3c', .2, .75, 'rust'),
+        shield=pbr('M_Heat_Shield', '#cfd2d5', 1, .35, 'smooth'),
+        piston=pbr('M_Piston_Alu', '#d3d6d9', 1, .38, 'machined'),
+        piston_dk=pbr('M_Piston_Relief', '#b4b8bc', 1, .5, 'cast'),
+        ring=pbr('M_Ring_Dark', '#5a5d62', 1, .35, 'smooth'),
+        gasket=pbr('M_Gasket_MLS', '#3c4a43', 0, .5, 'smooth'),
+        orange=pbr('M_Guide_Orange', '#e07a1a', 0, .5, 'molded'),
+        spring=pbr('M_Spring_Green', '#3a8a78', 0, .4, 'smooth'),
+        ceramic=pbr('M_Ceramic', '#ece8df', 0, .45, 'smooth'),
+        yellow=pbr('M_Yellow', '#f2c316', 0, .45, 'molded'),
+        blue=pbr('M_Filter_Blue', '#1f4fa6', 0, .35, 'smooth'),
+        copper=pbr('M_Copper', '#c98a62', 1, .35, 'smooth'),
+        red=pbr('M_Red', '#c8231e', 0, .45, 'molded'),
+        chain=pbr('M_Chain', '#a9adb2', 1, .38, 'smooth'),
         white=principled('M_Print_White', '#eeeeee', 0, .5),
     )
 
@@ -771,12 +904,34 @@ OBJS = []           # dict(ob, ex, no)
 # 脚本里所有尺寸、路线照接口参数表写（+X = 正时端），镜像只在这里做一次。
 MIRROR_X = True
 
+# 倒角：现实里没有绝对锐利的边，最小也有零点几毫米的圆角，这条小圆角接住高光、在边上亮出一条细线，
+# 眼睛靠它判断"这是硬的实物"；没有它，边上只有两块明暗不同的面硬碰硬，一看就是 CG。
+# 宽度按零件大小取（最长边 × 0.35%，0.4 ~ 1.8 mm）。只倒夹角超过 50° 的边：方块、六角螺栓头、齿形都在里面，
+# 8 ~ 12 边的细管（弹簧、链销、导线）相邻面只差 30° ~ 45°，本来就该是圆的，倒了只会白白多出面。薄片类零件单独给小值，免得整条边被倒成圆的
+BEVEL_MM = {4: .3, 24: .3, 32: .5, 48: .6}      # 缸垫、正时链条、隔热罩、多楔带
+
+
+def add_bevel(ob, no, size_mm):
+    bv = ob.modifiers.new('Bevel', 'BEVEL')
+    bv.width = BEVEL_MM.get(no, min(1.8, max(.4, size_mm * .0035))) * MM
+    bv.segments = 1                    # 一段斜面 + 下面的加权法线，看起来就是圆角（游戏美术的常用做法），面数只有两段的一半
+    bv.limit_method = 'ANGLE'
+    bv.angle_limit = radians(50)
+    bv.use_clamp_overlap = True
+    # 加权法线：顶点法线按相邻面的面积加权，大平面说了算、保持平的，只有窄窄的倒角面弯过去。
+    # 不加的话，拉伸出来的端面（带孔的轮廓三角化后全是细长三角形）会把倒角边上斜着的法线拖出一道道黑楔子
+    wn = ob.modifiers.new('WeightedNormal', 'WEIGHTED_NORMAL')
+    wn.mode = 'FACE_AREA'
+    wn.keep_sharp = True
+
 
 def finish(name, no, bm, mats, ex=(), smooth=34):
     if MIRROR_X:
         bmesh.ops.transform(bm, matrix=Matrix.Scale(-1, 4, (1, 0, 0)), verts=bm.verts)
         bmesh.ops.reverse_faces(bm, faces=bm.faces)
         ex = [(-e[0], e[1], e[2], e[3]) for e in ex]
+    size = max(max(v.co[k] for v in bm.verts) - min(v.co[k] for v in bm.verts) for k in range(3))
+    box_uv(bm)
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
@@ -786,6 +941,7 @@ def finish(name, no, bm, mats, ex=(), smooth=34):
     collection('Engine').objects.link(ob)
     shade(me, smooth)
     ob.data.transform(Matrix.Scale(MM, 4))
+    add_bevel(ob, no, size)
     ob.parent = ROOT
     ob['name_cn'] = INFO[no][0]
     OBJS.append(dict(ob=ob, ex=list(ex), no=no))
@@ -1874,6 +2030,37 @@ def look_at(ob, target):
     ob.rotation_euler = (Vector(target) - ob.location).to_track_quat('-Z', 'Y').to_euler()
 
 
+def studio_world(nt, plain):
+    """镜头直接看到的背景还是原来那片浅灰；反射里看到的换成"摄影棚"：头顶亮、往下渐暗，地平线上一圈亮带。
+    金属表面就是一面模糊的镜子，环境有明暗过渡，曲面上才有高光和暗部，才读得出"这是金属、这里是圆角"；
+    环境是一片均匀的灰，金属就只剩一片均匀的灰。脚本自己拼，不用下载 HDRI"""
+    N, L = nt.nodes, nt.links
+    out = next(n for n in N if n.type == 'OUTPUT_WORLD')
+    tc = N.new('ShaderNodeTexCoord')
+    sep = N.new('ShaderNodeSeparateXYZ')
+    L.new(tc.outputs['Generated'], sep.inputs[0])           # 世界着色器里 Generated = 视线方向
+    mr = N.new('ShaderNodeMapRange')
+    mr.inputs['From Min'].default_value, mr.inputs['From Max'].default_value = -1.0, 1.0
+    L.new(sep.outputs['Z'], mr.inputs['Value'])
+    ramp = N.new('ShaderNodeValToRGB')
+    el = ramp.color_ramp.elements
+    el[0].position, el[0].color = .0, (.02, .02, .02, 1)
+    el[1].position, el[1].color = 1.0, (1.1, 1.1, 1.12, 1)
+    for pos, v in ((.47, .06), (.52, .75), (.56, .3), (.75, .55)):
+        e = el.new(pos)
+        e.color = (v, v, v * 1.02, 1)
+    L.new(mr.outputs['Result'], ramp.inputs['Fac'])
+    studio = N.new('ShaderNodeBackground')
+    studio.inputs['Strength'].default_value = .6
+    L.new(ramp.outputs['Color'], studio.inputs['Color'])
+    lp = N.new('ShaderNodeLightPath')
+    mix = N.new('ShaderNodeMixShader')
+    L.new(lp.outputs['Is Camera Ray'], mix.inputs['Fac'])
+    L.new(studio.outputs[0], mix.inputs[1])
+    L.new(plain.outputs[0], mix.inputs[2])
+    L.new(mix.outputs[0], out.inputs['Surface'])
+
+
 def setup_world_and_cam():
     sc = bpy.context.scene
     sc.frame_start, sc.frame_end = 1, F_END
@@ -1888,6 +2075,7 @@ def setup_world_and_cam():
     if bg:
         bg.inputs[0].default_value = (*hexcol('#dfe3e8'), 1)
         bg.inputs[1].default_value = .35
+        studio_world(w.node_tree, bg)
     bm = bmesh.new()
     box(bm, (0, 0, PAN_BOT - 5), (3000, 3000, 10), 0)
     me = bpy.data.meshes.new('Table')
@@ -2002,13 +2190,16 @@ def main():
     print('[OK] saved engine.blend')
     tris = 0
     lo, hi = [1e9] * 3, [-1e9] * 3
+    dg = bpy.context.evaluated_depsgraph_get()
     for d in OBJS:
-        me = d['ob'].data
+        ev = d['ob'].evaluated_get(dg)
+        me = ev.to_mesh()                    # 带倒角之后的网格（导出的就是它）
         me.calc_loop_triangles()
         tris += len(me.loop_triangles)
         for v in me.vertices:
             lo = [min(a, b) for a, b in zip(lo, v.co)]
             hi = [max(a, b) for a, b in zip(hi, v.co)]
+        ev.to_mesh_clear()
     size = [round((b - a) * 1000, 1) for a, b in zip(lo, hi)]
     print(f'[OK] {len(OBJS)} engine objects, {tris} triangles, size {size} mm, '
           f'x {lo[0] * 1000:.0f}..{hi[0] * 1000:.0f}  y {lo[1] * 1000:.0f}..{hi[1] * 1000:.0f}  z {lo[2] * 1000:.0f}..{hi[2] * 1000:.0f}')
