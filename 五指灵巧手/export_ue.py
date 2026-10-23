@@ -5,6 +5,9 @@
 用法
   blender -b --factory-startup --python export_ue.py -- <输出目录>      （MyVRToyBox 的 scripts/import_hand.bat 会调）
   pip 版 bpy：python export_ue.py <输出目录>
+  只出关节表：python export_ue.py <输出目录> --rig-only               （不重新导出 glb）
+
+另外写一份 hand_ue_rig.json（关节表）：MyVRToyBox 把这只手当玩家的手用时，靠它让手指动起来（见 export_rig）。
 
 和网页用的 hand.glb 有三点不同：
   1. 手指摆成"放松"手势（params.json 的 poses.rest），不是 0 位。拇指在 0 位是横着伸出去的，放松姿势更像一只手。
@@ -17,6 +20,7 @@
 坐标：沿用 build_hand.py（法兰中心为原点，+Z 指尖，手心朝 -Y，右手拇指在 +X）。导进虚幻后 +Z 朝上、手心朝模型 +Y。
 """
 import json
+import math
 import os
 import sys
 
@@ -127,8 +131,109 @@ def bake_unit(name, sources, coll):
     return ob
 
 
+def ue_cm(v_m):
+    """Blender 世界坐标（米）→ 虚幻导入后的模型坐标（厘米）：glTF (x, z, -y) 再被虚幻换成 (x, z, y)，合起来是 (x, -y, z)"""
+    return Vector((v_m.x * 100, -v_m.y * 100, v_m.z * 100))
+
+
+def ue_axis(k_world):
+    """Blender 里绕 k 转 +a ⇔ 虚幻模型坐标里绕 (-kx, ky, -kz) 转 +a。
+    (x, -y, z) 是镜像（行列式 -1），镜像把转动方向反过来：M·R(k, a)·M⁻¹ = R(M·k, -a) = R(-M·k, a)。
+    FQuat(Axis, Angle) 的数值公式和这里一样，所以虚幻那边直接 FQuat(Axis, 弧度) 就行"""
+    k = k_world.normalized()
+    return Vector((-k.x, k.y, -k.z))
+
+
+def rot_about(p, axis, deg, v):
+    """绕过 p 点、方向 axis 的轴把 v 转 deg 度（右手公式，和 FQuat 数值一致）"""
+    return p + Matrix.Rotation(math.radians(deg), 3, axis) @ (v - p)
+
+
+def export_rig(hand, out, units):
+    """关节表 hand_ue_rig.json：放松姿势（rest，就是 glb 里网格的样子）下每个关节的转轴，加上几个命名手势的关节角。
+
+    虚幻里每根手指 J1→J4 串成一条链：关节 k 相对放松姿势多转 Δ = 目标角 - 放松角，
+    部件跟着它所在的最深一级关节走（M1 电机固定在掌上；轭架、M2 跟 J1；近节、M3 跟 J2；中节、M4 跟 J3；远节、指尖跟 J4）。
+    坐标都是虚幻模型坐标、厘米、没缩放（和 parts.json 一样）。"""
+    H.apply_pose(hand, H.POSES["rest"])
+    bpy.context.view_layer.update()
+
+    def clamped(pose):
+        return {f: [round(H.clamp(f, k, a), 3) for k, a in enumerate(pose[f])] for f in H.FINGERS}
+
+    poses = {n: clamped(H.POSES[n]) for n in ("rest", "open", "fist", "pinch")}
+    joints = {}
+    tips = {}
+    for f in H.FINGERS:
+        row = []
+        for k, j in enumerate(hand[f]["J"]):
+            m = j.matrix_world
+            k_world = m.col[1].to_3d() if k == 1 else m.col[0].to_3d()   # apply_pose：J2 绕本地 Y，其余绕本地 X
+            p = ue_cm(m.translation)
+            row.append(dict(pivot=[round(c, 4) for c in p], axis=[round(c, 6) for c in ue_axis(k_world)]))
+        joints[f] = row
+        # 指尖两个点（都跟 J4 走）：pad = 指腹表面中心（捏的接触点），end = 指尖最前端（戳触屏）
+        fp = H.P["fingers"][f]
+        tp = H.P["finger_common"]["tip_pad"]
+        td = fp["t"] * 0.9
+        L3 = fp["L"][2]
+        j4 = hand[f]["J"][3].matrix_world
+        end = ue_cm(j4 @ Vector((0, -td * tp[3], L3 * (0.70 + tp[2] / 2))))
+        tips[f] = dict(pad=[round(c, 4) for c in ue_cm(hand[f]["tip"].matrix_world.translation)],
+                       end=[round(c, 4) for c in end])
+
+    # 部件 → (手指, 关节级别 1~4)；0 级（掌上不动）的不写
+    level_of = {}
+    for name, sources in units:
+        o = sources[0]
+        while o is not None:
+            hit = next(((f, k + 1) for f in H.FINGERS for k, j in enumerate(hand[f]["J"]) if j == o), None)
+            if hit:
+                level_of[name] = list(hit)
+                break
+            o = o.parent
+
+    wo = H.P["wrist_origin"]
+    mid = hand["middle"]["J"][0].matrix_world.translation
+    wrist = ue_cm(Vector(wo) * 0.001)
+    rig = dict(
+        _说明="五指灵巧手关节表（export_ue.py 生成）。虚幻模型坐标、厘米、未缩放；关节 k 相对 rest 多转 Δ 度 = FQuat(axis, Δ) 绕 pivot，"
+             "J1→J4 逐级累乘。正角度 = 往手心弯（J2 是侧摆）。",
+        side="right",
+        palm_dir=[0, 1, 0],
+        wrist=[round(c, 4) for c in wrist],
+        knuckle=[round(c, 4) for c in ue_cm(mid)],
+        palm_center_y=round(-H.P["palm"]["y_center"] / 10, 4),
+        palm_thick=H.P["palm"]["thick"] / 10,
+        joints=joints, poses=poses, tips=tips, units=level_of)
+
+    # 自检：用上面的表在"虚幻坐标"里重算握拳、捏合两个手势的指尖位置，和 Blender 直接摆出来的比
+    worst = 0.0
+    for pose_name in ("fist", "pinch", "open"):
+        H.apply_pose(hand, H.POSES[pose_name])
+        bpy.context.view_layer.update()
+        for f in H.FINGERS:
+            v = Vector(tips[f]["pad"])
+            for k in range(3, -1, -1):   # 从远端往近端套：先绕 J4 转，再绕 J3……
+                d = poses[pose_name][f][k] - poses["rest"][f][k]
+                jt = joints[f][k]
+                v = rot_about(Vector(jt["pivot"]), Vector(jt["axis"]), d, v)
+            truth = ue_cm(hand[f]["tip"].matrix_world.translation)
+            worst = max(worst, (v - truth).length)
+    H.apply_pose(hand, H.POSES["rest"])
+    bpy.context.view_layer.update()
+    if worst > 0.01:
+        raise RuntimeError("关节表自检没过：指尖最大误差 %.4f cm" % worst)
+    path = os.path.join(out, "hand_ue_rig.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(rig, f, ensure_ascii=False, indent=1)
+    print("[OK] 关节表 %s（%d 个活动部件，自检指尖最大误差 %.5f cm）" % (path, len(level_of), worst))
+
+
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
+    rig_only = "--rig-only" in argv
+    argv = [a for a in argv if a != "--rig-only"]
     out = os.path.abspath(argv[0]) if argv else os.path.join(HERE, "output")
     os.makedirs(out, exist_ok=True)
 
@@ -152,6 +257,10 @@ def main():
     for f in H.FINGERS:
         for leaf, (en, mat) in LEAF.items():
             units.append((FINGER_EN[f] + "_" + en, "手/%s/%s" % (H.CN[f], leaf), mat))
+
+    if rig_only:
+        export_rig(hand, out, [("H%02d_%s" % (i, en), by_path[path]) for i, (en, path, mat) in enumerate(units, 1)])
+        return
 
     coll = bpy.data.collections.new("UE_Export")
     bpy.context.scene.collection.children.link(coll)
@@ -188,6 +297,7 @@ def main():
         bpy.ops.export_scene.gltf(**kw)
     with open(os.path.join(out, "hand_ue_parts.json"), "w", encoding="utf-8") as f:
         json.dump(rows, f, ensure_ascii=False, indent=1)
+    export_rig(hand, out, [(r["name"], by_path[path]) for r, (en, path, mat) in zip(rows, units)])
     print("[OK] %d 个部件（%d 个网格零件）→ %s" % (len(rows), sum(r["parts"] for r in rows), glb))
 
 
