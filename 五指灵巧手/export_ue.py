@@ -172,15 +172,17 @@ def export_rig(hand, out, units):
             p = ue_cm(m.translation)
             row.append(dict(pivot=[round(c, 4) for c in p], axis=[round(c, 6) for c in ue_axis(k_world)]))
         joints[f] = row
-        # 指尖两个点（都跟 J4 走）：pad = 指腹表面中心（捏的接触点），end = 指尖最前端（戳触屏）
+        # 指尖几个点（都跟 J4 走）：pad = 指腹表面中心（捏的接触点），end = 指尖最前端（戳触屏）
         fp = H.P["fingers"][f]
         tp = H.P["finger_common"]["tip_pad"]
         td = fp["t"] * 0.9
         L3 = fp["L"][2]
         j4 = hand[f]["J"][3].matrix_world
         end = ue_cm(j4 @ Vector((0, -td * tp[3], L3 * (0.70 + tp[2] / 2))))
+        # core = 硅胶指尖套椭球的中心（指尖"骨头"里），虚幻那边把指尖当小球沿弯曲路径扫时用它当球心
+        core = ue_cm(j4 @ Vector((0, -td * tp[3], L3 * 0.70)))
         tips[f] = dict(pad=[round(c, 4) for c in ue_cm(hand[f]["tip"].matrix_world.translation)],
-                       end=[round(c, 4) for c in end])
+                       end=[round(c, 4) for c in end], core=[round(c, 4) for c in core])
 
     # 部件 → (手指, 关节级别 1~4)；0 级（掌上不动）的不写
     level_of = {}
