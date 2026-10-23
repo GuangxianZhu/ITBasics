@@ -1,0 +1,4 @@
+output/
+blender_path.txt
+tools/node_modules/
+tools/.build/
