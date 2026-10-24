@@ -49,6 +49,8 @@ label.chk{display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;
 .labels{position:absolute;inset:0;pointer-events:none;z-index:0}
 #caption,#partcard,#dock,#dockToggle{z-index:1}
 #dock[hidden],#partcard[hidden]{display:none}
+.no3d{position:absolute;inset:auto 12px 50% 12px;transform:translateY(50%);background:var(--panel);border:1px solid var(--bad);border-radius:8px;padding:10px 12px;font-size:13px;z-index:2}
+#jserr{position:fixed;left:8px;right:8px;bottom:8px;z-index:20;background:#7a1d1d;color:#fff;border-radius:8px;padding:10px 12px;font-size:13px;white-space:pre-wrap;word-break:break-all}
 .lab{font-size:12px;padding:1px 7px;border-radius:4px;background:color-mix(in srgb,var(--panel) 85%,transparent);border:1px solid var(--line);color:var(--fg);white-space:nowrap}
 .lab.main{border-color:var(--accent);color:var(--accent);font-weight:700}
 
@@ -211,6 +213,20 @@ ol#steps li.cur::before{background:var(--accent);border-color:var(--accent);colo
   <div class="row"><button class="primary" id="again">再跑一片</button><button class="btn" id="tweak">改配方再试</button><button class="btn" id="resClose">看看剖面</button></div>
 </div></div>
 
+<script>
+// 出错时把错误显示在页面上（手机上看不到控制台）
+window.__showErr = function (e) {
+  if (document.getElementById('jserr')) return;
+  var d = document.createElement('div'); d.id = 'jserr';
+  d.textContent = '页面出错了，请把这段文字发给我：\n' + (e && (e.stack || e.message) || e) + '\n' + navigator.userAgent;
+  document.body.appendChild(d);
+};
+window.addEventListener('error', function (ev) { window.__showErr(ev.error || ev.message); });
+window.addEventListener('unhandledrejection', function (ev) { window.__showErr(ev.reason); });
+setTimeout(function () {
+  if (!window.__etchReady && !document.getElementById('jserr')) window.__showErr('脚本没有运行起来。如果你是在 App 的文件预览里打开的，请改用手机浏览器（Chrome / Safari）打开这个文件。');
+}, 4000);
+</script>
 <script type="module" src="./app.js"></script>
 </body>
 </html>

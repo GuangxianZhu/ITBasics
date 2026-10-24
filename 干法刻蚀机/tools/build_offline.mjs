@@ -12,7 +12,7 @@ const html = readFileSync(join(root, 'web', 'index.html'), 'utf8');
 
 const out = await build({
   entryPoints: [join(root, 'web', 'app.js')], bundle: true, format: 'iife', minify: true, write: false,
-  target: 'es2020', nodePaths: [join(here, 'node_modules')], legalComments: 'none',
+  target: ['es2017', 'chrome64', 'safari12'], nodePaths: [join(here, 'node_modules')], legalComments: 'none',
 });
 const js = out.outputFiles[0].text.replaceAll('</script', '<\\/script');
 
