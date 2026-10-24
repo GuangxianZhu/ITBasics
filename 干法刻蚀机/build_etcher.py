@@ -50,16 +50,17 @@ def mat(name, hexc, metal=0.0, rough=0.5, alpha=1.0):
 
 # 金属度都不超过 0.55（MyVRToyBox 的工作室没有反射探针，金属度高了发黑）
 M = dict(
-    anod=mat('阳极氧化铝', 0xa9b0b8, 0.35, 0.45),
-    alu=mat('铝', 0xc8ced4, 0.5, 0.32),
-    coat=mat('氧化钇涂层', 0xe9e4d6, 0.0, 0.7),
-    steel=mat('不锈钢', 0xc4c7cb, 0.55, 0.22),
-    white=mat('喷粉白', 0xeceeef, 0.0, 0.55),
-    grey=mat('喷粉灰', 0x8d949c, 0.05, 0.5),
-    frame=mat('机架灰', 0x6b737c, 0.15, 0.5),
-    dark=mat('深灰塑料', 0x2a2e33, 0.0, 0.6),
+    anod=mat('阳极氧化铝', 0x8e98a2, 0.45, 0.36),
+    alu=mat('铝', 0xb2bac2, 0.5, 0.3),
+    coat=mat('氧化钇涂层', 0xddd6c3, 0.0, 0.75),
+    steel=mat('不锈钢', 0xb8bcc1, 0.55, 0.2),
+    white=mat('喷粉浅灰', 0xc3c9cf, 0.0, 0.55),
+    gasbox=mat('气体盒蓝灰', 0x9fb0c0, 0.0, 0.5),
+    grey=mat('喷粉灰', 0x646d77, 0.05, 0.5),
+    frame=mat('机架灰', 0x3b4148, 0.15, 0.5),
+    dark=mat('深灰塑料', 0x22262b, 0.0, 0.6),
     black=mat('黑色橡胶', 0x141618, 0.0, 0.75),
-    ceramic=mat('氧化铝陶瓷', 0xf1ebdc, 0.0, 0.45),
+    ceramic=mat('氧化铝陶瓷', 0xebe3cf, 0.0, 0.45),
     quartz=mat('石英', 0xeef4f8, 0.0, 0.08, 0.55),
     acrylic=mat('亚克力窗', 0xd8ecf5, 0.0, 0.05, 0.18),
     glasscap=mat('电容玻璃', 0xf3d9a0, 0.0, 0.1, 0.55),
@@ -203,6 +204,15 @@ class Part:
 
     def build(self):
         me = bpy.data.meshes.new(self.name)
+        self.bm.normal_update()
+        uv = self.bm.loops.layers.uv.new('UVMap')
+        for f in self.bm.faces:
+            n = f.normal
+            ax = max(range(3), key=lambda i: abs(n[i]))
+            for l in f.loops:
+                c = l.vert.co
+                u, v = ((c.y, c.z), (c.x, c.z), (c.x, c.y))[ax]
+                l[uv].uv = (u * 4, v * 4)
         self.bm.transform(T(*(-self.origin)))
         self.bm.to_mesh(me)
         self.bm.free()
@@ -427,8 +437,8 @@ p.build()
 
 # --- 分子泵：外壳 + 散热片 + 转子（会转）+ 控制器 + 前级波纹管 ---
 p = Part('turbo')
-p.add(bm_rev([(0.115, 0.44), (0.128, 0.44), (0.131, 0.443), (0.131, 0.675), (0.152, 0.675), (0.152, 0.70), (0.115, 0.70)], 64), M['white'], T(PX, PY, 0))
-p.add(bm_cyl(0.128, 0.44, 0.452, 64), M['white'], T(PX, PY, 0))
+p.add(bm_rev([(0.115, 0.44), (0.128, 0.44), (0.131, 0.443), (0.131, 0.675), (0.152, 0.675), (0.152, 0.70), (0.115, 0.70)], 64), M['alu'], T(PX, PY, 0))
+p.add(bm_cyl(0.128, 0.44, 0.452, 64), M['alu'], T(PX, PY, 0))
 for z in (0.47, 0.50, 0.53, 0.56, 0.59, 0.62):
     p.add(bm_ring(0.131, 0.141, z, z + 0.006, 64), M['alu'], T(PX, PY, 0))
 bolts(p, 12, 0.142, 0.70, hr=0.006, hh=0.006, up=True)
@@ -495,14 +505,14 @@ p.build()
 p = Part('gasbox')
 gx, gy, gz = 0.66, 0.15, 1.25
 gw, gd, gh = 0.34, 0.28, 0.52
-p.add(bm_box(gw, 0.006, gh, 0.003), M['white'], T(gx, gy + gd / 2, gz))
+p.add(bm_box(gw, 0.006, gh, 0.003), M['gasbox'], T(gx, gy + gd / 2, gz))
 for sx in (-1, 1):
-    p.add(bm_box(0.006, gd, gh, 0.003), M['white'], T(gx + sx * gw / 2, gy, gz))
-p.add(bm_box(gw, gd, 0.006, 0.003), M['white'], T(gx, gy, gz + gh / 2))
-p.add(bm_box(gw, gd, 0.006, 0.003), M['white'], T(gx, gy, gz - gh / 2))
+    p.add(bm_box(0.006, gd, gh, 0.003), M['gasbox'], T(gx + sx * gw / 2, gy, gz))
+p.add(bm_box(gw, gd, 0.006, 0.003), M['gasbox'], T(gx, gy, gz + gh / 2))
+p.add(bm_box(gw, gd, 0.006, 0.003), M['gasbox'], T(gx, gy, gz - gh / 2))
 p.add(bm_box(gw - 0.02, 0.004, gh - 0.02, 0.001), M['acrylic'], T(gx, gy - gd / 2, gz))
-p.add(bm_box(gw, 0.01, 0.03, 0.002), M['white'], T(gx, gy - gd / 2, gz + gh / 2 - 0.015))
-p.add(bm_box(gw, 0.01, 0.03, 0.002), M['white'], T(gx, gy - gd / 2, gz - gh / 2 + 0.015))
+p.add(bm_box(gw, 0.01, 0.03, 0.002), M['gasbox'], T(gx, gy - gd / 2, gz + gh / 2 - 0.015))
+p.add(bm_box(gw, 0.01, 0.03, 0.002), M['gasbox'], T(gx, gy - gd / 2, gz - gh / 2 + 0.015))
 for i, gm in enumerate((M['cl2'], M['hbr'], M['o2'], M['ar'])):
     x = gx - 0.12 + i * 0.08
     y = gy + 0.02
@@ -533,7 +543,7 @@ p.add(bm_box(rw, 0.012, rh, 0.003), M['grey'], T(rx, ry + rd / 2, rh / 2))
 fy = ry - rd / 2
 units = [(1.42, 0.16, 'gen'), (1.22, 0.16, 'gen'), (1.04, 0.12, 'ctl'), (0.86, 0.16, 'blank'), (0.40, 0.56, 'blank'), (0.12, 0.14, 'pdu')]
 for zc_, hh, kind in units:
-    p.add(bm_box(rw - 0.03, 0.02, hh - 0.006, 0.003), M['white'] if kind != 'pdu' else M['dark'], T(rx, fy, zc_))
+    p.add(bm_box(rw - 0.03, 0.02, hh - 0.006, 0.003), M['grey'] if kind != 'pdu' else M['dark'], T(rx, fy, zc_))
     for sx in (-1, 1):                                                         # 把手
         p.add(bm_box(0.012, 0.025, hh * 0.6, 0.003), M['steel'], T(rx + sx * (rw / 2 - 0.035), fy - 0.02, zc_))
     if kind == 'gen':
