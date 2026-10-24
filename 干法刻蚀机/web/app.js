@@ -496,6 +496,155 @@ plasmaLight.position.set(0, 1.08, 0);
 PM1.add(plasma, plasmaCore, plasmaLight);
 plasma.visible = plasmaCore.visible = false;
 
+// ---------- 反应腔里的粒子（示意：数量、速度都不是真实比例） ----------
+// 局部坐标都在 PM1 里：腔轴是 Y 轴，晶圆表面 y = H。
+// 气体分子从喷嘴进来 → 起辉后被打碎成电子、离子、自由基 → 自由基吸附在晶圆上 →
+// 离子被鞘层加速打到"吸附了自由基"的地方 → 生成 SiCl₄ 冒出来 → 随气流穿过约束环被分子泵抽走。
+const PT = {
+  gas: { c: new THREE.Color(0xdfe6ee), name: '气体分子（Cl₂ / HBr）' },
+  e: { c: new THREE.Color(0x6ff3ff), name: '电子' },
+  ion: { c: new THREE.Color(0xff3d63), name: '离子（Cl⁺ 等）' },
+  rad: { c: new THREE.Color(0xc9f23a), name: '自由基（Cl·）' },
+  prod: { c: new THREE.Color(0xff9a2e), name: '产物 SiCl₄' },
+};
+const PMAX = 1400, RIN = 0.285, YTOP = 1.193, YW = H + 0.002, SHEATH = H + 0.03;
+const parts = [];
+const pPos = new Float32Array(PMAX * 3), pCol = new Float32Array(PMAX * 3);
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3).setUsage(THREE.DynamicDrawUsage));
+pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3).setUsage(THREE.DynamicDrawUsage));
+const dotTex = canvasTex(64, (g, n) => {
+  const gr = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.45, 'rgba(255,255,255,0.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, n, n);
+});
+const pMat = new THREE.PointsMaterial({ size: 0.016, map: dotTex, vertexColors: true, transparent: true, depthWrite: false, alphaTest: 0.05 });
+pMat.userData.noPick = true;
+const pPoints = new THREE.Points(pGeo, pMat);
+pPoints.frustumCulled = false;
+pPoints.renderOrder = 5;
+// 离子在鞘层里的尾迹
+const tPos = new Float32Array(PMAX * 6), tCol = new Float32Array(PMAX * 6);
+const tGeo = new THREE.BufferGeometry();
+tGeo.setAttribute('position', new THREE.BufferAttribute(tPos, 3).setUsage(THREE.DynamicDrawUsage));
+tGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3).setUsage(THREE.DynamicDrawUsage));
+const tMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 1, depthWrite: false });
+tMat.userData.noPick = true;
+const tLines = new THREE.LineSegments(tGeo, tMat);
+tLines.frustumCulled = false;
+tLines.renderOrder = 5;
+PM1.add(pPoints, tLines);
+let spawnAcc = { gas: 0, e: 0 };
+let adsorbed = 0;   // 晶圆表面吸附着的自由基个数（离子打上来才能生成产物）
+
+function spawn(t, x, y, z, vx = 0, vy = 0, vz = 0) {
+  if (parts.length >= PMAX) return null;
+  const p = { t, x, y, z, vx, vy, vz, age: 0, life: 6 + Math.random() * 4, stick: 0 };
+  parts.push(p);
+  return p;
+}
+const rnd = () => Math.random() * 2 - 1;
+function inWafer(x, z) { return S.holder === 'pm' && S.pinH < 0.05 && x * x + z * z < 0.15 * 0.15; }
+
+function updateParticles(dt) {
+  const show = has3D && S.explode < 0.02 && (S.holder === 'pm' || parts.length > 0);
+  pPoints.visible = tLines.visible = show;
+  $('#plegend').hidden = !show || parts.length === 0;
+  if (!show) return;
+  dt = Math.min(dt, 0.05);
+  const flow = S.cl2 + S.hbr + S.o2;
+  const pl = S.plasma;
+  const bias = S.biasF > 1;
+  // 进气
+  spawnAcc.gas += dt * flow * 0.55;
+  while (spawnAcc.gas >= 1) {
+    spawnAcc.gas -= 1;
+    const a = Math.random() * Math.PI * 2;
+    spawn('gas', 0.015 * Math.cos(a), YTOP - 0.005, 0.015 * Math.sin(a), 0.35 * Math.cos(a) * Math.random(), -0.35, 0.35 * Math.sin(a) * Math.random());
+  }
+  // 电子：一直保持一群在乱窜
+  const eCount = parts.reduce((n, p) => n + (p.t === 'e'), 0);
+  for (let k = eCount; k < Math.round(70 * pl); k++) {
+    spawn('e', rnd() * 0.25, H + 0.05 + Math.random() * 0.2, rnd() * 0.25, rnd() * 1.6, rnd() * 1.6, rnd() * 1.6).life = 0.6 + Math.random();
+  }
+  let wPos = 0, wCol = 0, nT = 0;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.age += dt;
+    let dead = p.age > p.life;
+    const r = Math.hypot(p.x, p.z);
+    if (p.t === 'gas' || p.t === 'rad' || p.t === 'prod') {
+      // 气流：往外、往下，穿过约束环（半径 0.19~0.30、高度 0.86）流向分子泵
+      const out = p.y < 1.02 ? 0.22 : 0.06, down = r > 0.19 ? 0.28 : 0.05;
+      const ux = r > 1e-4 ? p.x / r : 0, uz = r > 1e-4 ? p.z / r : 0;
+      const jit = p.t === 'rad' ? 0.9 : 0.5;
+      p.vx += (ux * out - p.vx) * dt * 2 + rnd() * jit * dt * 6;
+      p.vz += (uz * out - p.vz) * dt * 2 + rnd() * jit * dt * 6;
+      p.vy += (-down - p.vy) * dt * 2 + rnd() * jit * dt * 6;
+      if (p.t === 'prod' && p.age < 0.5) p.vy = Math.max(p.vy, 0.18);   // 刚生成的产物先往上冒
+      // 起辉后气体分子被电子撞碎：变成自由基或离子
+      if (p.t === 'gas' && pl > 0.05 && Math.random() < pl * 1.8 * dt) {
+        if (Math.random() < 0.72) { p.t = 'rad'; p.life = p.age + 3 + Math.random() * 3; }
+        else { p.t = 'ion'; p.life = p.age + 4; p.vx *= 0.3; p.vy *= 0.3; p.vz *= 0.3; }
+      }
+      // 自由基碰到晶圆就吸附
+      if (p.t === 'rad' && p.y < YW + 0.006 && inWafer(p.x, p.z)) { adsorbed++; dead = true; }
+      if (p.y < 0.76) dead = true;
+    } else if (p.t === 'ion') {
+      if (p.y < SHEATH && inWafer(p.x, p.z) || p.y < SHEATH && r < 0.185) {
+        // 进了鞘层：被电场垂直加速往下打；有偏压时快得多
+        const acc = bias ? 60 : 8;
+        p.vy -= acc * dt; p.vx *= 0.9; p.vz *= 0.9;
+        nT++;
+      } else {
+        p.vx += rnd() * dt * 1.2; p.vz += rnd() * dt * 1.2; p.vy += (rnd() * 1.2 - 0.6) * dt;
+        p.vx *= 0.97; p.vy *= 0.97; p.vz *= 0.97;
+        if (pl < 0.05) p.life = Math.min(p.life, p.age + 0.3);   // 没有等离子体，离子很快复合掉
+      }
+      if (p.y <= YW) {
+        dead = true;
+        if (inWafer(p.x, p.z) && S.etching && adsorbed > 0) {
+          const yieldP = clamp(0.25 + (bias ? 0.6 : 0.05), 0, 0.95) * (E.Dc < 100 ? 1 : 0.15);
+          if (Math.random() < yieldP) { adsorbed--; spawn('prod', p.x, YW + 0.003, p.z, rnd() * 0.05, 0.25, rnd() * 0.05); }
+        }
+      }
+    } else if (p.t === 'e') {
+      if (pl < 0.05) dead = true;
+    }
+    p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+    // 关在腔里：碰到内衬、介质窗就弹回来
+    const r2 = Math.hypot(p.x, p.z);
+    const rMax = p.y > 0.87 ? RIN : 0.30;
+    if (r2 > rMax && !(p.y < 0.875 && r2 < 0.30)) { const k = rMax / r2; p.x *= k; p.z *= k; p.vx = -p.vx * 0.5; p.vz = -p.vz * 0.5; }
+    if (p.y > YTOP) { p.y = YTOP; p.vy = -Math.abs(p.vy); }
+    if (p.y < YW && p.t !== 'ion' && r2 < 0.185) { p.y = YW; p.vy = Math.abs(p.vy) * 0.5; }
+    if (dead) { parts.splice(i, 1); continue; }
+  }
+  adsorbed = Math.min(adsorbed, 60);
+  if (!S.etching && S.plasma < 0.05) adsorbed = Math.max(0, adsorbed - dt * 10);
+  // 写进缓冲区
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i], c = PT[p.t].c;
+    pPos[wPos] = p.x; pPos[wPos + 1] = p.y; pPos[wPos + 2] = p.z;
+    pCol[wCol] = c.r; pCol[wCol + 1] = c.g; pCol[wCol + 2] = c.b;
+    wPos += 3; wCol += 3;
+  }
+  pGeo.setDrawRange(0, parts.length);
+  pGeo.attributes.position.needsUpdate = pGeo.attributes.color.needsUpdate = true;
+  let j = 0;
+  for (const p of parts) {
+    if (p.t !== 'ion' || p.vy > -0.4) continue;
+    const L = clamp(-p.vy * 0.02, 0.015, 0.09);
+    tPos.set([p.x, p.y, p.z, p.x, p.y + L, p.z], j * 6);
+    const c = PT.ion.c;
+    tCol.set([c.r, c.g, c.b, c.r * 0.2, c.g * 0.2, c.b * 0.2], j * 6);
+    j++;
+  }
+  tGeo.setDrawRange(0, j * 2);
+  tGeo.attributes.position.needsUpdate = tGeo.attributes.color.needsUpdate = true;
+}
+function clearParticles() { parts.length = 0; adsorbed = 0; spawnAcc = { gas: 0, e: 0 }; }
+
 // ---------- 晶圆 ----------
 const waferMat = std(0xa08a5c, 0.5, 0.2);
 const wafer = group(cyl(0.15, 0.003, waferMat, 0, 0, 0, 64), box(0.01, 0.004, 0.006, MAT.dark, 0.146, 0, 0));
@@ -790,10 +939,11 @@ function visualsTick(dtR) {
   plasma.visible = plasmaCore.visible = on;
   if (on) {
     const f = S.plasma * clamp(0.35 + MDL.n * 0.6, 0.3, 1.3) * (0.93 + 0.07 * Math.random());
-    plasma.material.opacity = 0.22 * f;
-    plasmaCore.material.opacity = 0.4 * f;
+    plasma.material.opacity = 0.14 * f;
+    plasmaCore.material.opacity = 0.28 * f;
     plasmaLight.intensity = 2.2 * f;
   } else plasmaLight.intensity = 0;
+  updateParticles(paused ? 0 : dtR);
 }
 
 // ================= 镜头 =================
@@ -802,7 +952,7 @@ const VIEWS = {
   efem: { p: [1.4, 2.0, 4.0], t: [0, 0.9, 1.9] },
   ll: { p: [2.3, 1.9, 1.15], t: [-0.15, 0.9, 0.9] },
   vtm: { p: [1.5, 2.6, 1.0], t: [0, 0.9, -0.4] },
-  chamber: { p: [0.42, 1.32, -0.28], t: [0, 0.98, PM_Z] },
+  chamber: { p: [0.4, 1.5, -0.36], t: [0, 0.97, PM_Z] },
   explode: { p: [1.5, 2.1, 1.0], t: [0, 1.35, PM_Z] },
 };
 let camAnim = null;
@@ -1018,6 +1168,7 @@ $('#pause').addEventListener('click', () => { paused = !paused; $('#pause').text
 
 function resetAll() {
   resetState();
+  clearParticles();
   stepIdx = -1; busy = false; done = false; procT0 = null; samples.length = 0; parts2d.length = 0;
   E.epT = undefined;
   explain('准备好了', '晶圆盒里又放了一片新的晶圆。可以先到"配方"里改参数，再点"开始"。', '每次只改一两个参数，对比结果最容易看出它的作用。');

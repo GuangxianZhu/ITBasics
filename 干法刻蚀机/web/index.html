@@ -48,7 +48,10 @@ label.chk{display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;
 #c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
 .labels{position:absolute;inset:0;pointer-events:none;z-index:0}
 #caption,#partcard,#dock,#dockToggle{z-index:1}
-#dock[hidden],#partcard[hidden]{display:none}
+#dock[hidden],#partcard[hidden],#plegend[hidden]{display:none}
+#plegend{position:absolute;top:60px;right:12px;z-index:1;display:flex;flex-direction:column;gap:3px;background:rgba(16,20,26,.82);color:#e6ebf0;border-radius:8px;padding:8px 12px;font-size:12px}
+#plegend span{display:flex;align-items:center;gap:6px}
+#plegend i{width:9px;height:9px;border-radius:50%;display:inline-block}
 .no3d{position:absolute;inset:auto 12px 50% 12px;transform:translateY(50%);background:var(--panel);border:1px solid var(--bad);border-radius:8px;padding:10px 12px;font-size:13px;z-index:2}
 #jserr{position:fixed;left:8px;right:8px;bottom:8px;z-index:20;background:#7a1d1d;color:#fff;border-radius:8px;padding:10px 12px;font-size:13px;white-space:pre-wrap;word-break:break-all}
 .lab{font-size:12px;padding:1px 7px;border-radius:4px;background:color-mix(in srgb,var(--panel) 85%,transparent);border:1px solid var(--line);color:var(--fg);white-space:nowrap}
@@ -166,6 +169,7 @@ ol#steps li.cur::before{background:var(--accent);border-color:var(--accent);colo
   <main id="stage">
     <canvas id="c"></canvas>
     <div id="caption">点右边的 <b>▶ 开始</b>，一步一步把一片晶圆刻完。也可以拖动旋转、滚轮缩放，点零件看它是干什么的。</div>
+    <div id="plegend" hidden><b>粒子（示意）</b><span><i style="background:#dfe6ee"></i>气体分子</span><span><i style="background:#6ff3ff"></i>电子</span><span><i style="background:#ff3d63"></i>离子</span><span><i style="background:#c9f23a"></i>自由基</span><span><i style="background:#ff9a2e"></i>产物 SiCl₄</span></div>
     <div id="partcard" hidden><button class="x" id="pcClose" aria-label="关闭">×</button><h3></h3><div class="g"></div><p></p></div>
     <div id="dock">
       <div class="dp"><h4><span>剖面 · 晶圆中心（栅极线条 60 nm）</span><span id="depth"></span></h4><canvas id="prof"></canvas></div>
