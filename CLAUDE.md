@@ -15,7 +15,7 @@
 | AI 服务器爆炸图（8U 八卡 HGX 训练服务器，按 GPU 一级合并成 32 个部件（GPU 和散热器分开）：Blender 脚本建模 + 原理爆炸图，导进 MyVRToyBox） | `AI服务器爆炸图/README.md` |
 | 四缸发动机爆炸图（通用 2.0L DOHC 16V 直列四缸：Blender 脚本建模 + 原理爆炸图，48 个可抓单元 + 缸体底座，导进 MyVRToyBox） | `四缸发动机爆炸图/README.md` |
 | 五指灵巧手（20 自由度直驱手，关节布局参考 Wuji Hand 2 公开 URDF：零件树 + 共享参数表 params.json + 逐件建模，手势由求解器避开穿模，网页查看器；`export_ue.py` 导进 MyVRToyBox） | `五指灵巧手/README.md` |
-| 干法刻蚀机（原创 ICP 刻蚀机教学：Blender 建模 + 原理实验网页 + VR，规划中） | `干法刻蚀机/搭建路线.md` |
+| 干法刻蚀机（原创 ICP 刻蚀机教学：离线网页里操作机台跑完一次工艺；后续 Blender 建模 + VR 见搭建路线） | `干法刻蚀机/README.md` |
 
 通用约定：
 - 回答用中文；改完 push 到 `main`。
