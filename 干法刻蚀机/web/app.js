@@ -6,6 +6,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const $ = s => document.querySelector(s);
 const H = 0.95;
@@ -72,6 +74,8 @@ let MDL = model(R);
 // ================= 三维场景 =================
 
 const stage = $('#stage');
+// 手机、平板：关掉阴影、降低分辨率，保证流畅
+const LOW = matchMedia('(pointer: coarse)').matches || innerWidth < 900;
 const canvas = $('#c');
 // 手机不支持 WebGL2 时 three.js 会报错：这时只关掉 3D，按钮、剖面、曲线照常能用
 let renderer, has3D = true;
@@ -85,7 +89,7 @@ catch (e) {
   stage.appendChild(m);
   document.querySelector('#labels').checked = false;
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, LOW ? 1.5 : 2));
 renderer.localClippingEnabled = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -95,6 +99,18 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x556070, 0.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.3);
 sun.position.set(3, 6, 4);
 scene.add(sun);
+const fill = new THREE.DirectionalLight(0xdfe8ff, 0.45);
+fill.position.set(-4, 3, -2);
+scene.add(fill);
+if (has3D && !LOW) {
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 1, far: 15 });
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.02;
+}
 
 const camera = new THREE.PerspectiveCamera(40, 1, 0.02, 60);
 camera.position.set(3.2, 4.3, 3.3);
@@ -119,6 +135,7 @@ function clipped(m) {
   c.side = THREE.DoubleSide;
   c.clippingPlanes = [CUT];
   c.userData.clip = true;
+  c.clipShadows = true;
   return c;
 }
 const MAT = {
@@ -196,6 +213,8 @@ const PART_INFO = [
   ['pendulum', '工艺腔 · 排气', '摆阀', '一块会摆动的阀板，调节抽气口开多大，把腔压稳在设定值。'],
   ['turbo', '工艺腔 · 排气', '分子泵', '转子每分钟几万转，把气体分子"打"向出口，把腔抽到高真空。后面还接着干泵和尾气处理（在楼下）。'],
   ['gasbox', '工艺腔 · 气路', '气体盒', '每路气体一个质量流量计（MFC），精确控制流量；还有阀门和过滤器。'],
+  ['frame', '工艺腔 · 腔体', '机架', '铝型材机架，底下是可调高度的调平脚。升降针的气缸也装在机架上。'],
+  ['lines', '工艺腔 · 卡盘', '冷却水管、高压线、背氦管', '蓝管进、红管出，冷却液流过卡盘底座里的水道把热带走；红色细线是卡盘的吸附高压；不锈钢细管送背面氦气。'],
   ['wafer', '晶圆', '晶圆', '300 mm 硅片，上面是 4 nm 栅氧 + 100 nm 多晶硅，再上面是 60 nm 宽的光刻胶线条。刻完剩下的多晶硅就是晶体管的栅极。'],
 ];
 const PARTS = {};
@@ -225,6 +244,7 @@ function label(text, x, y, z, main = false) {
 // ---------- 地面 ----------
 const floor = mesh(new THREE.PlaneGeometry(10, 10), MAT.floor);
 floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
 scene.add(floor);
 const grid = new THREE.GridHelper(10, 17, 0xa7b0b9, 0xbfc7ce);
 grid.position.y = 0.002;
@@ -300,16 +320,16 @@ function makeRobot(name, bx, bz, L, partId) {
   const blade = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.004, 0.09), MAT.ceramic);
   g.add(l1, l2, blade);
   scene.add(addPart(partId, g));
-  const rb = { name, bx, bz, L, theta: Math.PI / 2, r: 0.18, y: H - 0.012, home: 0.18, end: new THREE.Vector3() };
+  const rb = { name, bx, bz, L, g, l1, l2, blade, theta: Math.PI / 2, r: 0.18, y: H - 0.012, home: 0.18, end: new THREE.Vector3() };
   rb.update = () => {
     const d = clamp(rb.r, 0.06, 2 * L * 0.999);
     const a = Math.acos(d / (2 * L));
     const a1 = rb.theta + a, a2 = rb.theta - a;
-    l1.position.set(bx, rb.y - 0.03, bz); l1.rotation.y = -a1;
+    rb.l1.position.set(bx, rb.y - 0.03, bz); rb.l1.rotation.y = -a1;
     const ex = bx + L * Math.cos(a1), ez = bz + L * Math.sin(a1);
-    l2.position.set(ex, rb.y - 0.015, ez); l2.rotation.y = -a2;
+    rb.l2.position.set(ex, rb.y - 0.015, ez); rb.l2.rotation.y = -a2;
     rb.end.set(bx + d * Math.cos(rb.theta), rb.y, bz + d * Math.sin(rb.theta));
-    blade.position.copy(rb.end); blade.rotation.y = -rb.theta;
+    rb.blade.position.copy(rb.end); rb.blade.rotation.y = -rb.theta;
   };
   rb.update();
   return rb;
@@ -320,11 +340,14 @@ ATM.theta = Math.PI / 2; ATM.update();
 VTM.theta = -Math.PI / 2; VTM.update();
 const ROB = { atm: ATM, vtm: VTM };
 // 大气机械手的立柱
-scene.add(cylY(0.12, 0.04, 0.84, MAT.dark, 0, 1.8));
+const atmPedestal = cylY(0.12, 0.04, 0.84, MAT.dark, 0, 1.8);
+scene.add(atmPedestal);
 
 // ---------- 工艺腔 ----------
 // 局部坐标：腔中心在原点，闸阀朝 +Z。detailed 的那个（PM1）有全部内部零件，可以剖开。
 let PM1 = null;
+const PM23 = [];
+let PM1_LEGS = null;
 function buildPM(detailed) {
   const g = new THREE.Group();
   const P = (id, obj) => { g.add(obj); if (detailed) addPart(id, obj); return obj; };
@@ -375,11 +398,12 @@ function buildPM(detailed) {
     P('rack', group(box(0.42, 1.6, 0.6, MAT.panel, -0.78, 0.8, -0.12), box(0.36, 0.08, 0.01, MAT.dark, -0.78, 1.45, 0.181),
       box(0.36, 0.08, 0.01, MAT.dark, -0.78, 1.3, 0.181)));
   }
-  return { g, door };
+  return { g, door, legs };
 }
 {
   const pm1 = buildPM(true);
   pm1.g.position.set(0, 0, PM_Z);
+  PM1_LEGS = pm1.legs;
   scene.add(pm1.g);
   PM1 = pm1.g;
   label('工艺腔 PM1（这次用）', 0, 1.78, PM_Z, true);
@@ -388,6 +412,7 @@ function buildPM(detailed) {
     pm.g.position.set(x, 0, 0);
     pm.g.rotation.y = rot;
     scene.add(addPart('pm23', pm.g));
+    PM23.push(pm.g);
     label(x > 0 ? 'PM2' : 'PM3', x, 1.75, 0);
   }
 }
@@ -677,6 +702,9 @@ function visualsTick(dtR) {
   // 拆开（只有不在运行时可以）
   const OFF = { srcmatch: 0.80, rfcover: 0.66, coil: 0.55, nozzle: 0.47, window: 0.40, liner: 0.25, baffle: 0.12, edgering: 0.10, pendulum: -0.10, turbo: -0.26 };
   for (const [id, off] of Object.entries(OFF)) for (const o of PARTS[id].objs) o.position.y = o.userData.baseY + off * S.explode;
+  if (turboRotor) turboRotor.rotation.y += dtR * 25;
+  for (const r of extraRotors) r.rotation.y += dtR * 25;
+  if (pendPlate) pendPlate.rotation.y = -(S.valve / 100) * 1.3;
   const pins = PARTS.pins.objs[0];
   pins.position.y = pins.userData.baseY + 0.031 * S.pinH;
   // 晶圆
@@ -707,7 +735,7 @@ const VIEWS = {
   efem: { p: [1.4, 2.0, 4.0], t: [0, 0.9, 1.9] },
   ll: { p: [2.3, 1.9, 1.15], t: [-0.15, 0.9, 0.9] },
   vtm: { p: [1.5, 2.6, 1.0], t: [0, 0.9, -0.4] },
-  chamber: { p: [0.35, 1.62, 0.5], t: [0, 0.98, PM_Z] },
+  chamber: { p: [0.42, 1.32, -0.28], t: [0, 0.98, PM_Z] },
   explode: { p: [1.5, 2.1, 1.0], t: [0, 1.35, PM_Z] },
 };
 let camAnim = null;
@@ -1102,6 +1130,104 @@ canvas.addEventListener('pointerup', e => {
   selectPart(null);
 });
 
+// ================= 细模型（Blender 导出的 glb） =================
+// 打包时 glb 以 base64 嵌进页面；没有的话（开发时）去 ../output 里取；都没有就继续用上面代码搭的简模。
+let turboRotor = null, pendPlate = null;
+const extraRotors = [];
+const CLIP_NODES = new Set(['chamber', 'window', 'rfcover', 'liner', 'baffle', 'slit', 'esc', 'edgering', 'insring', 'pendulum', 'turbo', 'turbo__rotor']);
+const PM_IDS = ['chamber', 'window', 'coil', 'rfcover', 'srcmatch', 'nozzle', 'slit', 'pendulum', 'turbo', 'liner', 'baffle', 'esc', 'insring', 'edgering', 'pins', 'oes', 'cmg', 'biasmatch', 'gasbox', 'rack'];
+const PM23_NODES = ['frame', 'chamber', 'window', 'coil', 'rfcover', 'srcmatch', 'nozzle', 'slit', 'slit__door', 'pendulum', 'pendulum__plate', 'turbo', 'turbo__rotor', 'lines'];
+function shadowAll(root) {
+  root.traverse(m => { if (m.isMesh && !(m.material.transparent && m.material.opacity < 0.7)) { m.castShadow = true; m.receiveShadow = true; } });
+}
+function tagPart(obj, id) {
+  obj.traverse(o => { if (o.isMesh) { o.userData.part = id; o.material = o.material.clone(); } });
+}
+// PM2/PM3 不会单独动零件：按材质合并成少数几个网格，减少绘制次数（手机上差别很大）
+function mergeStatic(g, partId) {
+  g.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(g.matrixWorld).invert();
+  const byMat = new Map();
+  g.traverse(m => {
+    if (!m.isMesh) return;
+    let geo = m.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+    for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'normal') geo.deleteAttribute(k);
+    if (geo.index) geo = geo.toNonIndexed();
+    const key = m.material.name + '|' + m.material.color.getHexString() + '|' + m.material.opacity;
+    if (!byMat.has(key)) byMat.set(key, { mat: m.material, geos: [] });
+    byMat.get(key).geos.push(geo);
+  });
+  const merged = [];
+  for (const { mat, geos } of byMat.values()) {
+    const geo = mergeGeometries(geos);
+    if (!geo) return false;
+    const mm = new THREE.Mesh(geo, mat.clone());
+    mm.userData.part = partId;
+    merged.push(mm);
+  }
+  g.clear();
+  merged.forEach(m => g.add(m));
+  return true;
+}
+function applyDetail(root) {  const N = {};
+  for (const n of [...root.children]) N[n.name] = n;
+  if (!N.chamber || !N.atm_l1 || !N.vtm_l1) return;
+  root.traverse(o => { if (o.isMesh && o.material.transparent) o.material.depthWrite = false; });
+  // PM2 / PM3：克隆外面看得见的部分，不剖开
+  for (const g of PM23) {
+    g.clear();
+    for (const nm of PM23_NODES) {
+      if (!N[nm]) continue;
+      const c = N[nm].clone(true);
+      tagPart(c, 'pm23');
+      g.add(c);
+    }
+    try { mergeStatic(g, 'pm23'); } catch (e) { console.warn('merge', e); }
+  }
+  // PM1：换掉简模
+  for (const id of PM_IDS) { for (const o of PARTS[id].objs) if (o.parent) o.parent.remove(o); PARTS[id].objs = []; }
+  if (PM1_LEGS) PM1.remove(PM1_LEGS);
+  for (const [nm, n] of Object.entries(N)) {
+    if (nm.startsWith('atm_') || nm.startsWith('vtm_')) continue;
+    const id = nm.split('__')[0];
+    if (!PARTS[id]) continue;
+    if (CLIP_NODES.has(nm)) n.traverse(m => { if (m.isMesh) m.material = clipped(m.material); });
+    PM1.add(n);
+    addPart(id, n);
+  }
+  doorObjs.slit = N.slit__door;
+  turboRotor = N.turbo__rotor;
+  pendPlate = N.pendulum__plate;
+  // 机械手
+  for (const rb of [ATM, VTM]) {
+    rb.g.clear();
+    const base = N[rb.name + '_base'];
+    base.position.set(rb.bx, 0, rb.bz);
+    rb.l1 = N[rb.name + '_l1']; rb.l2 = N[rb.name + '_l2']; rb.blade = N[rb.name + '_blade'];
+    rb.g.add(base, rb.l1, rb.l2, rb.blade);
+    tagPart(rb.g, rb.name === 'atm' ? 'atmrobot' : 'vtmrobot');
+    rb.update();
+  }
+  scene.remove(atmPedestal);
+  shadowAll(scene);
+  if (selected) setHL(selected, true);
+}
+function loadDetail() {
+  const parse = buf => new GLTFLoader().parse(buf, '', g => {
+    try { applyDetail(g.scene); } catch (e) { if (window.__showErr) window.__showErr(e); }
+  }, e => console.warn('glb', e));
+  const b64 = window.__ETCH_GLB;
+  if (b64 && b64.indexOf('__') !== 0) {
+    const bin = atob(b64), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    parse(u.buffer);
+  } else {
+    fetch('../output/etcher_detail.glb').then(r => (r.ok ? r.arrayBuffer() : null)).then(b => { if (b) parse(b); }).catch(() => {});
+  }
+}
+shadowAll(scene);
+if (has3D) loadDetail();
+
 // ---------- 主循环 ----------
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
@@ -1122,8 +1248,8 @@ function frame(now) {
   try { frameBody(now); } catch (e) { window.__showErr && window.__showErr(e); }
 }
 function frameBody(now) {
-  const dtR = Math.min(0.05, (now - last) / 1000);
-  last = now;
+  const dtR = clamp((now - last) / 1000, 0, 0.05);
+  last = Math.max(last, now);
   const dt = paused ? 0 : dtR * speed;
   simT += dt;
   runTimers();
@@ -1150,4 +1276,5 @@ function frameBody(now) {
   }
 }
 window.__etchReady = true;
+window.__etch = { camera, controls, scene, renderer, S, E, tick: frameBody };  // 调试用
 requestAnimationFrame(frame);
