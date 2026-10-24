@@ -702,7 +702,9 @@ const VIEWS = {
 let camAnim = null;
 function camTo(name) {
   const v = VIEWS[name];
-  camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p1: new THREE.Vector3(...v.p), t1: new THREE.Vector3(...v.t), k: 0 };
+  const t1 = new THREE.Vector3(...v.t), p1 = new THREE.Vector3(...v.p);
+  if (camera.aspect < 1) p1.sub(t1).multiplyScalar(1 + 0.9 * (1 - camera.aspect)).add(t1); // 竖屏拉远
+  camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p1, t1, k: 0 };
   document.querySelectorAll('#views button').forEach(b => b.classList.toggle('on', b.dataset.v === name || (name === 'explode' && b.dataset.v === 'chamber')));
 }
 const follow = () => $('#follow').checked;
@@ -1100,6 +1102,8 @@ function resize() {
 new ResizeObserver(resize).observe(stage);
 resize();
 renderSteps();
+if (innerWidth < 900) { $('#dock').hidden = true; $('#dockToggle').textContent = '显示图表'; $('#caption').textContent = '点下面的 ▶ 开始'; }
+camTo('overview');
 
 let last = performance.now(), chartAcc = 0;
 function frame(now) {
