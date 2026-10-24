@@ -73,13 +73,24 @@ let MDL = model(R);
 
 const stage = $('#stage');
 const canvas = $('#c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+// 手机不支持 WebGL2 时 three.js 会报错：这时只关掉 3D，按钮、剖面、曲线照常能用
+let renderer, has3D = true;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); }
+catch (e) {
+  has3D = false;
+  renderer = { setPixelRatio() {}, setSize() {}, render() {} };
+  const m = document.createElement('div');
+  m.className = 'no3d';
+  m.textContent = '这台设备的浏览器不支持 3D（WebGL2），3D 机台显示不了。工艺照样能跑：看下面的步骤说明、剖面和曲线。';
+  stage.appendChild(m);
+  document.querySelector('#labels').checked = false;
+}
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.localClippingEnabled = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
-scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+if (has3D) scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 scene.add(new THREE.HemisphereLight(0xffffff, 0x556070, 0.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.3);
 sun.position.set(3, 6, 4);
@@ -1108,6 +1119,9 @@ camTo('overview');
 let last = performance.now(), chartAcc = 0;
 function frame(now) {
   requestAnimationFrame(frame);
+  try { frameBody(now); } catch (e) { window.__showErr && window.__showErr(e); }
+}
+function frameBody(now) {
   const dtR = Math.min(0.05, (now - last) / 1000);
   last = now;
   const dt = paused ? 0 : dtR * speed;
@@ -1135,4 +1149,5 @@ function frame(now) {
     $('#time').textContent = `${procT0 === null ? '0.0' : (simT - procT0).toFixed(1)} s`;
   }
 }
+window.__etchReady = true;
 requestAnimationFrame(frame);
