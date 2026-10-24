@@ -92,26 +92,30 @@ catch (e) {
 renderer.setPixelRatio(Math.min(devicePixelRatio, LOW ? 1.5 : 2));
 renderer.localClippingEnabled = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 0.95;
 const scene = new THREE.Scene();
 if (has3D) scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
-scene.add(new THREE.HemisphereLight(0xffffff, 0x556070, 0.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.3);
-sun.position.set(3, 6, 4);
+scene.environmentIntensity = 0.55;
+// 光：暖色主光（投影）+ 冷色补光 + 背后轮廓光，环境光压暗一点，立体感才出来
+scene.add(new THREE.HemisphereLight(0xdbe6f2, 0x2a2f35, 0.35));
+const sun = new THREE.DirectionalLight(0xfff1e0, 2.4);
+sun.position.set(3.5, 7, 4.5);
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0xdfe8ff, 0.45);
+const fill = new THREE.DirectionalLight(0xcfdcff, 0.35);
 fill.position.set(-4, 3, -2);
 scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffffff, 0.6);
+rim.position.set(-1, 4, -5);
+scene.add(rim);
 if (has3D && !LOW) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 1, far: 15 });
-  sun.shadow.bias = -0.0005;
-  sun.shadow.normalBias = 0.02;
+  sun.shadow.mapSize.set(4096, 4096);
+  Object.assign(sun.shadow.camera, { left: -3.6, right: 3.6, top: 3.6, bottom: -3.6, near: 1, far: 20 });
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.015;
 }
-
 const camera = new THREE.PerspectiveCamera(40, 1, 0.02, 60);
 camera.position.set(3.2, 4.3, 3.3);
 const controls = new OrbitControls(camera, canvas);
@@ -139,16 +143,16 @@ function clipped(m) {
   return c;
 }
 const MAT = {
-  floor: std(0xcfd5db, 0, 0.95),
-  panel: std(0xe3e6e9, 0.1, 0.6),
-  dark: std(0x555d67, 0.2, 0.6),
-  alu: std(0xbcc3cb, 0.45, 0.35),
-  anod: std(0x8e97a1, 0.3, 0.45),
-  ceramic: std(0xefe9dc, 0, 0.45),
+  floor: std(0xffffff, 0, 0.8),
+  panel: std(0x9aa2aa, 0.05, 0.55),
+  dark: std(0x3f454c, 0.1, 0.6),
+  alu: std(0xa9b1b9, 0.45, 0.32),
+  anod: std(0x8e98a2, 0.45, 0.36),
+  ceramic: std(0xebe3cf, 0, 0.45),
   quartz: std(0xf2f5f7, 0, 0.2, { transparent: true, opacity: 0.85 }),
   copper: std(0xcf8448, 0.55, 0.3),
   si: std(0x4b5261, 0.4, 0.3),
-  white: std(0xf4f5f6, 0, 0.5),
+  white: std(0xb4bac1, 0, 0.5),
   orange: std(0xe07a2e, 0.1, 0.5),
   green: std(0x3e9b62, 0.1, 0.5),
   liner: std(0x9fa8b2, 0.3, 0.5),
@@ -158,6 +162,69 @@ const MAT = {
 };
 MAT.glass.userData.noPick = true;
 
+// ---------- 程序生成的纹理（不用图片文件，离线版也能用） ----------
+// 模型的贴图坐标是 1 m = 4 个单位，一张纹理对应 25 cm。
+function canvasTex(size, draw, srgb = false) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  draw(c.getContext('2d'), size);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function rng(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+const TEX = {
+  // 拉丝金属：横向细纹，做粗糙度和凹凸
+  brushed: canvasTex(512, (g, n) => {
+    const r = rng(7);
+    g.fillStyle = '#c4c4c4'; g.fillRect(0, 0, n, n);
+    for (let i = 0; i < 6000; i++) {
+      const y = r() * n, x = r() * n * 1.2 - n * 0.2, len = 40 + r() * 300, v = (140 + r() * 115) | 0;
+      g.strokeStyle = `rgba(${v},${v},${v},0.35)`; g.lineWidth = 0.5 + r() * 0.9;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + len, y); g.stroke();
+    }
+  }),
+  // 喷粉外壳：细颗粒
+  powder: canvasTex(256, (g, n) => {
+    const r = rng(3), im = g.createImageData(n, n);
+    for (let i = 0; i < n * n; i++) { const v = 205 + ((r() * 50) | 0); im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; }
+    g.putImageData(im, 0, 0);
+  }),
+  // 洁净室架空地板：60 cm 一块，满布通风孔
+  floor: canvasTex(512, (g, n) => {
+    const r = rng(11);
+    g.fillStyle = '#7d848b'; g.fillRect(0, 0, n, n);
+    for (let i = 0; i < 4000; i++) { const v = (110 + r() * 40) | 0; g.fillStyle = `rgba(${v},${v + 4},${v + 8},0.25)`; g.fillRect(r() * n, r() * n, 2, 2); }
+    g.fillStyle = '#4c5258';
+    const k = 14, pad = 40, step = (n - 2 * pad) / (k - 1);
+    for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) { g.beginPath(); g.arc(pad + i * step, pad + j * step, 5.5, 0, Math.PI * 2); g.fill(); }
+    g.strokeStyle = '#3a3f44'; g.lineWidth = 6; g.strokeRect(0, 0, n, n);
+    g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 2; g.strokeRect(5, 5, n - 10, n - 10);
+  }, true),
+};
+TEX.floorBump = TEX.floor.clone();
+TEX.floorBump.colorSpace = THREE.NoColorSpace;
+const KIND_BY_NAME = {
+  '阳极氧化铝': 'brushed', '铝': 'brushed', '不锈钢': 'brushed', '转子': 'brushed',
+  '喷粉浅灰': 'powder', '喷粉灰': 'powder', '机架灰': 'powder', '气体盒蓝灰': 'powder', '深灰塑料': 'powder',
+  '氧化铝陶瓷': 'powder', '氧化钇涂层': 'powder',
+};
+function dress(m, kind, repeat = 1) {
+  if (!m || !m.isMeshStandardMaterial || !kind) return;
+  let t = TEX[kind];
+  if (repeat !== 1) { t = t.clone(); t.repeat.set(repeat, repeat); t.needsUpdate = true; }
+  m.roughnessMap = t;
+  m.bumpMap = t;
+  m.bumpScale = kind === 'brushed' ? 0.35 : 0.6;
+  m.needsUpdate = true;
+}
+// 代码搭的简模：盒子的贴图坐标是每个面 0~1，多重复几次，颗粒才不会太粗
+dress(MAT.panel, 'powder', 6); dress(MAT.white, 'powder', 6); dress(MAT.dark, 'powder', 4);
+dress(MAT.alu, 'brushed', 3); dress(MAT.anod, 'brushed', 3);
+MAT.floor.map = TEX.floor; MAT.floor.bumpMap = TEX.floorBump; MAT.floor.bumpScale = 1.2;
+for (const t of [TEX.floor, TEX.floorBump]) { t.repeat.set(10 / 0.6, 10 / 0.6); t.needsUpdate = true; }
 // ---------- 几何体小工具 ----------
 function mesh(geo, mat, x = 0, y = 0, z = 0) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); return m; }
 const box = (w, h, d, mat, x, y, z) => mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z);
@@ -1103,8 +1170,8 @@ function updateVals() { VALS.forEach(([, f], i) => { valEls[i].textContent = f()
 // ---------- 主题 ----------
 function applyTheme() {
   const dark = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().toLowerCase() === '#101419';
-  MAT.floor.color.setHex(dark ? 0x232a32 : 0xcfd5db);
-  grid.material.color.setHex(dark ? 0x3a434d : 0xb3bcc4);
+  MAT.floor.color.setHex(dark ? 0x6d737a : 0xd2d6da);
+  grid.visible = false;
 }
 applyTheme();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
@@ -1151,7 +1218,7 @@ function mergeStatic(g, partId) {
   g.traverse(m => {
     if (!m.isMesh) return;
     let geo = m.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
-    for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'normal') geo.deleteAttribute(k);
+    for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') geo.deleteAttribute(k);
     if (geo.index) geo = geo.toNonIndexed();
     const key = m.material.name + '|' + m.material.color.getHexString() + '|' + m.material.opacity;
     if (!byMat.has(key)) byMat.set(key, { mat: m.material, geos: [] });
@@ -1172,7 +1239,11 @@ function mergeStatic(g, partId) {
 function applyDetail(root) {  const N = {};
   for (const n of [...root.children]) N[n.name] = n;
   if (!N.chamber || !N.atm_l1 || !N.vtm_l1) return;
-  root.traverse(o => { if (o.isMesh && o.material.transparent) o.material.depthWrite = false; });
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    if (o.material.transparent) o.material.depthWrite = false;
+    dress(o.material, KIND_BY_NAME[o.material.name]);
+  });
   // PM2 / PM3：克隆外面看得见的部分，不剖开
   for (const g of PM23) {
     g.clear();
