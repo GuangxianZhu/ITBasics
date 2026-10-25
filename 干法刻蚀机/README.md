@@ -23,7 +23,7 @@
 - 栅氧、光刻胶的消耗都随离子能量上升，HBr / O₂ 提高对栅氧的选择比
 - 刻蚀速率中心快、边缘慢（差几个百分点）；光谱信号 ∝ 还没刻穿的面积，掉到一半判为终点
 
-代码在 `web/app.js` 的 `model()`。
+代码在 `web/etch_core.js`（`model()`、`etchTick()`、`oesTick()`、`evaluate()`），网页和 VR 共用这一份，见下面「给 VR 用」。
 
 ## 模型
 
@@ -46,10 +46,29 @@ blender -b --factory-startup -P build_etcher.py
 
 ## 改代码
 
-`web/index.html` + `web/app.js` 是源码。改完（或重新建模后）重新打包离线版：
+`web/index.html` + `web/app.js` + `web/etch_core.js` 是源码。改完（或重新建模后）重新打包离线版：
 
 ```
 cd tools
 npm install --no-save esbuild@0.24.0 three@0.170.0
 node build_offline.mjs
 ```
+
+- `web/etch_core.js`：工艺模型（配方 → 速率、离子能量、选择比；每帧推进刻蚀深度、侧壁钻蚀、栅氧、光刻胶、光谱终点；跑完 5 项判定）和所有讲解文字（15 步的"现在在干什么 / 为什么"、零件说明、结果提示、预置配方、粒子名）。不碰 three.js 和页面，Node 里也能跑。
+- `web/app.js`：页面、3D、动画、粒子，从 `etch_core.js` 取数和文字。
+
+## 给 VR 用（MyVRToyBox）
+
+VR 版在 MyVRToyBox 里（玩具室的桌面演示模式 + 以后的仿真 fab 模式），原理内容和工艺模型都以这里为准：
+
+```
+node tools/export_core.mjs        # → output/etcher_content.json（讲解文字）+ output/etcher_golden.json（标准答案）
+blender -b --factory-startup -P export_ue.py -- output   # → output/etcher_ue.glb（VR 桌面模型，20 个部件）
+```
+
+- `etcher_content.json`：`etch_core.js` 里的文字和配方参数原样导出，VR 的触屏、信息牌读它，网页改了文字 VR 跟着变。
+- `etcher_golden.json`：5 个预置配方 + 60 个随机配方（固定种子），用网页版的模型按 0.05 秒一步、不加噪声算出的结果。VR 的 C++ 版模型逐组对这份答案（MyVRToyBox 控制台 `toy.EtchSelfTest`）。**改了 `etch_core.js` 的公式就要重新跑 `export_core.mjs`，再照着改 C++ 版**。
+- `export_ue.py`：复用 `build_etcher.py` 建模，只要工艺腔 PM1（去掉射频电源柜、EFEM、传输腔，剪掉连到电源柜的两根射频电缆和气体盒到喷嘴的进气管），按"开腔保养"能讲清楚的东西合成 20 个部件：腔体 + 机架（基座）、屏蔽罩、源匹配器、线圈、喷嘴、介质窗、气体盒、光谱仪、真空计、闸阀门、内衬、约束环、晶圆、边缘环、绝缘环、静电卡盘、升降针、偏压匹配器、摆阀、分子泵。每个部件带中文名、材料、作用（取自 `etcher_content.json`）和爆炸路线（顶上的提起来放到后面，腔里的往上抽出放到左边，腔底下的往外拉）。
+  - `--check`：在拆开 25 / 50 / 75 / 100% 时检查部件之间有没有穿插（100% 时应该没有）。
+  - `--preview`：渲染装配、拆开一半、拆开、俯视四张预览图（Cycles，约 3 分钟）。
+  - MyVRToyBox 的 `导入刻蚀机模型.bat` 会自动跑它、导入，再把两个 json 拷过去。
