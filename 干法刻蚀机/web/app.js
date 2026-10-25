@@ -8,6 +8,10 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import {
+  PRESETS, FIELDS, model, newEtch, etchTick, oesTick, evaluate, MAIN_TIMEOUT, fillText,
+  STEP_TEXT, EXPLAIN, RESULT_TEXT, VERDICT, PARTICLE_NAMES, SERIES_TEXT, PART_INFO,
+} from './etch_core.js';
 
 const $ = s => document.querySelector(s);
 const H = 0.95;
@@ -23,52 +27,9 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
 // ================= 配方和工艺模型 =================
+// 配方、模型公式、讲解文字都在 etch_core.js（和虚幻 MyVRToyBox 共用）
 
-const PRESETS = [
-  { id: 'std', name: '标准（推荐）', r: { P: 10, Ws: 600, Wb: 80, cl2: 60, hbr: 120, o2: 4, T: 50, oe: 30 } },
-  { id: 'nobias', name: '不加偏压', r: { P: 10, Ws: 600, Wb: 0, cl2: 60, hbr: 120, o2: 4, T: 50, oe: 30 } },
-  { id: 'hibias', name: '偏压太高', r: { P: 10, Ws: 600, Wb: 350, cl2: 60, hbr: 120, o2: 4, T: 50, oe: 60 } },
-  { id: 'nopass', name: '只用 Cl₂', r: { P: 30, Ws: 600, Wb: 60, cl2: 180, hbr: 0, o2: 0, T: 60, oe: 30 } },
-  { id: 'nooe', name: '不过刻', r: { P: 10, Ws: 600, Wb: 80, cl2: 60, hbr: 120, o2: 4, T: 50, oe: 0 } },
-];
-const FIELDS = [
-  { k: 'P', name: '腔压', unit: 'mTorr', min: 3, max: 80, step: 1, tip: '气压低，离子方向更直；气压高，自由基多，但更容易往侧面刻' },
-  { k: 'Ws', name: '源功率（线圈）', unit: 'W', min: 0, max: 1500, step: 50, tip: '决定等离子体有多"浓"' },
-  { k: 'Wb', name: '偏压功率（卡盘）', unit: 'W', min: 0, max: 400, step: 10, tip: '决定离子打下来有多猛（能量）' },
-  { k: 'cl2', name: 'Cl₂', unit: 'sccm', min: 0, max: 200, step: 5, tip: '主要的刻蚀气体' },
-  { k: 'hbr', name: 'HBr', unit: 'sccm', min: 0, max: 200, step: 5, tip: '刻得温和，产物会沉积在侧壁上保护侧壁，对栅氧的选择比高' },
-  { k: 'o2', name: 'O₂', unit: 'sccm', min: 0, max: 20, step: 1, tip: '少量就够：加强侧壁保护；多了会把光刻胶吃掉' },
-  { k: 'T', name: '卡盘温度', unit: '°C', min: 20, max: 80, step: 5, tip: '温度高，纯化学反应（往侧面刻）更快' },
-  { k: 'oe', name: '过刻', unit: '%', min: 0, max: 100, step: 5, tip: '到终点以后再刻多久，按主刻时间的百分比' },
-];
 let R = { ...PRESETS[0].r };
-
-// 刻蚀速率单位 nm/min。思路：
-//   等离子体密度 n ∝ 源功率；离子能量 ≈ 偏压功率 ÷ 离子电流（离子电流 ∝ n）
-//   往下刻 = 离子和自由基"串联"：哪个少就被哪个卡住（离子-自由基协同）
-//   往侧面刻 = 自由基自己的化学反应，被侧壁钝化层挡掉一部分
-function model(r) {
-  const n = (r.Ws / 800) / (1 + r.P / 150);
-  const Ei = Math.min(800, 15 + 0.9 * r.Wb / Math.max(n, 0.15));
-  const Y = Math.max(0, Math.sqrt(Ei) - Math.sqrt(12)) / (Math.sqrt(115) - Math.sqrt(12));
-  const Gn = (r.cl2 + 0.6 * r.hbr) / 100 * Math.sqrt(n) * Math.sqrt(r.P / 20);
-  const ion = 1 / (1 / (Gn + 1e-6) + 1 / (1.2 * Y * n + 1e-6));
-  const chem = 0.03 * Gn * Math.exp((r.T - 40) / 40);
-  const hbrFrac = r.hbr / (r.cl2 + r.hbr + 1);
-  const pass = Math.min(0.95, 0.7 * hbrFrac + 0.8 * r.o2 / 20);
-  const ERv = 300 * (ion + chem);
-  const ERl = 300 * chem * (1 - pass) + 300 * ion * 0.02 * (r.P / 20);
-  const Yox = Math.max(0, Math.sqrt(Ei) - Math.sqrt(40)) / (Math.sqrt(115) - Math.sqrt(40));
-  const ERox = 300 * 0.03 * Yox * n * (1 - 0.6 * hbrFrac) * (1 - 0.3 * r.o2 / 20) + 0.2;
-  const ERmask = 300 * 0.12 * Y * n + 300 * 0.25 * (r.o2 / 20) * Math.sqrt(n) + 1;
-  const u = 0.025 + 0.05 * Math.abs(r.P - 12) / 70 + (r.Ws > 1100 ? 0.02 : 0);
-  const total = r.cl2 + r.hbr + r.o2;
-  let problem = '';
-  if (r.Ws < 150) problem = '源功率太低（< 150 W），点不着等离子体。';
-  else if (total < 10) problem = '气体总流量太少（< 10 sccm），点不着等离子体。';
-  else if (r.cl2 + r.hbr < 5) problem = '没有 Cl₂ 或 HBr，没有能刻多晶硅的气体。';
-  return { n, Ei, Gn, ERv, ERl, ERox, ERmask, u, pass, sel: ERv / ERox, total, problem };
-}
 let MDL = model(R);
 
 // ================= 三维场景 =================
@@ -250,40 +211,6 @@ function pipe(points, r, mat) {
 }
 
 // ---------- 零件表 ----------
-const PART_INFO = [
-  ['foup', '整机', '晶圆盒（FOUP）', '一盒最多 25 片晶圆，前门密封。晶圆在厂里搬来搬去时一直关在盒子里，不接触车间空气。'],
-  ['loadport', '整机', '装载口', '放晶圆盒的台子。自动对位，把盒门和设备的门对接后一起打开。'],
-  ['efem', '整机', 'EFEM 前端模块', '大气压下的洁净小房间。顶上的风机过滤单元（FFU）一直往下吹洁净空气，颗粒落不到晶圆上。'],
-  ['atmrobot', '整机', '大气机械手', '在晶圆盒、对准器、负载锁之间搬晶圆。'],
-  ['aligner', '整机', '对准器', '转动晶圆，找到边上的缺口（notch），让每片晶圆以同样的方向、居中地进腔。'],
-  ['loadlock', '整机', '负载锁 ×2', '大气和真空之间的"过渡间"。两扇门永远不会同时打开；每次只抽这个小腔，几十秒就好，也不会把空气带进真空。'],
-  ['vtm', '整机', '真空传输腔', '一直保持真空。中间的真空机械手把晶圆送到各个工艺腔。'],
-  ['vtmrobot', '整机', '真空机械手', '在真空里工作的双连杆机械手，通过闸阀进出工艺腔和负载锁。'],
-  ['pm23', '整机', '工艺腔 PM2 / PM3', '和 PM1 同型号。几个腔可以同时各刻一片晶圆，提高产量。'],
-  ['rack', '整机', '射频电源和控制柜', '13.56 MHz 射频电源、腔体控制器都装在这里。'],
-  ['coil', '工艺腔 · 源', '平面线圈', '通 13.56 MHz 射频电流，交变磁场在腔里感应出电场，把电子加速、撞电离气体分子（电感耦合，ICP）。功率越大，等离子体越浓。分内外两组，调两组的功率比可以调中心和边缘的均匀性。'],
-  ['window', '工艺腔 · 源', '陶瓷介质窗', '让线圈的电磁场透进腔里，同时把气体和等离子体挡在里面。用氧化铝陶瓷：不导电、耐腐蚀。'],
-  ['rfcover', '工艺腔 · 源', '射频屏蔽罩', '罩住线圈，不让射频辐射到外面。'],
-  ['srcmatch', '工艺腔 · 源', '源匹配器', '里面有两个可变电容，自动调到"阻抗匹配"，让电源的功率都送进等离子体，反射回来的接近 0。'],
-  ['nozzle', '工艺腔 · 源', '中心进气喷嘴', '工艺气体从陶瓷窗中心喷进腔里。'],
-  ['chamber', '工艺腔 · 腔体', '腔体', '铝做的真空容器，内壁有耐等离子体涂层（如氧化钇），减少腐蚀和掉颗粒。'],
-  ['liner', '工艺腔 · 腔体', '内衬', '可以拆下来的保护套。脏了整个换下来清洗，不用清洗腔体本身。消耗件。'],
-  ['baffle', '工艺腔 · 腔体', '约束环（挡板）', '把等离子体限制在晶圆上方，气体从缝隙流向下面的排气口。'],
-  ['slit', '工艺腔 · 腔体', '闸阀', '工艺腔和传输腔之间的门。刻蚀时关着，腐蚀性气体跑不到传输腔里。'],
-  ['oes', '工艺腔 · 腔体', '观察窗 + 光谱仪（OES）', '一直看着等离子体发的光。多晶硅刻穿时，含硅产物的谱线会突然变暗，用它判断"终点"。'],
-  ['cmg', '工艺腔 · 腔体', '真空计（电容薄膜规）', '测腔压，读数和气体种类无关。摆阀按它的读数调开度。'],
-  ['esc', '工艺腔 · 卡盘', '静电卡盘', '陶瓷里埋着电极，加高压用静电把晶圆吸平；底座通冷却液控温，晶圆背面通氦气导热。它也是下电极，偏压从这里加上去。'],
-  ['edgering', '工艺腔 · 卡盘', '边缘环', '套在晶圆外圈，让晶圆边缘上方的电场和中间一样平，边缘也能刻直。会被等离子体慢慢吃掉，是消耗件。'],
-  ['insring', '工艺腔 · 卡盘', '绝缘环', '石英做的，把带射频的卡盘和接地的腔体隔开。'],
-  ['pins', '工艺腔 · 卡盘', '升降针 ×3', '把晶圆顶起来，机械手的叉子才能伸到晶圆下面接送。'],
-  ['biasmatch', '工艺腔 · 卡盘', '偏压匹配器', '把偏压射频送到卡盘上。偏压决定离子打到晶圆上的能量。'],
-  ['pendulum', '工艺腔 · 排气', '摆阀', '一块会摆动的阀板，调节抽气口开多大，把腔压稳在设定值。'],
-  ['turbo', '工艺腔 · 排气', '分子泵', '转子每分钟几万转，把气体分子"打"向出口，把腔抽到高真空。后面还接着干泵和尾气处理（在楼下）。'],
-  ['gasbox', '工艺腔 · 气路', '气体盒', '每路气体一个质量流量计（MFC），精确控制流量；还有阀门和过滤器。'],
-  ['frame', '工艺腔 · 腔体', '机架', '铝型材机架，底下是可调高度的调平脚。升降针的气缸也装在机架上。'],
-  ['lines', '工艺腔 · 卡盘', '冷却水管、高压线、背氦管', '蓝管进、红管出，冷却液流过卡盘底座里的水道把热带走；红色细线是卡盘的吸附高压；不锈钢细管送背面氦气。'],
-  ['wafer', '晶圆', '晶圆', '300 mm 硅片，上面是 4 nm 栅氧 + 100 nm 多晶硅，再上面是 60 nm 宽的光刻胶线条。刻完剩下的多晶硅就是晶体管的栅极。'],
-];
 const PARTS = {};
 for (const [id, grp, name, desc] of PART_INFO) PARTS[id] = { id, grp, name, desc, objs: [] };
 function addPart(id, obj) {
@@ -501,11 +428,11 @@ plasma.visible = plasmaCore.visible = false;
 // 气体分子从喷嘴进来 → 起辉后被打碎成电子、离子、自由基 → 自由基吸附在晶圆上 →
 // 离子被鞘层加速打到"吸附了自由基"的地方 → 生成 SiCl₄ 冒出来 → 随气流穿过约束环被分子泵抽走。
 const PT = {
-  gas: { c: new THREE.Color(0xdfe6ee), name: '气体分子（Cl₂ / HBr）' },
-  e: { c: new THREE.Color(0x6ff3ff), name: '电子' },
-  ion: { c: new THREE.Color(0xff3d63), name: '离子（Cl⁺ 等）' },
-  rad: { c: new THREE.Color(0xc9f23a), name: '自由基（Cl·）' },
-  prod: { c: new THREE.Color(0xff9a2e), name: '产物 SiCl₄' },
+  gas: { c: new THREE.Color(0xdfe6ee), name: PARTICLE_NAMES.gas },
+  e: { c: new THREE.Color(0x6ff3ff), name: PARTICLE_NAMES.e },
+  ion: { c: new THREE.Color(0xff3d63), name: PARTICLE_NAMES.ion },
+  rad: { c: new THREE.Color(0xc9f23a), name: PARTICLE_NAMES.rad },
+  prod: { c: new THREE.Color(0xff9a2e), name: PARTICLE_NAMES.prod },
 };
 const PMAX = 1400, RIN = 0.285, YTOP = 1.193, YW = H + 0.002, SHEATH = H + 0.03;
 const parts = [];
@@ -661,7 +588,7 @@ function resetState() {
     llP: 760, chP: 0.02, valve: 100, cl2: 0, hbr: 0, o2: 0, srcF: 0, srcR: 0, biasF: 0, escV: 0, he: 0, wT: 22,
     plasma: 0, oes: 0, etching: false, explode: 0,
   });
-  Object.assign(E, { Dc: 0, De: 0, r: new Float32Array(101), maskH: 60, ox: 4, si: 0, gateLoss: 0, t: 0, tEp: null, tMain: 0, timeout: false, uncleared: 1, oesF: 0, pass: 0 });
+  Object.assign(E, newEtch());
   ATM.theta = Math.PI / 2; ATM.r = ATM.home; ATM.y = H - 0.012; ATM.update();
   VTM.theta = -Math.PI / 2; VTM.r = VTM.home; VTM.y = H - 0.012; VTM.update();
 }
@@ -708,15 +635,11 @@ const vtTarget = () => clamp(100 * MDL.total / (MDL.total + 18 * R.P), 5, 95);
 // ---------- 工艺步骤 ----------
 const STEPS = [
   {
-    name: '打开晶圆盒', cam: 'efem',
-    now: '晶圆盒放在装载口上，盒门和设备的门对接后一起打开。',
-    why: '晶圆一直关在盒子里，开门也是对着设备里的洁净空间开，不接触车间空气里的颗粒。',
+    cam: 'efem',
     run: () => door('foupOpen', 1, 1.6),
   },
   {
-    name: '取片、对准', cam: 'efem',
-    now: 'EFEM 里的大气机械手从盒里取出这一片，放到对准器上转一圈，找晶圆边上的缺口（notch）。',
-    why: '让每片晶圆都以同样的方向、正好居中地进腔。',
+    cam: 'efem',
     run: async () => {
       await pick(ATM, POS.foup, H - 0.006, H - 0.003);
       await place(ATM, POS.aligner, H - 0.003, H - 0.012, 'aligner');
@@ -725,9 +648,7 @@ const STEPS = [
     },
   },
   {
-    name: '放进负载锁', cam: 'll',
-    now: '负载锁现在是大气压。外门打开，机械手把晶圆放到里面的支撑针上，关门。',
-    why: '负载锁是大气和真空之间的"过渡间"，两扇门永远不会同时打开。',
+    cam: 'll',
     run: async () => {
       await door('llOuter', 1);
       await pick(ATM, POS.aligner, H - 0.012, H - 0.003);
@@ -737,15 +658,11 @@ const STEPS = [
     },
   },
   {
-    name: '负载锁抽真空', cam: 'll',
-    now: '把负载锁从 760 Torr（一个大气压）抽到约 0.1 Torr。',
-    why: '传输腔和工艺腔一直是真空。每次只抽这个小腔，几十秒就好，也不会把空气和水汽带进去。',
+    cam: 'll',
     run: () => wait(10, p => { S.llP = 760 * Math.exp(-9 * p); }),
   },
   {
-    name: '送进工艺腔', cam: 'vtm',
-    now: '内门打开，真空机械手取片；工艺腔闸阀打开，机械手伸进去，三根升降针把晶圆接过去；机械手退出，关闸阀，针降下，晶圆落到卡盘上。',
-    why: '机械手的叉子托在晶圆下面，所以要靠升降针"接力"，叉子才抽得出来。',
+    cam: 'vtm',
     run: async () => {
       await door('llInner', 1);
       await pick(VTM, POS.ll, H - 0.012, H - 0.003);
@@ -762,18 +679,14 @@ const STEPS = [
     },
   },
   {
-    name: '吸附晶圆、通背氦', cam: 'chamber',
-    now: '卡盘里的电极加上约 1200 V 高压（估计值），静电把晶圆吸平；晶圆背面通氦气，约 10 Torr。',
-    why: '真空里没有空气导热。背面的氦气把晶圆的热传给通着冷却液的卡盘，晶圆温度才控得住。',
+    cam: 'chamber',
     run: async () => {
       await wait(1.2, p => { S.escV = 1200 * ease(p); });
       await wait(1.8, p => { S.he = 10 * ease(p); });
     },
   },
   {
-    name: '通气、稳压', cam: 'chamber',
-    now: () => `质量流量计按配方通入 Cl₂ ${R.cl2} / HBr ${R.hbr} / O₂ ${R.o2} sccm；摆阀关到约 ${Math.round(vtTarget())}%，把腔压稳在 ${R.P} mTorr。`,
-    why: '气压低，离子一路上很少撞到别的分子，打下来的方向更直；气压高，自由基多，但方向性变差。',
+    cam: 'chamber',
     run: () => wait(4, p => {
       const e = ease(Math.min(1, p * 2));
       S.cl2 = R.cl2 * e; S.hbr = R.hbr * e; S.o2 = R.o2 * e;
@@ -782,36 +695,28 @@ const STEPS = [
     }),
   },
   {
-    name: '起辉', cam: 'chamber',
-    now: () => `线圈加 ${R.Ws} W、13.56 MHz 射频，电磁场穿过陶瓷窗把气体电离，腔里亮起来。匹配器自动调谐，反射功率很快降到接近 0。`,
-    why: '源功率只决定等离子体有多"浓"（离子和自由基有多少），基本不决定离子打下来有多猛。',
+    cam: 'chamber',
     run: async () => {
       await wait(0.6, p => { S.srcF = R.Ws * p; S.srcR = S.srcF * 0.35; S.plasma = p * 0.7; });
       await wait(2.2, p => { S.srcR = R.Ws * (0.35 * Math.exp(-5 * p) + 0.01); S.plasma = 0.7 + 0.3 * p; });
     },
   },
   {
-    name: '主刻蚀（到终点）', cam: 'chamber', chain: true,
-    now: () => `卡盘加 ${R.Wb} W 偏压，晶圆上方形成一层"鞘层"，离子被加速到约 ${Math.round(MDL.Ei)} eV，垂直打下来；氯自由基和离子一起，把多晶硅变成 SiCl₄ 气体抽走。光谱仪盯着含硅产物的谱线，刻穿时谱线变暗，就是终点。`,
-    why: '离子负责"往下打"，自由基负责"化学反应"，两个一起比各自单干快得多，而且主要往下刻（各向异性）。',
+    cam: 'chamber', chain: true,
     run: async () => {
       await wait(0.5, p => { S.biasF = R.Wb * p; });
       S.etching = true;
-      await until(() => E.tEp !== null || E.t > 180);
+      await until(() => E.tEp !== null || E.t > MAIN_TIMEOUT);
       if (E.tEp === null) E.timeout = true;
       E.tMain = E.t;
     },
   },
   {
-    name: '过刻蚀', cam: 'chamber', chain: true,
-    now: () => E.timeout ? '主刻了 180 秒还没到终点，不再等了。' : `到终点后按配方再刻 ${R.oe}%（约 ${Math.round(E.tMain * R.oe / 100)} 秒），把边缘刻得慢的地方清干净。`,
-    why: '晶圆中间和边缘的刻蚀速率差几个百分点。这时下面的栅氧已经露出来，靠 HBr / O₂ 带来的高选择比，栅氧几乎不被刻。',
+    cam: 'chamber', chain: true,
     run: () => wait(E.timeout ? 0.01 : E.tMain * R.oe / 100),
   },
   {
-    name: '关射频、停气', cam: 'chamber',
-    now: '关掉偏压和源功率，等离子体熄灭；停气，摆阀全开，把腔抽回本底真空。',
-    why: '先把残留的腐蚀性气体抽干净，等会儿开闸阀时才不会跑进传输腔。',
+    cam: 'chamber',
     run: async () => {
       S.etching = false;
       const f = S.srcF, b = S.biasF, rr = S.srcR;
@@ -825,18 +730,14 @@ const STEPS = [
     },
   },
   {
-    name: '去吸附', cam: 'chamber',
-    now: '抽掉背面的氦气，关掉卡盘高压，等残余电荷放掉。',
-    why: '电荷没放干净就顶升降针，晶圆可能会跳片甚至碎掉。',
+    cam: 'chamber',
     run: async () => {
       await wait(1, p => { S.he = 10 * (1 - p); });
       await wait(1.4, p => { S.escV = 1200 * (1 - ease(p)); });
     },
   },
   {
-    name: '传出到负载锁', cam: 'vtm',
-    now: '升降针顶起晶圆，闸阀打开，真空机械手伸到晶圆下面接走，送回负载锁。',
-    why: '和送进来是反过来的动作。',
+    cam: 'vtm',
     run: async () => {
       await wait(0.8, p => { S.pinH = p; });
       await door('slit', 1);
@@ -854,15 +755,11 @@ const STEPS = [
     },
   },
   {
-    name: '负载锁回大气', cam: 'll',
-    now: '往负载锁里充氮气，从 0.1 Torr 回到 760 Torr。',
-    why: '充的是干燥氮气而不是空气：晶圆表面还带着少量氯，碰到水汽会腐蚀。',
+    cam: 'll',
     run: () => wait(6, p => { S.llP = 0.1 * Math.pow(7600, p); }),
   },
   {
-    name: '放回晶圆盒', cam: 'efem',
-    now: '外门打开，大气机械手把刻好的晶圆放回原来的槽，关上盒门。',
-    why: '一盒 25 片就这样一片接一片地跑；几个工艺腔可以同时各刻一片。',
+    cam: 'efem',
     run: async () => {
       await door('llOuter', 1);
       await pick(ATM, POS.ll, H - 0.012, H - 0.003);
@@ -873,33 +770,15 @@ const STEPS = [
     },
   },
 ];
+STEPS.forEach((s, i) => Object.assign(s, STEP_TEXT[i]));   // name / now / why
 
 // ---------- 刻蚀模型的时间推进 ----------
-function etchTick(dt) {
-  const k = dt / 60;
-  E.t += dt;
-  const fc = 1 + MDL.u, fe = 1 - MDL.u;
-  if (E.Dc < 100) E.Dc = Math.min(100, E.Dc + MDL.ERv * fc * k);
-  else if (E.ox > 0) E.ox = Math.max(0, E.ox - MDL.ERox * fc * k);
-  else E.si += MDL.ERv * 0.8 * fc * k;
-  E.De = Math.min(100, E.De + MDL.ERv * fe * k);
-  const reach = Math.min(100, Math.floor(E.Dc));
-  for (let i = 0; i <= reach; i++) E.r[i] = Math.min(30, E.r[i] + MDL.ERl * k);
-  if (E.maskH > 0) E.maskH = Math.max(0, E.maskH - MDL.ERmask * k);
-  else E.gateLoss = Math.min(100, E.gateLoss + MDL.ERv * 0.9 * k);
-  // 晶圆上已经刻穿的面积：刻蚀速率从中心 (1+u) 到边缘 (1-u)，按面积均匀分布
-  const s = (1 + MDL.u - 100 / Math.max(1e-6, MDL.ERv / 60 * E.t)) / (2 * MDL.u);
-  E.uncleared = 1 - clamp(s, 0, 1);
-}
-
 function physicsTick(dt) {
-  if (S.etching) etchTick(dt);
-  // 光谱：等离子体本身有一点底光；刻多晶硅时含硅产物的谱线和刻蚀速率成正比
-  const amp = 0.86 * clamp(MDL.ERv / 150, 0.15, 1);
-  const target = S.plasma > 0 ? S.plasma * 0.12 + (S.etching ? amp * E.uncleared : 0) : 0;
-  S.oes = target + (S.plasma > 0 ? (Math.random() - 0.5) * 0.02 : 0);
-  E.oesF = lerp(E.oesF, S.oes, Math.min(1, dt * 3));
-  if (S.etching && E.tEp === null && E.t > 3 && E.oesF < 0.12 + amp * 0.5) { E.tEp = E.t; E.epT = simT - procT0; }
+  if (S.etching) etchTick(E, MDL, dt);
+  // 光谱：等离子体本身有一点底光；刻多晶硅时含硅产物的谱线和刻蚀速率成正比（判终点也在里面）
+  const hadEp = E.tEp !== null;
+  S.oes = oesTick(E, MDL, dt, S.plasma, S.etching, (Math.random() - 0.5) * 0.02);
+  if (!hadEp && E.tEp !== null) E.epT = simT - procT0;
   // 晶圆温度：有背氦时贴着卡盘温度，等离子体会再加热一点
   if (S.holder === 'pm' && S.he > 5) S.wT += (R.T + S.plasma * R.Ws / 300 - S.wT) * Math.min(1, dt / 1.5);
   else if (S.holder === 'pm' && S.plasma > 0) S.wT += dt * 2;
@@ -1053,13 +932,13 @@ function drawProfile(dtR) {
 // ================= 趋势图 =================
 const samples = [];
 const SERIES = [
-  { k: 'llP', name: '负载锁', unit: 'Torr', log: true, min: 0.05, max: 1000, color: '#8a7dd8' },
-  { k: 'chP', name: '腔压', unit: 'mTorr', max: 90, color: '#3a8fd6' },
-  { k: 'srcF', name: '源功率', unit: 'W', max: 1600, color: '#e0761c' },
-  { k: 'srcR', name: '反射功率', unit: 'W', max: 400, color: '#d64545' },
-  { k: 'biasF', name: '偏压', unit: 'W', max: 420, color: '#14968f' },
-  { k: 'oes', name: '光谱（含硅产物）', unit: '', max: 1.05, color: '#b8a400' },
-];
+  { k: 'llP', log: true, min: 0.05, max: 1000, color: '#8a7dd8' },
+  { k: 'chP', max: 90, color: '#3a8fd6' },
+  { k: 'srcF', max: 1600, color: '#e0761c' },
+  { k: 'srcR', max: 400, color: '#d64545' },
+  { k: 'biasF', max: 420, color: '#14968f' },
+  { k: 'oes', max: 1.05, color: '#b8a400' },
+].map(s => ({ ...s, ...SERIES_TEXT.find(t => t.k === s.k) }));
 function fmt(v, k) {
   if (k === 'llP') return v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2);
   if (k === 'chP') return v < 1 ? v.toFixed(2) : v.toFixed(1);
@@ -1139,7 +1018,8 @@ function explain(title, now, why, err = false) {
 async function runStep(i) {
   busy = true; stepIdx = i;
   const st = STEPS[i];
-  const now = typeof st.now === 'function' ? st.now() : st.now;
+  const now = fillText(st.nowTimeout && E.timeout ? st.nowTimeout : st.now,
+    { ...R, valve: Math.round(vtTarget()), Ei: Math.round(MDL.Ei), oeSec: Math.round(E.tMain * R.oe / 100) });
   explain(`第 ${i + 1} 步 · ${st.name}`, now, st.why);
   $('#caption').innerHTML = `<b>第 ${i + 1}/${STEPS.length} 步</b> · ${st.name}`;
   if (follow()) camTo(st.cam);
@@ -1155,7 +1035,7 @@ function startOrNext() {
   if (done) { resetAll(); return; }
   if (stepIdx < 0) {
     MDL = model(R);
-    if (MDL.problem) { explain('配方检查没通过', MDL.problem + '到"配方"里改一下再开始。', '', true); return; }
+    if (MDL.problem) { explain(EXPLAIN.badRecipe[0], fillText(EXPLAIN.badRecipe[1], { problem: MDL.problem }), '', true); return; }
     procT0 = simT; samples.length = 0; lastSample = -1;
     $('#explode').value = 0; S.explode = 0;
   }
@@ -1171,7 +1051,7 @@ function resetAll() {
   clearParticles();
   stepIdx = -1; busy = false; done = false; procT0 = null; samples.length = 0; parts2d.length = 0;
   E.epT = undefined;
-  explain('准备好了', '晶圆盒里又放了一片新的晶圆。可以先到"配方"里改参数，再点"开始"。', '每次只改一两个参数，对比结果最容易看出它的作用。');
+  explain(...EXPLAIN.ready);
   $('#caption').innerHTML = '点右边的 <b>▶ 开始</b>，一步一步把一片晶圆刻完。';
   if (follow()) camTo('overview');
   renderSteps();
@@ -1179,24 +1059,23 @@ function resetAll() {
 
 // ---------- 结果 ----------
 function finish() {
-  const rmax = Math.max(...E.r);
-  const residue = E.De < 99.9;
-  const items = [
-    { ok: !E.timeout && !residue, label: '多晶硅刻干净了', val: E.timeout ? '没刻完' : residue ? `边缘还剩 ${(100 - E.De).toFixed(0)} nm` : '干净',
-      hint: E.timeout ? '主刻 180 秒还没到终点：偏压太低，离子没力气，氯几乎刻不动多晶硅。' : '过刻不够：中间先刻穿就判了终点，边缘还没刻完。过刻一般给 20~40%。' },
-    { ok: rmax <= 6, label: '侧壁直（钻蚀 ≤ 6 nm）', val: `${rmax.toFixed(1)} nm`, hint: '往侧面刻掉太多：加 HBr / O₂ 保护侧壁，降低气压或温度。' },
-    { ok: E.ox >= 2 && E.si === 0, label: '栅氧保住了（剩 ≥ 2 nm）', val: E.si > 0 ? `刻穿了，硅被挖下 ${E.si.toFixed(1)} nm` : `剩 ${E.ox.toFixed(1)} / 4 nm`, hint: '偏压太高，离子太猛，对栅氧的选择比下降；或者过刻太长。' },
-    { ok: E.maskH >= 10, label: '光刻胶还有余量（≥ 10 nm）', val: `剩 ${E.maskH.toFixed(0)} / 60 nm`, hint: '光刻胶被打光了，栅极顶部也被刻掉：偏压太高或 O₂ 太多。' },
-    { ok: E.tMain <= 120, label: '刻得够快（主刻 ≤ 120 秒）', val: `${E.tMain.toFixed(0)} 秒`, hint: '太慢，产量低：加源功率或偏压。' },
+  const { rmax, residue, ok } = evaluate(E);
+  const vals = [
+    E.timeout ? '没刻完' : residue ? `边缘还剩 ${(100 - E.De).toFixed(0)} nm` : '干净',
+    `${rmax.toFixed(1)} nm`,
+    E.si > 0 ? `刻穿了，硅被挖下 ${E.si.toFixed(1)} nm` : `剩 ${E.ox.toFixed(1)} / 4 nm`,
+    `剩 ${E.maskH.toFixed(0)} / 60 nm`,
+    `${E.tMain.toFixed(0)} 秒`,
   ];
+  const items = RESULT_TEXT.map((t, i) => ({ ok: ok[i], label: t.label, val: vals[i], hint: E.timeout && t.hintTimeout ? t.hintTimeout : t.hint }));
   const bad = items.filter(i => !i.ok).length;
   const v = $('#verdict');
   v.className = 'verdict ' + (bad ? 'bad' : 'ok');
-  v.textContent = bad ? `有 ${bad} 项不合格` : '合格：这片晶圆的栅极刻得很好 ✓';
+  v.textContent = bad ? fillText(VERDICT.bad, { n: bad }) : VERDICT.ok;
   $('#resList').innerHTML = items.map(i => `<li class="${i.ok ? 'ok' : 'bad'}"><div class="h"><span>${i.label}</span><span class="v">${i.val}</span></div>${i.ok ? '' : `<div class="hint">${i.hint}</div>`}</li>`).join('');
   $('#resStats').textContent = `多晶硅刻蚀速率 ${MDL.ERv.toFixed(0)} nm/min · 离子能量约 ${MDL.Ei.toFixed(0)} eV · 对栅氧选择比 ${MDL.sel.toFixed(0)} : 1 · 终点 ${E.timeout ? '未到' : E.tEp.toFixed(1) + ' s'} · 过刻 ${E.timeout ? 0 : (E.tMain * R.oe / 100).toFixed(1)} s`;
   $('#result').hidden = false;
-  explain('完成', '晶圆已经放回晶圆盒。结果在弹窗里；关掉弹窗还能看左下角的剖面和曲线。', '');
+  explain(...EXPLAIN.done, '');
   $('#caption').innerHTML = '<b>完成</b> · 点右边"再跑一片"，或者改配方再试';
 }
 $('#again').addEventListener('click', () => { $('#result').hidden = true; resetAll(); });
