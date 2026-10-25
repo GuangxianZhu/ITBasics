@@ -232,10 +232,11 @@ def around(n, phase=0.0):
     return [phase + 2 * PI * k / n for k in range(n)]
 
 
-def bolts(part, n, r, z, hr=0.0075, hh=0.007, up=True, phase=0.0):
+def bolts(part, n, r, z, hr=0.0075, hh=0.007, up=True, phase=0.0, c=(0.0, 0.0)):
+    """一圈螺栓头，圆心在 (c[0], c[1])。"""
     for a in around(n, phase):
         z0, z1 = (z, z + hh) if up else (z - hh, z)
-        part.add(bm_hex(hr, z0, z1), M['steel'], T(r * math.cos(a), r * math.sin(a), 0))
+        part.add(bm_hex(hr, z0, z1), M['steel'], T(c[0] + r * math.cos(a), c[1] + r * math.sin(a), 0))
 
 
 def slots(part, n, r, z, w, h, d, m, phase=0.0):
@@ -441,7 +442,7 @@ p.add(bm_rev([(0.115, 0.44), (0.128, 0.44), (0.131, 0.443), (0.131, 0.675), (0.1
 p.add(bm_cyl(0.128, 0.44, 0.452, 64), M['alu'], T(PX, PY, 0))
 for z in (0.47, 0.50, 0.53, 0.56, 0.59, 0.62):
     p.add(bm_ring(0.131, 0.141, z, z + 0.006, 64), M['alu'], T(PX, PY, 0))
-bolts(p, 12, 0.142, 0.70, hr=0.006, hh=0.006, up=True)
+bolts(p, 12, 0.142, 0.70, hr=0.006, hh=0.006, up=True, c=(PX, PY))
 p.add(bm_box(0.085, 0.13, 0.11, 0.006), M['dark'], T(PX + 0.17, PY, 0.52))    # 控制器
 p.add(bm_box(0.002, 0.05, 0.02, 0.001), M['led'], T(PX + 0.2135, PY - 0.03, 0.55))
 p.add(bm_cyl(0.028, -0.06, 0.06, 24), M['steel'], T(PX, PY + 0.17, 0.47) @ R('X', PI / 2))
