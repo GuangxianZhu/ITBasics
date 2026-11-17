@@ -249,18 +249,18 @@ def setup_scene_bounds():
         vs, _ = world_data(o)
         allv += vs
     if not allv:
-        return Vector((0, 0, 0)), 100.0
+        return Vector((0, 0, 0)), 100.0, Vector((100, 100, 100))
     mn, mx = bbox(allv)
-    return (mn + mx) / 2, max((mx - mn).length, 1.0)
+    return (mn + mx) / 2, max((mx - mn).length, 1.0), mx - mn
 
 
-def make_cam(name, ortho, loc, target, scale):
+def make_cam(name, ortho, loc, target, scale, ortho_scale=None):
     cd = bpy.data.cameras.new(name)
     cd.clip_start = scale * 0.001
     cd.clip_end = scale * 50
     if ortho:
         cd.type = 'ORTHO'
-        cd.ortho_scale = scale * 1.15
+        cd.ortho_scale = ortho_scale or scale * 1.15
     else:
         cd.lens = 50
     ob = bpy.data.objects.new(name, cd)
@@ -303,11 +303,16 @@ def setup_look(engine):
 
 def render_views():
     sc = bpy.context.scene
-    c, size = setup_scene_bounds()
+    c, size, ext = setup_scene_bounds()
     W, H = 800, 600
     sc.render.resolution_x, sc.render.resolution_y = W, H
     sc.render.resolution_percentage = 100
     d = size * 1.8
+    aspect = H / W
+
+    def fit(w, h):   # 正交视图：让零件的宽和高都放得下，四周留一点边
+        return max(w, h / aspect, 1.0) * 1.12
+    ortho_fit = {'front': fit(ext.x, ext.z), 'right': fit(ext.y, ext.z), 'top': fit(ext.x, ext.y)}
     views = [
         ('iso', False, c + Vector((0.62, -0.78, 0.55)).normalized() * d * 1.25),
         ('front', True, c + Vector((0, -d, 0))),
@@ -324,7 +329,7 @@ def render_views():
             setup_look(engine)
             files = []
             for name, ortho, loc in views:
-                cam = make_cam('_cam_' + name, ortho, loc, c, size)
+                cam = make_cam('_cam_' + name, ortho, loc, c, size, ortho_fit.get(name))
                 if name == 'top':
                     cam.rotation_euler = (0, 0, 0)
                 sc.camera = cam

@@ -297,6 +297,10 @@ def main():
         return
 
     task = ' '.join(sys.argv[1:]).strip()
+    if task.startswith('@'):   # @文件名：从文本文件读任务（中文放文件里，避免 bat 传参乱码）
+        tf = task[1:].strip('"')
+        tf = tf if os.path.isabs(tf) else os.path.join(HERE, tf)
+        task = open(tf, encoding='utf-8').read().strip()
     if not task:
         print('\n请输入要建的模型（可以写很多字，一行写完回车）。')
         print(C('93', '直接回车 = 用默认测试题：法兰联轴器半体 + 6 颗螺栓'))

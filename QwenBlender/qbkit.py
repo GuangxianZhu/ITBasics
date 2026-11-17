@@ -347,11 +347,22 @@ def helix_pts(r, pitch, turns, at=(0, 0, 0), n_per_turn=24):
 
 # ------------------------------------------------------------------ 布尔与编辑
 def _bool(target, tool, op):
+    mn0, mx0 = bounds(target)
     md = target.modifiers.new('bool', 'BOOLEAN')
     md.object = tool
     md.operation = op
     md.solver = 'EXACT'
     _apply_modifiers(target)
+    # 布尔失败时 Blender 不报错，只会把零件变成碎片。这里主动检查一下
+    nv = len(target.data.vertices)
+    diag0 = (mx0 - mn0).length
+    diag1 = (lambda b: (b[1] - b[0]).length)(bounds(target)) if nv else 0.0
+    if nv < 4 or diag1 < 0.5 * diag0:
+        raise RuntimeError(
+            f"{'join' if op == 'UNION' else 'cut'}({target.name}, {tool.name}) 布尔运算失败，结果只剩碎片"
+            f"（包围盒对角线 {diag0:.1f} → {diag1:.1f} mm）。常见原因：tool 自己和自己相交，"
+            "例如用 pipe 做螺旋时相邻两圈碰在一起（管子直径 2*r 必须小于螺距 pitch），"
+            "或者 pipe 的路径急转弯、管子半径比转弯半径还大。")
     _smooth_by_angle(target.data, 35)
     d = tool.data
     bpy.data.objects.remove(tool, do_unlink=True)
