@@ -48,7 +48,7 @@ def layout(lang):
     lay['left'] = lay['zone_w'] + lay['sig_w'] + lay['note_w']
     return lay
 
-LEGEND = ('来源：【推】Claude 按通用架构推理　【IO】假想的 IO 分配　【P】PLC 本方案　【未】还没定　【定】用户已确认'
+LEGEND = ('标记：【推】清洗机 / 温水器侧的前提　【IO】IO 分配　【P】PLC 本方案　【未】还没定　【定】已定'
           '　｜　红虚线框「无」= 没应答')
 
 

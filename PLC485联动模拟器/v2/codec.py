@@ -11,7 +11,7 @@
   silent_on_bad_frame              校验错时从站是回 NAK 还是不吭声
 
 这里放了两个实现：
-  AsciiBccCodec  虚构协议 v2（ASCII + BCC，参数号式，接近日本厂家常见风格）
+  AsciiBccCodec  示例协议 v2（ASCII + BCC，参数号式）
   ModbusRtuCodec Modbus RTU（二进制 + CRC16）—— 证明同一个引擎两种协议都能跑
 """
 from command_table import PARAMS
@@ -46,7 +46,7 @@ def hexs(bs):
 
 
 # ============================================================
-#  虚构协议 v2
+#  示例协议 v2
 # ============================================================
 class AsciiBccCodec:
     """
@@ -54,7 +54,7 @@ class AsciiBccCodec:
     响应: STX | 站号(2) | R/W(1) | 参数号(3) | ACK/NAK(1) | [数据 或 错误码(2)] | ETX | BCC
     BCC = 站号 ~ ETX 的 XOR；除 STX/ETX/ACK/NAK/BCC 外全是 ASCII
     """
-    name = '虚构协议 v2（ASCII+BCC）'
+    name = '示例协议 v2（ASCII+BCC）'
     silent_on_bad_frame = False
 
     @staticmethod

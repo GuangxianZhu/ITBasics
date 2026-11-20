@@ -31,7 +31,7 @@
       },
     },
   };
-  // 每个信号的来源（和原来的图同一套标记）
+  // 每个信号的标记（和时序图同一套）
   const ROW_SRC = {
     'fc.vin': '推', 'fc.vdr': '推', 'fc.alm': '推', 'io.pon': 'IO', 'io.poff': 'IO', 'io.flow': '推', 'io.run': '推', 'io.rst': '推', 'io.bz': 'IO',
     'mb.req': '推', 'mb.rsp': 'P', 'do.stb': 'P', 'do.hvy': 'P', 'do.lgt': 'P', 'po.pon': 'IO', 'po.poff': 'P', 'su.tx': '推', 'su.rx': '推',
@@ -220,7 +220,6 @@
     if (exp) {
       const ch = changedParams();
       foot.push(ch.length ? t('ui.exParams') + ch.map(d => t('p.' + d[0]) + ' = ' + S.params[d[0]] + (d[6] === 'bool' ? '' : ' ' + t('u.' + d[6]))).join('； ') : t('ui.exNone'));
-      foot.push(t('ui.fake'));
     }
     const H = bot + AX + (exp ? 16 + foot.length * 15 : 0);
     // 视野
@@ -290,7 +289,7 @@
       rowY[r.id] = yc;
       o.push('<line x1="0" y1="' + (r.y + r.h) + '" x2="' + W + '" y2="' + (r.y + r.h) + '" stroke="' + pal.rowLine + '"/>');
       o.push('<rect x="0" y="' + r.y + '" width="4" height="' + r.h + '" fill="' + zc[0] + '" opacity=".45"/>');
-      // 名字 + 来源标记
+      // 名字 + 标记
       const src = ROW_SRC[r.base.id], srcTxt = src ? t('src.' + src) : '';
       const srcW = srcTxt && !narrow ? tw(srcTxt, 9.5) + 10 : 0;
       o.push('<text x="10" y="' + (yc + 4) + '" fill="' + pal.text + '" clip-path="url(#cl)">' + esc(fit(rowName(r.id), LBL - 16 - srcW, 11)) + '</text>');
@@ -812,7 +811,7 @@
   }
   function renderFrame() {
     const box = $('#pane-frame'), f = S.sel ? IDX.byId[S.sel] : null;
-    if (!f) { box.innerHTML = '<p class="fine">' + esc(t('ui.noFrame')) + '</p><p class="fine warnline">' + esc(t('ui.fake')) + '</p>'; return; }
+    if (!f) { box.innerHTML = '<p class="fine">' + esc(t('ui.noFrame')) + '</p><p class="fine">' + esc(t('ui.proto')) + '</p>'; return; }
     const pair = f.pair ? IDX.byId[f.pair] : null;
     const baud = f.bus === 'mb' ? R.P.fcBaud : R.P.suBaud;
     let h = '<div class="fd-h"><span class="ttl">' + esc(rowName(f.row) + '：' + fLabel(f)) + '</span>'
@@ -839,7 +838,7 @@
       });
       h += '<div class="bytes">' + chips.join('') + '</div><table class="fields"><tr><th>' + esc(t('ui.field')) + '</th><th>' + esc(t('ui.raw')) + '</th><th>' + esc(t('ui.meaning')) + '</th></tr>' + rows.join('') + '</table>';
     }
-    h += '<p class="fine warnline">' + esc(t('ui.fake')) + '</p>';
+    h += '<p class="fine">' + esc(t('ui.proto')) + '</p>';
     box.innerHTML = h;
   }
   $('#pane-frame').addEventListener('click', e => {

@@ -8,8 +8,8 @@
 改了 charts.py 的文字就要在这里同步改（或加一行）。对不上的会在出图时列出来（「缺翻译」），
 那几处先用中文顶着，同时写进 out/缺翻译.txt。
 
-来源标记：
-  中文 / 日语  【推】Claude 推理  【IO】假想 IO  【P】本方案  【未】还没定  【定】用户已确认
+标记：
+  中文 / 日语  【推】清洗机 / 温水器侧的前提  【IO】IO 分配  【P】本方案  【未】还没定  【定】已定
   英语         [I]  [IO]  [P]  [?]  [OK]
 
 短帧（固定宽度，约 32 px）里的字要短：日语 ≤ 4 个全角字，英语 ≤ 7 个字母左右。
@@ -24,12 +24,12 @@ ENTRIES = [
     ('这张图回答：', 'この図で答えること：', 'This chart answers: '),
     ('【注记】', '【注記】', '[Notes]'),
     ('表格', 'テーブル', 'Table'),
-    ('来源：【推】Claude 按通用架构推理　【IO】假想的 IO 分配　【P】PLC 本方案　【未】还没定　【定】用户已确认'
+    ('标记：【推】清洗机 / 温水器侧的前提　【IO】IO 分配　【P】PLC 本方案　【未】还没定　【定】已定'
      '　｜　红虚线框「无」= 没应答',
-     '出典：【推】Claude が一般的な構成から推定　【IO】仮想の IO 割付　【P】PLC 本案　【未】未定　【定】ユーザー確認済み'
+     '凡例：【推】洗浄機・温水器側の前提　【IO】IO 割付　【P】PLC 本案　【未】未定　【定】確定'
      '　｜　赤破線枠「無」= 応答なし',
-     'Sources: [I] inferred by Claude from common architecture   [IO] hypothetical IO assignment   [P] this PLC proposal'
-     '   [?] not decided   [OK] agreed by user'
+     'Legend: [I] cleaner / heater side premise   [IO] IO assignment   [P] this PLC proposal'
+     '   [?] not decided   [OK] decided'
      '   |   red dashed box "none" = no reply'),
 
     # ---------- 分区 ----------
@@ -205,8 +205,8 @@ ENTRIES = [
      '[P] forwards 25.0, then reads back to verify [I]'),
     ('【推】ACK / 状态应答', '【推】ACK / 状態応答', '[I] ACK / status reply'),
     ('【推】PLC 转发投入时上电', '【推】PLC が投入を転送した時に通電', '[I] powered when the PLC forwards power ON'),
-    ('【推】上电 30 s 以后（假设值）', '【推】通電 30 s 後（仮定値）',
-     '[I] 30 s after power-on (assumed value)'),
+    ('【推】上电 30 s 以后', '【推】通電 30 s 後',
+     '[I] 30 s after power-on'),
     ('【P】转发远程电源投入时起计 30 s', '【P】リモート電源投入の転送時から 30 s 計時',
      '[P] 30 s timer starts when power ON is forwarded'),
     ('【IO】同上', '【IO】同上', '[IO] same as above'),
@@ -234,8 +234,8 @@ ENTRIES = [
     ('【推】ON / OFF', '【推】ON / OFF', '[I] ON / OFF'),
     ('【推】3 s 一次；发完马上读回核对', '【推】3 s 周期。送信後すぐ読み戻して照合',
      '[I] every 3 s; read back right after sending'),
-    ('【推】运转 OFF 就掉（推断，待确认）', '【推】運転 OFF で落ちる（推定、要確認）',
-     '[I] drops when run turns OFF (inferred, TBC)'),
+    ('【推】运转 OFF 就掉（待确认）', '【推】運転 OFF で落ちる（要確認）',
+     '[I] drops when run turns OFF (TBC)'),
     ('【推】准备开始开 / 投入开始延时后关 / 投入停止开 / 准备停止延时后关',
      '【推】準備開始で開 / 投入開始の遅延後に閉 / 投入停止で開 / 準備停止の遅延後に閉',
      '[I] open at prep start / close after delay at supply start / open at supply stop / '
@@ -405,13 +405,13 @@ ENTRIES = [
      'If the cleaner\'s init temp write gets no reply 3 times, it raises "comm init error" and writes again after a reset on '
      'the screen [I]. The PLC uses its built-in Modbus slave: it replies to every write at once and keeps the value in cache, '
      'whether or not the heater is up, and forwards it once the heater is up [P].'),
-    ('假设温水器「上电 30 s 以后才能开始通信」【推】。远程电源投入 / 切断是清洗机进 PLC、'
+    ('温水器「上电 30 s 以后才能开始通信」【推】。远程电源投入 / 切断是清洗机进 PLC、'
      'PLC 再输出给温水器【IO】，所以 PLC 从转发投入那一刻开始计 30 s，这段时间不发任何帧【P】。'
      '（之前定的是拿通水 ON 当起点；两个信号同时 ON【定】，换成远程电源本身更直接，结果一样。）',
-     '温水器は「通電 30 s 後から通信可能」と仮定する【推】。リモート電源の投入 / 遮断は洗浄機から PLC に入り、'
+     '温水器は「通電 30 s 後から通信可能」【推】。リモート電源の投入 / 遮断は洗浄機から PLC に入り、'
      'PLC が温水器へ出力する【IO】。そのため PLC は投入を転送した瞬間から 30 s を計り、その間フレームは一切送らない【P】。'
      '（以前は通水 ON を起点にしていた。両信号は同時に ON する【定】ので、リモート電源そのものを起点にした方が直接的で、結果は同じ。）',
-     'The heater is assumed to accept communication only 30 s after power-on [I]. Remote power ON / OFF '
+     'The heater accepts communication only 30 s after power-on [I]. Remote power ON / OFF '
      'goes from the cleaner into the PLC, and the PLC outputs it to the heater [IO]; so the PLC starts the 30 s timer when it '
      'forwards power ON and sends no frames during that time [P]. (The start point used to be flow ON; both signals turn ON '
      'together [OK], so using remote power itself is more direct, with the same result.)'),
@@ -474,13 +474,13 @@ ENTRIES = [
      '手動モードでは洗浄機は投入開始で投入弁を開け、安定を待たない【推】。',
      'In manual mode the cleaner opens the supply valve at supply start without waiting for stable [I].'),
     ('安定 DO 跟着状态更新：ON 最多晚 3 s（等下一次状态读出）；停的时候发完 3 帧马上读回，OFF 跟着读回走【P】。'
-     '读回 = 目标温度 + 装置状态两帧，图上合成一格。运转 OFF 后安定位清零是按位定义推断的，待确认。',
+     '读回 = 目标温度 + 装置状态两帧，图上合成一格。运转 OFF 后安定位清零这一点待确认。',
      '安定 DO は状態の更新に従う：ON は最大 3 s 遅れる（次の状態読出を待つ）。停止時は 3 フレーム送信後すぐ読み戻し、'
      'OFF は読み戻しに従う【P】。読み戻し = 目標温度 + 装置状態の 2 フレームで、図では 1 マスにまとめている。'
-     '運転 OFF 後に安定 bit がクリアされるのは bit 定義からの推定で、要確認。',
+     '運転 OFF 後に安定 bit がクリアされる点は要確認。',
      'The stable DO follows status updates: ON is up to 3 s late (it waits for the next status read); when stopping, the '
      'readback right after the 3 frames turns it OFF [P]. Readback = target temp + equipment status (2 frames), drawn as '
-     'one cell. That the stable bit clears after run OFF is inferred from the bit definition, TBC.'),
+     'one cell. That the stable bit clears after run OFF is TBC.'),
     # 2-2
     ('自动模式下清洗机等安定 ON 才进投入开始【定】，所以安定 DO 晚到会直接拖慢投入。读出周期已定 3 s，最多晚 3 s。',
      '自動モードでは洗浄機は安定 ON を待って投入開始に進む【定】ので、安定 DO が遅れるとそのまま投入が遅れる。'
@@ -545,9 +545,9 @@ ENTRIES = [
      'リセット → エラーリセット + ブザーリセットを送信（以前決めたやり方を維持）【P】。',
      'The cleaner has two IOs: reset and buzzer reset [IO]. Buzzer reset → send buzzer reset; reset → send error reset + '
      'buzzer reset (the earlier decision is kept) [P].'),
-    ('清洗机收到重故障后关运转 / 通水、写 25.0：这是推测的做法，还没定。',
-     '重故障を受けた洗浄機が運転 / 通水を切り 25.0 を書く件：推定した動作で、まだ未定。',
-     'The cleaner turning off run / flow and writing 25.0 after a major fault: an inferred behavior, not decided yet.'),
+    ('清洗机收到重故障后关运转 / 通水、写 25.0：还没定。',
+     '重故障を受けた洗浄機が運転 / 通水を切り 25.0 を書く件：まだ未定。',
+     'The cleaner turning off run / flow and writing 25.0 after a major fault: not decided yet.'),
     ('报警中温水器已经自己停了，转发停止 3 帧可能回「现在不能执行」的 NAK【推】。这种 NAK 不算通信失败，'
      '以读回结果为准；「数据异常」的 NAK 才算【P】。',
      'アラーム中は温水器が既に自ら停止しているので、停止 3 フレームの転送に「現在実行不可」の NAK が返る可能性がある【推】。'

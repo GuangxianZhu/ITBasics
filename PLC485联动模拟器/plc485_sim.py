@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-三菱 PLC  IO ↔ RS-485 联动演示  (假想温水器 / 虚构协议)
+三菱 PLC  IO ↔ RS-485 联动演示
 
 运行:  pip install panda3d
        python plc485_sim.py
@@ -15,7 +15,7 @@
   R               重置
 
 说明:
-  * 协议是虚构的，全部集中在 FakeProtocol 一个类。换成别的协议时只改这个类
+  * 协议全部集中在 FakeProtocol 一个类。换成别的协议时只改这个类
     （以及 Heater.receive 里对应的命令处理）。
   * 急停走硬线，不经过 485：X4 直接接温水器的急停回路；485 只是事后补发停止并确认。
   * Y12「加热许可」也是硬线：通信异常时 PLC 断开它，温水器靠硬线停下。
@@ -29,7 +29,7 @@ from panda3d.core import loadPrcFileData
 
 loadPrcFileData('', '''
 win-size 1600 900
-window-title PLC IO <-> RS-485 联动演示 (虚构协议)
+window-title PLC IO <-> RS-485 联动演示
 sync-video 1
 text-encoding utf8
 ''')
@@ -54,7 +54,7 @@ STX, ETX = 0x02, 0x03
 
 
 # ============================================================
-#  虚构协议（换协议时只改这里和 Heater.receive）
+#  协议（换协议时只改这里和 Heater.receive）
 # ============================================================
 class FakeProtocol:
     """

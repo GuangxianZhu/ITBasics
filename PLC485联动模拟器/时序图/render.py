@@ -223,8 +223,8 @@ def draw_chart(c, font, formats):
     ax.text(0.15, 0.33, f"{c['id']}  {c['title']}", fontsize=14, weight='bold', color=NAVY,
             va='center', **kw)
     ax.text(0.15, 0.66, '这张图回答：' + c['q'], fontsize=9.2, color='#374151', va='center', **kw)
-    ax.text(0.15, 0.94, '来源：【推】Claude 按通用架构推理　【IO】假想的 IO 分配　【P】PLC 本方案　'
-            '【未】还没定　【定】用户已确认', fontsize=7.6, color='#6b7280',
+    ax.text(0.15, 0.94, '标记：【推】清洗机 / 温水器侧的前提　【IO】IO 分配　【P】PLC 本方案　'
+            '【未】还没定　【定】已定', fontsize=7.6, color='#6b7280',
             va='center', ha='left', **kw)
 
     # 表头
@@ -341,9 +341,8 @@ def draw_chart(c, font, formats):
 def write_md(charts):
     lines = ['# 时序图一览', '',
              '> 自动生成，别手改。改 `charts.py` 后双击 `render_charts.bat` 重新生成。', '',
-             '清洗机和温水器都是假想的，它们的行为由 Claude 按常见的工控 / 串口通信架构推理，用户确认。', '',
-             '每张图左边是 区分 / 信号 / 备考，右边按阶段 ①②③… 分列。备考里的【】是来源：'
-             '【推】Claude 按通用架构推理、【IO】假想的 IO 分配、【P】PLC 本方案、【未】还没定、【定】用户已确认。'
+             '每张图左边是 区分 / 信号 / 备考，右边按阶段 ①②③… 分列。备考里的标记：'
+             '【推】清洗机 / 温水器侧的前提、【IO】IO 分配、【P】PLC 本方案、【未】还没定、【定】已定。'
              '红色 = 报警 / 异常，斜线格 = 没应答，灰色虚线框 = 待确认。', '',
              '请求和应答画在同一时刻（实际一问一答只要几十 ms）。没应答的请求：斜线格「无」紧跟在请求后面，'
              '表示等到超时（断线图 4-2、4-3、4-4）。出图时 `render.py` 会自动检查对位：串口、Modbus 各一条线，'

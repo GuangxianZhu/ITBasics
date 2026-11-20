@@ -82,7 +82,6 @@ input[type="number"] { width: 78px; font-variant-numeric: tabular-nums; }
 .q { margin-top: 8px; color: var(--ink); }
 .q-h { display: block; color: var(--sub); font-size: 12px; }
 .fine { color: var(--sub); font-size: 12px; margin-top: 8px; }
-.warnline { color: var(--warn); }
 .inline { display: inline-flex; align-items: center; gap: 6px; }
 .row-btns { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
 
