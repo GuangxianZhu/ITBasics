@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PLC 网关模拟器</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1 data-i="ui.title"></h1>
+    <span class="sub" data-i="ui.sub"></span>
+  </div>
+  <div class="top-r">
+    <div class="seg" id="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="zh">中文</button>
+      <button type="button" data-lang="en">EN</button>
+      <button type="button" data-lang="ja">日本語</button>
+    </div>
+    <button type="button" id="theme" class="btn icon" data-i-title="ui.theme" aria-label="theme"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7 1a6 6 0 0 1 0 12z" fill="currentColor"/></svg></button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="side">
+    <section class="panel scn">
+      <label class="lbl" for="scn" data-i="ui.scenario"></label>
+      <select id="scn"></select>
+      <p class="q"><span class="q-h" data-i="ui.q"></span><span id="scnQ"></span></p>
+    </section>
+
+    <div class="tabs" id="sideTabs">
+      <button type="button" data-tab="script" class="on"><span data-i="ui.tabScript"></span></button>
+      <button type="button" data-tab="params"><span data-i="ui.tabParams"></span><span class="badge" id="chg" hidden></span></button>
+    </div>
+
+    <section class="panel" id="pane-script">
+      <table class="script" id="script"></table>
+      <div class="row-btns">
+        <button type="button" class="btn" id="addRow" data-i="ui.addRow"></button>
+        <button type="button" class="btn ghost" id="restore" data-i="ui.restore"></button>
+      </div>
+      <label class="inline" for="endSec"><span data-i="ui.end"></span>
+        <input type="number" id="endSec" min="5" max="600" step="1"><span>s</span></label>
+    </section>
+
+    <section class="panel" id="pane-params" hidden>
+      <div class="row-btns"><button type="button" class="btn ghost" id="resetParams" data-i="ui.resetParams"></button></div>
+      <div id="params"></div>
+      <p class="fine" data-i="ui.legend"></p>
+    </section>
+  </aside>
+
+  <main class="main">
+    <section class="mimic" id="mimic" aria-live="off"></section>
+
+    <section class="metrics" id="metrics"></section>
+
+    <section class="panel chart-card">
+      <div class="toolbar" id="tb1">
+        <div class="seg" id="views" role="group"></div>
+        <div class="pop-wrap">
+          <button type="button" class="btn" id="sigBtn" data-i="ui.signals"></button>
+          <div class="pop" id="sigPop" hidden></div>
+        </div>
+        <span class="count" id="rowCount"></span>
+        <span class="sp"></span>
+        <label class="chk"><input type="checkbox" id="oHide"><span data-i="ui.hidePeriodic"></span></label>
+        <label class="chk"><input type="checkbox" id="oSplit"><span data-i="ui.split"></span></label>
+        <label class="chk"><input type="checkbox" id="oActive"><span data-i="ui.activeOnly"></span></label>
+        <label class="chk"><input type="checkbox" id="oLinks"><span data-i="ui.links"></span></label>
+        <label class="chk"><input type="checkbox" id="oMarks"><span data-i="ui.marks"></span></label>
+        <label class="chk"><input type="checkbox" id="oWarp"><span data-i="ui.warp"></span></label>
+      </div>
+      <div class="toolbar" id="tb2">
+        <button type="button" class="btn primary" id="play"></button>
+        <label class="inline" for="speed"><span data-i="ui.speed"></span>
+          <select id="speed">
+            <option value="0.02">0.02×</option><option value="0.1">0.1×</option><option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option><option value="5">5×</option><option value="20">20×</option>
+          </select></label>
+        <span class="vr"></span>
+        <button type="button" class="btn icon" id="zOut" data-i-title="ui.zoomOut" aria-label="zoom out">−</button>
+        <button type="button" class="btn icon" id="zIn" data-i-title="ui.zoomIn" aria-label="zoom in">+</button>
+        <button type="button" class="btn" id="zFit" data-i="ui.fit"></button>
+        <button type="button" class="btn" id="zFocus" data-i="ui.focus"></button>
+        <span class="vr"></span>
+        <span class="cur" id="curRead"></span>
+        <button type="button" class="btn" id="setB" data-i="ui.setB"></button>
+        <button type="button" class="btn ghost" id="clrB" data-i="ui.curClr"></button>
+        <span class="sp"></span>
+        <div class="pop-wrap">
+          <button type="button" class="btn" id="expBtn"><span data-i="ui.export"></span> ▾</button>
+          <div class="pop right" id="expPop" hidden>
+            <button type="button" data-ex="svg" data-i="ui.exSvg"></button>
+            <button type="button" data-ex="png" data-i="ui.exPng"></button>
+            <button type="button" data-ex="copy" data-i="ui.exCopy"></button>
+            <button type="button" data-ex="log" data-i="ui.exLog"></button>
+            <button type="button" data-ex="frames" data-i="ui.exFrames"></button>
+            <p class="fine" id="exHint" data-i="ui.exHint" hidden></p>
+          </div>
+        </div>
+      </div>
+      <div id="mini"></div>
+      <div id="chart" tabindex="0" role="img" aria-label="timing chart"></div>
+      <p class="fine help" data-i="ui.help"></p>
+    </section>
+
+    <section class="panel bottom">
+      <div class="tabs" id="botTabs">
+        <button type="button" data-tab="log" class="on" data-i="ui.tabLog"></button>
+        <button type="button" data-tab="frame" data-i="ui.tabFrame"></button>
+        <button type="button" data-tab="notes" data-i="ui.tabNotes"></button>
+      </div>
+      <div id="pane-log">
+        <div class="toolbar slim" id="logFilter"></div>
+        <div class="log" id="log"></div>
+      </div>
+      <div id="pane-frame" hidden></div>
+      <div id="pane-notes" hidden>
+        <p data-i="ui.notes1"></p>
+        <p data-i="ui.notes2"></p>
+        <p data-i="ui.notes3"></p>
+        <p class="warnline" data-i="ui.fake"></p>
+        <p class="fine" data-i="ui.legend"></p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="tip" hidden></div>
+<div id="toast" hidden></div>
+
+<script src="i18n.js"></script>
+<script src="core.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>

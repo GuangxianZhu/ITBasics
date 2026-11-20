@@ -1,0 +1,4 @@
+out/*.png
+__pycache__/
+out_local/
+out/.$*.bkp

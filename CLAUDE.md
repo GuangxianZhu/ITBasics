@@ -16,7 +16,7 @@
 | 四缸发动机爆炸图（通用 2.0L DOHC 16V 直列四缸：Blender 脚本建模 + 原理爆炸图，48 个可抓单元 + 缸体底座，导进 MyVRToyBox） | `四缸发动机爆炸图/README.md` |
 | 五指灵巧手（20 自由度直驱手，关节布局参考 Wuji Hand 2 公开 URDF：零件树 + 共享参数表 params.json + 逐件建模，手势由求解器避开穿模，网页查看器；`export_ue.py` 导进 MyVRToyBox） | `五指灵巧手/README.md` |
 | 干法刻蚀机（原创 ICP 刻蚀机教学：离线网页里操作机台跑完一次工艺；工艺模型和讲解文字在 web/etch_core.js，`export_core.mjs` + `export_ue.py` 导给 MyVRToyBox 的 VR 版） | `干法刻蚀机/README.md` |
-| PLC485 联动模拟器（PLC 网关：IO ↔ 温水器 485。**网页版模拟器 `web/`（现在的主线：中 / 英 / 日三语、参数可调、时序图是跑出来的）** + 手画的信号时序图（SVG + drawio 中/日/英，翻译在 `时序图/i18n.py`，出图时自动查对位，改 `时序图/charts.py` 出图）+ 旧的 Panda3D 模拟器 v1/v2） | `PLC485联动模拟器/web/README.md`；设计决定看 `PLC485联动模拟器/时序图/README.md`（第 0 节是交接） |
+| PLC485 联动模拟器（PLC 网关：IO ↔ 温水器 485。**网页版模拟器 `web/`（现在的主线：中 / 英 / 日三语、参数可调、时序图是跑出来的）** + 手画的信号时序图（SVG + drawio 中/日/英，翻译在 `时序图/i18n.py`，出图时自动查对位，改 `时序图/charts.py` 出图）+ 旧的 Panda3D 模拟器 v1/v2） | `PLC485联动模拟器/web/README.md`；设计决定看 `PLC485联动模拟器/时序图/README.md`（第 0 节是交接）。清洗机 / 温水器都是假想的，行为由 Claude 按通用架构推理 |
 
 通用约定：
 - 回答用中文；改完 push 到 `main`。
